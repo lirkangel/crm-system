@@ -21,6 +21,10 @@
     <!-- ─────────────────────────────────── versions ─── -->
     <properties>
         <java.version>21</java.version>
+        <!-- Patch release; improves Docker socket discovery (e.g. Docker Desktop for Mac) -->
+        <testcontainers.version>1.20.6</testcontainers.version>
+        <!-- Must match annotationProcessorPaths; Boot 3.4.1 defaults to 1.18.36, which breaks JDK 25 javac -->
+        <lombok.version>1.18.46</lombok.version>
         <mapstruct.version>1.5.5.Final</mapstruct.version>
         <jjwt.version>0.12.6</jjwt.version>
         <poi.version>5.3.0</poi.version>
@@ -64,7 +68,7 @@
             <artifactId>spring-boot-starter-websocket</artifactId>
         </dependency>
 
-        <!-- ── Database ── -->
+        <!-- ── Database ── (Hibernate version comes from Spring Boot — do not override with 7.x on Boot 3.4) -->
         <dependency>
             <groupId>org.postgresql</groupId>
             <artifactId>postgresql</artifactId>
@@ -124,6 +128,7 @@
         <dependency>
             <groupId>org.projectlombok</groupId>
             <artifactId>lombok</artifactId>
+            <scope>compile</scope>
             <optional>true</optional>
         </dependency>
         <dependency>
@@ -136,6 +141,11 @@
         <dependency>
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-test</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-testcontainers</artifactId>
             <scope>test</scope>
         </dependency>
         <dependency>
@@ -187,6 +197,20 @@
                 </configuration>
             </plugin>
 
+            <!-- Default: skip Docker-backed tests; run with: mvn verify -Pintegration -->
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-surefire-plugin</artifactId>
+                <configuration>
+                    <!-- Mockito inline mocks on JDK 21+ (see Mockito javadoc §0.3); avoids self-attach / dynamic agent warnings -->
+                    <argLine>
+                        -javaagent:${settings.localRepository}/org/mockito/mockito-core/${mockito.version}/mockito-core-${mockito.version}.jar
+                        -Xshare:off
+                    </argLine>
+                    <excludedGroups>integration</excludedGroups>
+                </configuration>
+            </plugin>
+
             <!-- Spring Boot repackage (fat JAR for server-pack) -->
             <plugin>
                 <groupId>org.springframework.boot</groupId>
@@ -203,5 +227,25 @@
 
         </plugins>
     </build>
+
+    <profiles>
+        <profile>
+            <id>integration</id>
+            <build>
+                <plugins>
+                    <plugin>
+                        <groupId>org.apache.maven.plugins</groupId>
+                        <artifactId>maven-surefire-plugin</artifactId>
+                        <configuration>
+                            <!-- Run every test, including @Tag("integration") -->
+                            <excludedGroups combine.self="override"></excludedGroups>
+                            <!-- Same JVM as Maven: inherits DOCKER_HOST / socket visibility (IDE & fork issues) -->
+                            <forkCount>0</forkCount>
+                        </configuration>
+                    </plugin>
+                </plugins>
+            </build>
+        </profile>
+    </profiles>
 
 </project>
