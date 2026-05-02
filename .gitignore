@@ -1,0 +1,44 @@
+# Java / Maven
+target/
+*.class
+*.jar
+!**/src/test/resources/**/*.jar
+.idea/
+*.iml
+*.ipr
+*.iws
+.mvn/wrapper/maven-wrapper.jar
+
+# Rust / Tauri
+src-tauri/target/
+desktop/target/
+dist/
+
+# Node
+node_modules/
+.vite/
+*.log
+.pnpm-store/
+
+# OS
+.DS_Store
+Thumbs.db
+*.swp
+
+# Local config & secrets
+*.env
+*.local
+application-local.yml
+application-local.properties
+
+# Build artifacts & releases
+releases/
+backups/
+uploads/
+
+# Plugin ZIPs (large binaries; install manually)
+server/plugins/*.zip
+
+# IDE
+.vscode/settings.json
+.fleet/
