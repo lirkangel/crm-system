@@ -2,11 +2,15 @@ package com.crm.foundation.Domain;
 
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
+import jakarta.persistence.FetchType;
 import jakarta.persistence.Id;
+import jakarta.persistence.ManyToMany;
 import jakarta.persistence.Table;
 import jakarta.validation.constraints.NotNull;
 import org.hibernate.annotations.UuidGenerator;
 
+import java.util.HashSet;
+import java.util.Set;
 import java.util.UUID;
 
 @Entity
@@ -24,6 +28,9 @@ public class Permissions {
     private String pluginId;
 
     private String description;
+
+    @ManyToMany(mappedBy = "permissions", fetch = FetchType.LAZY)
+    private Set<Roles> roles = new HashSet<>();
 
     public String getDescription() {
         return description;
@@ -51,5 +58,17 @@ public class Permissions {
 
     public UUID getId() {
         return id;
+    }
+
+    public void setId(UUID id) {
+        this.id = id;
+    }
+
+    public Set<Roles> getRoles() {
+        return roles;
+    }
+
+    public void setRoles(Set<Roles> roles) {
+        this.roles = roles;
     }
 }
