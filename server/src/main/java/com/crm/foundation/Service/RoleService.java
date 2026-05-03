@@ -1,14 +1,14 @@
 package com.crm.foundation.Service;
 
 import com.crm.foundation.Domain.Roles;
-import jakarta.validation.constraints.NotNull;
+import org.springframework.lang.NonNull;
 
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
 public interface RoleService {
-    Optional<Roles> findById(@NotNull UUID id);
+    Optional<Roles> findById(@NonNull UUID id);
 
     List<Roles> findByName(String name);
 

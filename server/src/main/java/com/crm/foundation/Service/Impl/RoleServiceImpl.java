@@ -3,8 +3,8 @@ package com.crm.foundation.Service.Impl;
 import com.crm.foundation.Domain.Roles;
 import com.crm.foundation.Repository.RoleRepository;
 import com.crm.foundation.Service.RoleService;
-import jakarta.validation.constraints.NotNull;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.lang.NonNull;
 import org.springframework.stereotype.Service;
 
 import java.util.List;
@@ -23,7 +23,7 @@ public class RoleServiceImpl implements RoleService {
     }
 
     @Override
-    public Optional<Roles> findById(@NotNull UUID id) {
+    public Optional<Roles> findById(@NonNull UUID id) {
         return roleRepository.findById(id);
     }
 

@@ -3,8 +3,8 @@ package com.crm.foundation.Service.Impl;
 import com.crm.foundation.Domain.Permissions;
 import com.crm.foundation.Repository.PermissionRepository;
 import com.crm.foundation.Service.PermissionService;
-import jakarta.validation.constraints.NotNull;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.lang.NonNull;
 
 import java.util.List;
 import java.util.Optional;
@@ -21,7 +21,7 @@ public class PermissionServiceImpl implements PermissionService {
     }
 
     @Override
-    public Optional<Permissions> findById(@NotNull UUID uuid) {
+    public Optional<Permissions> findById(@NonNull UUID uuid) {
         return permissionRepository.findById(uuid);
     }
 
