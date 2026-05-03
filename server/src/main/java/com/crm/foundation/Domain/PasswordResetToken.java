@@ -1,5 +1,6 @@
 package com.crm.foundation.Domain;
 
+import com.crm.foundation.Audit.AuditListener;
 import jakarta.persistence.*;
 import jakarta.validation.constraints.NotNull;
 import org.hibernate.annotations.UuidGenerator;
@@ -9,6 +10,7 @@ import java.util.UUID;
 
 @Entity
 @Table(name = "password_reset_tokens")
+@EntityListeners(AuditListener.class)
 public class PasswordResetToken {
 
     @Id

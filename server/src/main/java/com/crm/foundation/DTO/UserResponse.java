@@ -1,4 +1,4 @@
-package com.crm.foundation.Controller;
+package com.crm.foundation.DTO;
 
 import com.crm.foundation.Domain.User;
 

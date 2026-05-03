@@ -1,5 +1,6 @@
 package com.crm.foundation.Controller;
 
+import com.crm.foundation.DTO.UserResponse;
 import com.crm.foundation.Domain.User;
 import com.crm.foundation.Service.UserService;
 import org.junit.jupiter.api.Test;
