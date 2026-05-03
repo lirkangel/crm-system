@@ -39,6 +39,9 @@ uploads/
 # Plugin ZIPs (large binaries; install manually)
 server/plugins/*.zip
 
+# Local planning / agent artifacts (not part of product source)
+docs/superpowers/
+
 # IDE
 .vscode/settings.json
 .fleet/
