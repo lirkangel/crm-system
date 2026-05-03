@@ -8,8 +8,7 @@ import jakarta.validation.constraints.NotNull;
 import org.hibernate.annotations.JdbcTypeCode;
 import org.hibernate.annotations.UuidGenerator;
 import org.hibernate.type.SqlTypes;
-
-import java.time.LocalDateTime;
+import java.time.Instant;
 import java.util.UUID;
 
 @Entity
@@ -37,7 +36,7 @@ public class PluginRegistry {
     private String state;
 
     @Column(name = "last_loaded_at")
-    private LocalDateTime lastLoadedAt;
+    private Instant lastLoadedAt;
 
     @Column(name = "error_message")
     private String errorMessage;
@@ -87,11 +86,11 @@ public class PluginRegistry {
         this.state = state;
     }
 
-    public LocalDateTime getLastLoadedAt() {
+    public Instant getLastLoadedAt() {
         return lastLoadedAt;
     }
 
-    public void setLastLoadedAt(LocalDateTime lastLoadedAt) {
+    public void setLastLoadedAt(Instant lastLoadedAt) {
         this.lastLoadedAt = lastLoadedAt;
     }
 

@@ -1,7 +1,7 @@
 package com.crm.foundation.Controller;
 
-import org.springframework.stereotype.Controller;
+import org.springframework.web.bind.annotation.RestController;
 
-@Controller("role")
+@RestController("role")
 public class RoleController {
 }

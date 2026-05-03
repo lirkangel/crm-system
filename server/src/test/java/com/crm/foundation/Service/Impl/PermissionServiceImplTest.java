@@ -1,7 +1,7 @@
 package com.crm.foundation.Service.Impl;
 
+import com.crm.foundation.Domain.Permission;
 import com.crm.foundation.Repository.PermissionRepository;
-import com.crm.foundation.Domain.Permissions;
 
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -27,13 +27,13 @@ public class PermissionServiceImplTest {
 
     @Test
     void findAll_delegatesToRepository() {
-        Permissions read = new Permissions();
+        Permission read = new Permission();
         read.setKey("users.read");
-        Permissions write = new Permissions();
+        Permission write = new Permission();
         write.setKey("users.write");
         when(permissionRepository.findAll()).thenReturn(List.of(read, write));
 
-        List<Permissions> result = permissionService.findAll();
+        List<Permission> result = permissionService.findAll();
 
         assertThat(result).containsExactly(read, write);
         verify(permissionRepository).findAll();
@@ -42,11 +42,11 @@ public class PermissionServiceImplTest {
     @Test
     void findById_returnsPermissionWhenRepositoryFindsOne() {
         UUID id = UUID.fromString("00000000-0000-0000-0000-000000000007");
-        Permissions permission = new Permissions();
+        Permission permission = new Permission();
         permission.setKey("roles.manage");
         when(permissionRepository.findById(id)).thenReturn(Optional.of(permission));
 
-        Optional<Permissions> result = permissionService.findById(id);
+        Optional<Permission> result = permissionService.findById(id);
 
         assertThat(result).isPresent();
         assertThat(result.get()).isSameAs(permission);
@@ -64,11 +64,11 @@ public class PermissionServiceImplTest {
 
     @Test
     void findByKey_returnsPermissionWhenRepositoryFindsOne() {
-        Permissions permission = new Permissions();
+        Permission permission = new Permission();
         permission.setKey("billing.view");
         when(permissionRepository.findByKey("billing.view")).thenReturn(Optional.of(permission));
 
-        Optional<Permissions> result = permissionService.findByKey("billing.view");
+        Optional<Permission> result = permissionService.findByKey("billing.view");
 
         assertThat(result).isPresent();
         assertThat(result.get()).isSameAs(permission);

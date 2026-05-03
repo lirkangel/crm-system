@@ -2,22 +2,28 @@ package com.crm.foundation.Controller;
 
 import com.crm.foundation.Domain.User;
 import com.crm.foundation.Service.UserService;
-import org.springframework.beans.factory.annotation.Autowired;
+import lombok.RequiredArgsConstructor;
+import org.springframework.http.ResponseEntity;
 import org.springframework.lang.NonNull;
-import org.springframework.stereotype.Controller;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RestController;
 
-import java.util.Optional;
 import java.util.UUID;
 
-@Controller("user")
+@RequiredArgsConstructor
+@RestController
+@RequestMapping("/api/users")
 public class UserController {
 
-    @Autowired
-    public UserService userService;
+    private final UserService userService;
 
-    @GetMapping(path = "/id")
-    public Optional<User> GetUserById(@NonNull UUID id) {
-        return userService.findById(id);
+    @GetMapping("/{id}")
+    public ResponseEntity<UserResponse> getUserById(@PathVariable @NonNull UUID id) {
+        return userService.findById(id)
+                .map(UserResponse::from)
+                .map(ResponseEntity::ok)
+                .orElseGet(() -> ResponseEntity.notFound().build());
     }
 }

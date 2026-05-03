@@ -10,7 +10,7 @@ import java.util.UUID;
 
 @Entity
 @Table(name = "permissions")
-public class Permissions {
+public class Permission {
 
     @Id
     @UuidGenerator
@@ -25,7 +25,7 @@ public class Permissions {
     private String description;
 
     @ManyToMany(mappedBy = "permissions", fetch = FetchType.LAZY)
-    private Set<Roles> roles = new HashSet<>();
+    private Set<Role> roles = new HashSet<>();
 
     public String getDescription() {
         return description;
@@ -59,11 +59,11 @@ public class Permissions {
         this.id = id;
     }
 
-    public Set<Roles> getRoles() {
+    public Set<Role> getRoles() {
         return roles;
     }
 
-    public void setRoles(Set<Roles> roles) {
+    public void setRoles(Set<Role> roles) {
         this.roles = roles;
     }
 }

@@ -12,7 +12,7 @@ import java.util.UUID;
 
 @Entity
 @Table(name = "roles")
-public class Roles {
+public class Role {
 
     @Id
     @UuidGenerator
@@ -30,7 +30,7 @@ public class Roles {
     @Column(nullable = false)
     private Boolean builtin;
 
-    @NotNull
+    @Version
     @Column(nullable = false)
     private Long version;
 
@@ -43,7 +43,7 @@ public class Roles {
         joinColumns = @JoinColumn(name = "role_id", referencedColumnName = "id"),
         inverseJoinColumns = @JoinColumn(name = "permission_id", referencedColumnName = "id")
     )
-    private Set<Permissions> permissions = new HashSet<>();
+    private Set<Permission> permissions = new HashSet<>();
 
     public UUID getId() {
         return id;
@@ -93,11 +93,11 @@ public class Roles {
         this.users = users;
     }
 
-    public Set<Permissions> getPermissions() {
+    public Set<Permission> getPermissions() {
         return permissions;
     }
 
-    public void setPermissions(Set<Permissions> permissions) {
+    public void setPermissions(Set<Permission> permissions) {
         this.permissions = permissions;
     }
 }
