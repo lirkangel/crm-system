@@ -1,0 +1,52 @@
+# Default: postgres only (`docker compose up`).
+# Server image build runs unit tests before packaging (see server/Dockerfile).
+# Optional: `docker compose --profile tools run --rm server-test` to run tests from bind-mounted sources.
+# Stack: `docker compose --profile server up --build`
+
+services:
+  server-test:
+    profiles: ["tools"]
+    image: maven:3.9.9-eclipse-temurin-21-alpine
+    working_dir: /workspace
+    volumes:
+      - ./server:/workspace
+      - maven_repo:/root/.m2
+    command: ["mvn", "-B", "test"]
+
+  server:
+    profiles: ["server"]
+    build:
+      context: ./server
+      dockerfile: Dockerfile
+    container_name: crm-server
+    environment:
+      DB_URL: jdbc:postgresql://postgres:5432/foundation
+      DB_USER: foundation
+      DB_PASS: foundation
+    ports:
+      - "8082:8082"
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  postgres:
+    image: postgres:16-alpine
+    container_name: crm-postgres
+    environment:
+      POSTGRES_USER: foundation
+      POSTGRES_PASSWORD: foundation
+      POSTGRES_DB: foundation
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U foundation -d foundation"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+
+volumes:
+  postgres_data:
+  maven_repo:

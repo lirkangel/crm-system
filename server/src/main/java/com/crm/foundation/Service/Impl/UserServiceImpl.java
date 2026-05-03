@@ -3,6 +3,7 @@ package com.crm.foundation.Service.Impl;
 import com.crm.foundation.Domain.User;
 import com.crm.foundation.Repository.UserRepository;
 import com.crm.foundation.Service.UserService;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.lang.NonNull;
 import org.springframework.stereotype.Service;
 
@@ -13,11 +14,8 @@ import java.util.UUID;
 @Service
 public class UserServiceImpl implements UserService {
 
+    @Autowired
     private UserRepository userRepository;
-
-    public UserServiceImpl(UserRepository userRepository) {
-        this.userRepository = userRepository;
-    }
 
     @Override
     public Optional<User> findById(@NonNull UUID id) {
