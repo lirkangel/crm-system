@@ -6,7 +6,6 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.condition.EnabledIf;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.context.annotation.Import;
-import org.testcontainers.DockerClientFactory;
 
 /**
  * Context-load smoke test (Docker + Postgres via Testcontainers).
@@ -16,15 +15,12 @@ import org.testcontainers.DockerClientFactory;
  * If Docker is running but this still skips, set {@code DOCKER_HOST} (see {@link com.crm.foundation.config.TestContainersConfig}).
  */
 @Tag("integration")
-@EnabledIf(value = "dockerAvailable", disabledReason = "Docker not available for Testcontainers")
+@EnabledIf(
+    value = "com.crm.foundation.support.DockerTestSupport#dockerAvailable",
+    disabledReason = "Docker not available for Testcontainers")
 @SpringBootTest
 @Import(TestContainersConfig.class)
 class FoundationApplicationTests {
-
-    @SuppressWarnings("unused")
-    static boolean dockerAvailable() {
-        return DockerClientFactory.instance().isDockerAvailable();
-    }
 
     @Test
     void contextLoads() {
