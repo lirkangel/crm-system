@@ -11,6 +11,7 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.time.Instant;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -29,13 +30,18 @@ class TokenServiceImplTest {
     private TokenServiceImpl tokenService;
 
     @Test
+    @SuppressWarnings("null") // Mockito any()/ArgumentCaptor.capture() are not @NonNull for JDT null analysis
     void createToken_savesNewTokenWhenUserHasNone() {
         User user = new User();
-        user.setId(UUID.fromString("00000000-0000-0000-0000-000000000001"));
+        user.setId(Objects.requireNonNull(UUID.fromString("00000000-0000-0000-0000-000000000001")));
         user.setUsername("alice");
         user.setEmail("alice@example.com");
         when(refreshTokenRepository.findByUser(user)).thenReturn(Optional.empty());
-        when(refreshTokenRepository.save(any(RefreshToken.class))).thenAnswer(invocation -> invocation.getArgument(0));
+        when(refreshTokenRepository.saveAndFlush(any()))
+                .thenAnswer(
+                        invocation ->
+                                Objects.requireNonNull(
+                                        invocation.getArgument(0, RefreshToken.class)));
 
         RefreshToken result = tokenService.createToken(user);
 
@@ -45,31 +51,33 @@ class TokenServiceImplTest {
         assertThat(result.getCreatedAt()).isNotNull();
 
         ArgumentCaptor<RefreshToken> captor = ArgumentCaptor.forClass(RefreshToken.class);
-        verify(refreshTokenRepository).save(captor.capture());
+        verify(refreshTokenRepository).saveAndFlush(captor.capture());
         assertThat(captor.getValue().getUser()).isSameAs(user);
     }
 
     @Test
+    @SuppressWarnings("null") // Mockito when/verify with entity reference vs @NonNull repository API
     void createToken_updatesExpiryAndSavesWhenUserAlreadyHasToken() {
         User user = new User();
-        user.setId(UUID.fromString("00000000-0000-0000-0000-000000000002"));
+        user.setId(Objects.requireNonNull(UUID.fromString("00000000-0000-0000-0000-000000000002")));
         user.setUsername("bob");
         user.setEmail("bob@example.com");
         Instant oldExpiry = Instant.parse("2020-01-01T00:00:00Z");
-        RefreshToken existing = RefreshToken.issueFor(user, oldExpiry);
+        RefreshToken existing =
+                Objects.requireNonNull(RefreshToken.issueFor(user, oldExpiry));
         when(refreshTokenRepository.findByUser(user)).thenReturn(Optional.of(existing));
-        when(refreshTokenRepository.save(existing)).thenReturn(existing);
+        when(refreshTokenRepository.saveAndFlush(existing)).thenReturn(existing);
 
         RefreshToken result = tokenService.createToken(user);
 
         assertThat(result).isSameAs(existing);
         assertThat(result.getExpiresAt()).isAfter(oldExpiry);
-        verify(refreshTokenRepository).save(existing);
+        verify(refreshTokenRepository).saveAndFlush(existing);
     }
 
     @Test
     void updateToken_returnsNullWhenJtiNotFound() {
-        UUID jti = UUID.fromString("00000000-0000-0000-0000-000000000099");
+        UUID jti = Objects.requireNonNull(UUID.fromString("00000000-0000-0000-0000-000000000099"));
         when(refreshTokenRepository.findByJti(jti)).thenReturn(null);
 
         assertThat(tokenService.updateToken(jti)).isNull();
@@ -78,7 +86,7 @@ class TokenServiceImplTest {
 
     @Test
     void updateToken_refreshesExpiryWhenJtiFound() {
-        UUID jti = UUID.fromString("00000000-0000-0000-0000-000000000088");
+        UUID jti = Objects.requireNonNull(UUID.fromString("00000000-0000-0000-0000-000000000088"));
         User user = new User();
         user.setId(UUID.randomUUID());
         user.setUsername("u");
@@ -96,7 +104,7 @@ class TokenServiceImplTest {
 
     @Test
     void issueToken_returnsFalseWhenJtiNotFound() {
-        UUID jti = UUID.fromString("00000000-0000-0000-0000-000000000077");
+        UUID jti = Objects.requireNonNull(UUID.fromString("00000000-0000-0000-0000-000000000077"));
         when(refreshTokenRepository.findByJti(jti)).thenReturn(null);
 
         assertThat(tokenService.issueToken(jti)).isFalse();
@@ -105,7 +113,7 @@ class TokenServiceImplTest {
 
     @Test
     void issueToken_returnsTrueAndSetsExpiresAtWhenJtiFound() {
-        UUID jti = UUID.fromString("00000000-0000-0000-0000-000000000066");
+        UUID jti = Objects.requireNonNull(UUID.fromString("00000000-0000-0000-0000-000000000066"));
         User user = new User();
         user.setId(UUID.randomUUID());
         user.setUsername("v");

@@ -10,6 +10,7 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.util.List;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -41,7 +42,7 @@ public class PermissionServiceImplTest {
 
     @Test
     void findById_returnsPermissionWhenRepositoryFindsOne() {
-        UUID id = UUID.fromString("00000000-0000-0000-0000-000000000007");
+        UUID id = Objects.requireNonNull(UUID.fromString("00000000-0000-0000-0000-000000000007"));
         Permission permission = new Permission();
         permission.setKey("roles.manage");
         when(permissionRepository.findById(id)).thenReturn(Optional.of(permission));
@@ -55,7 +56,7 @@ public class PermissionServiceImplTest {
 
     @Test
     void findById_returnsEmptyWhenMissing() {
-        UUID id = UUID.fromString("00000000-0000-0000-0000-000000000099");
+        UUID id = Objects.requireNonNull(UUID.fromString("00000000-0000-0000-0000-000000000099"));
         when(permissionRepository.findById(id)).thenReturn(Optional.empty());
 
         assertThat(permissionService.findById(id)).isEmpty();

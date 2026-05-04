@@ -8,7 +8,6 @@ import jakarta.persistence.PreRemove;
 import jakarta.persistence.PreUpdate;
 
 import java.time.Instant;
-import java.time.LocalDateTime;
 
 public class AuditListener {
     @PrePersist

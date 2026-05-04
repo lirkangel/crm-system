@@ -9,6 +9,7 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.util.List;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -27,7 +28,7 @@ class UserServiceImplTest {
 
     @Test
     void findById_returnsUserWhenRepositoryFindsOne() {
-        UUID id = UUID.fromString("00000000-0000-0000-0000-000000000007");
+        UUID id = Objects.requireNonNull(UUID.fromString("00000000-0000-0000-0000-000000000007"));
         User user = new User();
         user.setId(id);
         user.setUsername("alice");
@@ -42,7 +43,7 @@ class UserServiceImplTest {
 
     @Test
     void findById_returnsEmptyWhenMissing() {
-        UUID id = UUID.fromString("00000000-0000-0000-0000-000000000099");
+        UUID id = Objects.requireNonNull(UUID.fromString("00000000-0000-0000-0000-000000000099"));
         when(userRepository.findById(id)).thenReturn(Optional.empty());
 
         assertThat(userService.findById(id)).isEmpty();

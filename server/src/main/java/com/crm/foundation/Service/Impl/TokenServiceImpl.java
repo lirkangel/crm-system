@@ -33,7 +33,7 @@ public class TokenServiceImpl implements TokenService {
                         return existing;
                     })
                 .orElseGet(() -> RefreshToken.issueFor(user, expiresAt));
-        return refreshTokenRepository.save(Objects.requireNonNull(token, "token"));
+        return refreshTokenRepository.saveAndFlush(Objects.requireNonNull(token, "token"));
     }
 
     @Override
@@ -44,6 +44,7 @@ public class TokenServiceImpl implements TokenService {
         }
         Instant expiresAt = Instant.now().plusSeconds(REFRESH_TTL_SECONDS);
         existingToken.setExpiresAt(expiresAt);
+        refreshTokenRepository.saveAndFlush(existingToken);
         return existingToken;
     }
 
@@ -55,6 +56,7 @@ public class TokenServiceImpl implements TokenService {
         }
         Instant expiresAt = Instant.now();
         existingToken.setExpiresAt(expiresAt);
+        refreshTokenRepository.saveAndFlush(existingToken);
         return true;
     }
 }
