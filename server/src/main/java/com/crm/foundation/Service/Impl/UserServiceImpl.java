@@ -17,10 +17,6 @@ public class UserServiceImpl implements UserService {
 
     private final UserRepository userRepository;
 
-    public UserServiceImpl(UserRepository userRepository) {
-        this.userRepository = userRepository;
-    }
-
     @Override
     public Optional<User> findById(@NonNull UUID id) {
         return userRepository.findById(id);

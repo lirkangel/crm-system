@@ -93,4 +93,14 @@ public class RefreshToken {
     public void setCreatedAt(Instant createdAt) {
         this.createdAt = createdAt;
     }
+
+    public static RefreshToken issueFor(User user, Instant expiresAt) {
+        Instant now = Instant.now();
+        RefreshToken token = new RefreshToken();
+        token.setUser(user);
+        token.setJti(UUID.randomUUID());
+        token.setExpiresAt(expiresAt);
+        token.setCreatedAt(now);
+        return token;
+    }
 }
