@@ -1,7 +1,9 @@
 package com.crm.foundation.Controller;
 
+import com.crm.foundation.Config.OpenApiConfig;
 import com.crm.foundation.DTO.UserResponse;
 import com.crm.foundation.Service.UserService;
+import io.swagger.v3.oas.annotations.security.SecurityRequirement;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
 import org.springframework.lang.NonNull;
@@ -15,6 +17,7 @@ import java.util.UUID;
 @RequiredArgsConstructor
 @RestController
 @RequestMapping("/api/v1/users")
+@SecurityRequirement(name = OpenApiConfig.JWT_SECURITY_SCHEME)
 public class UserController {
 
     private final UserService userService;

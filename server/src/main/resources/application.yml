@@ -34,20 +34,11 @@ spring:
     baseline-version: 1
     out-of-order: false
 
-  mail:
-    host: ${SMTP_HOST}
-    port: ${SMTP_PORT}
-    username: ${SMTP_USER}
-    password: ${SMTP_PASS}
-    properties:
-      mail.smtp.auth: ${SMTP_AUTH}
-      mail.smtp.starttls.enable: ${SMTP_STARTTLS}
-
   thymeleaf:
     cache: false                  # disable in dev; enable in prod via profile
 
 server:
-  port: ${SERVER_PORT}
+  port: ${SERVER_PORT:8080}
   error:
     include-message: always
     include-binding-errors: always
@@ -77,6 +68,12 @@ foundation:
 
   security:
     field-key: ${FIELD_ENC_KEY:}   # 32-byte base64 AES-GCM key; REQUIRED in production
+
+springdoc:
+  show-actuator: false
+  swagger-ui:
+    tags-sorter: alpha
+    operations-sorter: alpha
 
 logging:
   level:
@@ -117,6 +114,14 @@ spring:
   config:
     activate:
       on-profile: prod
+  mail:
+    host: ${SMTP_HOST}
+    port: ${SMTP_PORT:587}
+    username: ${SMTP_USER}
+    password: ${SMTP_PASS}
+    properties:
+      mail.smtp.auth: ${SMTP_AUTH:true}
+      mail.smtp.starttls.enable: ${SMTP_STARTTLS:true}
   thymeleaf:
     cache: true
   jpa:
