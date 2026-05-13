@@ -11,6 +11,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 
+import java.util.Objects;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -29,7 +30,7 @@ class UserControllerTest {
 
     @Test
     void getUserById_returnsResponseBodyFromService() {
-        UUID id = UUID.fromString("00000000-0000-0000-0000-000000000003");
+        UUID id = Objects.requireNonNull(UUID.fromString("00000000-0000-0000-0000-000000000003"));
         User user = new User();
         user.setId(id);
         user.setUsername("bob");
@@ -47,7 +48,7 @@ class UserControllerTest {
 
     @Test
     void getUserById_returnsNotFoundWhenServiceFindsNothing() {
-        UUID id = UUID.fromString("00000000-0000-0000-0000-000000000404");
+        UUID id = Objects.requireNonNull(UUID.fromString("00000000-0000-0000-0000-000000000404"));
         when(userService.findById(id)).thenReturn(Optional.empty());
 
         ResponseEntity<UserResponse> result = userController.getUserById(id);

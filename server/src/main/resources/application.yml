@@ -2,8 +2,13 @@ spring:
   application:
     name: foundation
 
+  # Default profile for local development runs
+  profiles:
+    active: ${SPRING_PROFILES_ACTIVE:dev}
+
   datasource:
-    url: ${DB_URL:jdbc:postgresql://localhost:5432/foundation}
+    # Postgres URL placeholder; override via env in each environment
+    url: ${DB_URL:jdbc:postgresql://${DB_HOST:localhost}:${DB_PORT:5432}/${DB_NAME:foundation}}
     username: ${DB_USER:foundation}
     password: ${DB_PASS:foundation}
     hikari:
@@ -29,20 +34,11 @@ spring:
     baseline-version: 1
     out-of-order: false
 
-  mail:
-    host: ${SMTP_HOST:localhost}
-    port: ${SMTP_PORT:25}
-    username: ${SMTP_USER:}
-    password: ${SMTP_PASS:}
-    properties:
-      mail.smtp.auth: ${SMTP_AUTH:false}
-      mail.smtp.starttls.enable: ${SMTP_STARTTLS:false}
-
   thymeleaf:
     cache: false                  # disable in dev; enable in prod via profile
 
 server:
-  port: ${SERVER_PORT:8082}
+  port: ${SERVER_PORT:8080}
   error:
     include-message: always
     include-binding-errors: always
@@ -59,9 +55,10 @@ management:
 # ── Foundation-specific properties ──────────────────────────────────────────
 foundation:
   jwt:
-    secret: ${JWT_SECRET:changeme-use-a-256-bit-base64-encoded-secret-in-production}
-    access-ttl-seconds: ${JWT_ACCESS_TTL:900}       # 15 minutes
-    refresh-ttl-seconds: ${JWT_REFRESH_TTL:604800}  # 7 days
+    # >= 32 UTF-8 bytes required for HS256 (JJWT); override in production via env
+    secret: ${JWT_SECRET:abcdefghijklmnopqrstuvwxyz123456}
+    access-ttl-seconds: ${JWT_ACCESS_TTL:900}       # access JWT lifetime (seconds)
+    refresh-ttl-seconds: ${JWT_REFRESH_TTL:604800}  # 7 days — used by refresh-token flow elsewhere
 
   plugins:
     directory: ${PLUGINS_DIR:plugins}
@@ -72,6 +69,12 @@ foundation:
   security:
     field-key: ${FIELD_ENC_KEY:}   # 32-byte base64 AES-GCM key; REQUIRED in production
 
+springdoc:
+  show-actuator: false
+  swagger-ui:
+    tags-sorter: alpha
+    operations-sorter: alpha
+
 logging:
   level:
     com.crm: DEBUG
@@ -79,11 +82,46 @@ logging:
     org.flywaydb: INFO
 
 ---
+# ── Dev profile overrides ───────────────────────────────────────────────────
+spring:
+  config:
+    activate:
+      on-profile: dev
+
+logging:
+  level:
+    com.crm: DEBUG
+
+---
+# ── Test profile overrides ──────────────────────────────────────────────────
+spring:
+  config:
+    activate:
+      on-profile: test
+
+management:
+  health:
+    mail:
+      enabled: false
+
+logging:
+  level:
+    com.crm: INFO
+
+---
 # ── Production profile overrides ────────────────────────────────────────────
 spring:
   config:
     activate:
       on-profile: prod
+  mail:
+    host: ${SMTP_HOST}
+    port: ${SMTP_PORT:587}
+    username: ${SMTP_USER}
+    password: ${SMTP_PASS}
+    properties:
+      mail.smtp.auth: ${SMTP_AUTH:true}
+      mail.smtp.starttls.enable: ${SMTP_STARTTLS:true}
   thymeleaf:
     cache: true
   jpa:

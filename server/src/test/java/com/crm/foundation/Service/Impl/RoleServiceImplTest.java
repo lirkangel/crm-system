@@ -9,6 +9,7 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.util.List;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -26,7 +27,7 @@ public class RoleServiceImplTest {
 
     @Test
     void findById_returnsRoleWhenRepositoryFindsOne() {
-        UUID id = UUID.fromString("00000000-0000-0000-0000-000000000007");
+        UUID id = Objects.requireNonNull(UUID.fromString("00000000-0000-0000-0000-000000000007"));
         Role roles = new Role();
         roles.setId(id);
         roles.setCode("alice");
@@ -41,7 +42,7 @@ public class RoleServiceImplTest {
 
     @Test
     void findByLikeName_returnRolesWhenRepositoryFindLike() {
-        UUID id1 = UUID.fromString("00000000-0000-0000-0000-000000000007");
+        UUID id1 = Objects.requireNonNull(UUID.fromString("00000000-0000-0000-0000-000000000007"));
         Role roles1 = new Role();
         roles1.setId(id1);
         roles1.setCode("administrator");
@@ -55,7 +56,7 @@ public class RoleServiceImplTest {
 
     @Test
     void findById_returnsEmptyWhenMissing() {
-        UUID id = UUID.fromString("00000000-0000-0000-0000-000000000099");
+        UUID id = Objects.requireNonNull(UUID.fromString("00000000-0000-0000-0000-000000000099"));
         when(roleRepository.findById(id)).thenReturn(Optional.empty());
 
         assertThat(roleService.findById(id)).isEmpty();

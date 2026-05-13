@@ -1,7 +1,12 @@
 package com.crm.foundation.Controller;
 
+import com.crm.foundation.Config.OpenApiConfig;
+import io.swagger.v3.oas.annotations.security.SecurityRequirement;
+import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
-@RestController("role")
+@RestController
+@RequestMapping("/api/v1/roles")
+@SecurityRequirement(name = OpenApiConfig.JWT_SECURITY_SCHEME)
 public class RoleController {
 }

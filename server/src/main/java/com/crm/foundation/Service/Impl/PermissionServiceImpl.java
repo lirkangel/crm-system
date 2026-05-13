@@ -17,10 +17,6 @@ public class PermissionServiceImpl implements PermissionService {
 
     private final PermissionRepository permissionRepository;
 
-    public PermissionServiceImpl(PermissionRepository permissionRepository) {
-        this.permissionRepository = permissionRepository;
-    }
-
     @Override
     public List<Permission> findAll() {
         return permissionRepository.findAll();
