@@ -18,17 +18,31 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 class JwtTokenProviderTest {
 
+    private static final String TEST_SECRET = "abcdefghijklmnopqrstuvwxyz123456";
+    private static final long TEST_ACCESS_TTL_SECONDS = 3600L;
+
     private JwtTokenProvider provider;
 
-    /** Same secret as {@link JwtTokenProvider} (hardcoded until config exists). */
     private static SecretKey sameSigningKey() {
-        return Keys.hmacShaKeyFor(
-                "abcdefghijklmnopqrstuvwxyz123456".getBytes(StandardCharsets.UTF_8));
+        return Keys.hmacShaKeyFor(TEST_SECRET.getBytes(StandardCharsets.UTF_8));
     }
 
     @BeforeEach
     void setUp() {
-        provider = new JwtTokenProvider();
+        provider = new JwtTokenProvider(TEST_SECRET, TEST_ACCESS_TTL_SECONDS);
+    }
+
+    @Test
+    void constructor_throwsWhenSecretTooShort() {
+        assertThatThrownBy(() -> new JwtTokenProvider("short-secret", 60))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("foundation.jwt.secret must be at least 32 bytes");
+    }
+
+    @Test
+    void constructor_throwsOnTtlMillisOverflow() {
+        assertThatThrownBy(() -> new JwtTokenProvider(TEST_SECRET, Long.MAX_VALUE))
+                .isInstanceOf(ArithmeticException.class);
     }
 
     @Test
@@ -62,6 +76,16 @@ class JwtTokenProviderTest {
     @Test
     void validateToken_returnsFalseForBlank() {
         assertThat(provider.validateToken("")).isFalse();
+    }
+
+    @Test
+    void validateToken_returnsFalseForNull() {
+        assertThat(provider.validateToken(null)).isFalse();
+    }
+
+    @Test
+    void validateToken_returnsFalseForWhitespace() {
+        assertThat(provider.validateToken("   ")).isFalse();
     }
 
     @Test
@@ -113,5 +137,19 @@ class JwtTokenProviderTest {
     void getUserIdFromJWT_throwsForInvalidToken() {
         assertThatThrownBy(() -> provider.getUserIdFromJWT("x.y.z"))
                 .isInstanceOf(io.jsonwebtoken.JwtException.class);
+    }
+
+    @Test
+    void getUserIdFromJWT_throwsWhenSubjectIsNotUuid() {
+        String jwt =
+                Jwts.builder()
+                        .subject("not-a-uuid")
+                        .issuedAt(new Date(System.currentTimeMillis() - 1_000))
+                        .expiration(new Date(System.currentTimeMillis() + 60_000))
+                        .signWith(sameSigningKey())
+                        .compact();
+
+        assertThatThrownBy(() -> provider.getUserIdFromJWT(jwt))
+                .isInstanceOf(IllegalArgumentException.class);
     }
 }

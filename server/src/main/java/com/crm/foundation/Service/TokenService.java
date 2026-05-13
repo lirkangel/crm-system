@@ -11,5 +11,5 @@ public interface TokenService {
 
     RefreshToken updateToken(UUID jti);
 
-    Boolean issueToken(UUID jti);
+    Boolean revokeToken(UUID jti);
 }

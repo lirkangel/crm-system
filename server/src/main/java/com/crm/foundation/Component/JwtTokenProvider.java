@@ -1,14 +1,10 @@
 package com.crm.foundation.Component;
 
 import com.crm.foundation.Domain.User;
-import io.jsonwebtoken.Claims;
-import io.jsonwebtoken.ExpiredJwtException;
-import io.jsonwebtoken.JwtException;
-import io.jsonwebtoken.Jwts;
-import io.jsonwebtoken.MalformedJwtException;
-import io.jsonwebtoken.UnsupportedJwtException;
+import io.jsonwebtoken.*;
 import io.jsonwebtoken.security.Keys;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
 import javax.crypto.SecretKey;
@@ -19,31 +15,38 @@ import java.util.UUID;
 @Component
 @Slf4j
 public class JwtTokenProvider {
-    // TODO: add to config — must be >= 256 bits for HS256 (JJWT 0.12+)
-    private final String JWTSecret = "abcdefghijklmnopqrstuvwxyz123456";
 
-    // TODO: make to config
-    private final long JWT_EXPIRATION = 604800000L;
+    private final SecretKey signingKey;
+    private final long jwtExpirationMillis;
 
-    private SecretKey signingKey() {
-        return Keys.hmacShaKeyFor(JWTSecret.getBytes(StandardCharsets.UTF_8));
+    public JwtTokenProvider(
+            @Value("${foundation.jwt.secret}") String jwtSecret,
+            @Value("${foundation.jwt.access-ttl-seconds}") long accessTtlSeconds) {
+        byte[] keyBytes = jwtSecret.getBytes(StandardCharsets.UTF_8);
+        if (keyBytes.length < 32) {
+            throw new IllegalArgumentException(
+                    "foundation.jwt.secret must be at least 32 bytes (256 bits) for HS256; got "
+                            + keyBytes.length);
+        }
+        this.signingKey = Keys.hmacShaKeyFor(keyBytes);
+        this.jwtExpirationMillis = Math.multiplyExact(accessTtlSeconds, 1000L);
     }
 
     public String generateToken(User user) {
         Date now = new Date();
-        Date expiryDate = new Date(now.getTime() + JWT_EXPIRATION);
+        Date expiryDate = new Date(now.getTime() + jwtExpirationMillis);
         return Jwts.builder()
                 .subject(user.getId().toString())
                 .issuedAt(now)
                 .expiration(expiryDate)
-                .signWith(signingKey())
+                .signWith(signingKey)
                 .compact();
     }
 
     public UUID getUserIdFromJWT(String token) {
         Claims claims =
                 Jwts.parser()
-                        .verifyWith(signingKey())
+                        .verifyWith(signingKey)
                         .build()
                         .parseSignedClaims(token)
                         .getPayload();
@@ -52,7 +55,7 @@ public class JwtTokenProvider {
 
     public boolean validateToken(String authToken) {
         try {
-            Jwts.parser().verifyWith(signingKey()).build().parseSignedClaims(authToken);
+            Jwts.parser().verifyWith(signingKey).build().parseSignedClaims(authToken);
             return true;
         } catch (MalformedJwtException ex) {
             log.error("Invalid JWT token");

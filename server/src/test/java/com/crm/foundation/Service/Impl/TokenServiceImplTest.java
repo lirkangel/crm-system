@@ -5,8 +5,8 @@ import com.crm.foundation.Domain.User;
 import com.crm.foundation.Repository.RefreshTokenRepository;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.junit.jupiter.api.BeforeEach;
 import org.mockito.ArgumentCaptor;
-import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
@@ -26,8 +26,12 @@ class TokenServiceImplTest {
     @Mock
     private RefreshTokenRepository refreshTokenRepository;
 
-    @InjectMocks
     private TokenServiceImpl tokenService;
+
+    @BeforeEach
+    void setUp() {
+        tokenService = new TokenServiceImpl(refreshTokenRepository, 900L);
+    }
 
     @Test
     @SuppressWarnings("null") // Mockito any()/ArgumentCaptor.capture() are not @NonNull for JDT null analysis
@@ -103,16 +107,16 @@ class TokenServiceImplTest {
     }
 
     @Test
-    void issueToken_returnsFalseWhenJtiNotFound() {
+    void revokeToken_returnsFalseWhenJtiNotFound() {
         UUID jti = Objects.requireNonNull(UUID.fromString("00000000-0000-0000-0000-000000000077"));
         when(refreshTokenRepository.findByJti(jti)).thenReturn(null);
 
-        assertThat(tokenService.issueToken(jti)).isFalse();
+        assertThat(tokenService.revokeToken(jti)).isFalse();
         verify(refreshTokenRepository).findByJti(jti);
     }
 
     @Test
-    void issueToken_returnsTrueAndSetsExpiresAtWhenJtiFound() {
+    void revokeToken_returnsTrueAndSetsExpiresAtWhenJtiFound() {
         UUID jti = Objects.requireNonNull(UUID.fromString("00000000-0000-0000-0000-000000000066"));
         User user = new User();
         user.setId(UUID.randomUUID());
@@ -123,7 +127,7 @@ class TokenServiceImplTest {
         Instant before = Instant.now();
         when(refreshTokenRepository.findByJti(jti)).thenReturn(token);
 
-        assertThat(tokenService.issueToken(jti)).isTrue();
+        assertThat(tokenService.revokeToken(jti)).isTrue();
         assertThat(token.getExpiresAt()).isBeforeOrEqualTo(Instant.now().plusSeconds(1));
         assertThat(token.getExpiresAt()).isAfterOrEqualTo(before);
         verify(refreshTokenRepository).findByJti(jti);
