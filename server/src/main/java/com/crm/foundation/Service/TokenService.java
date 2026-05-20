@@ -1,5 +1,6 @@
 package com.crm.foundation.Service;
 
+import com.crm.foundation.DTO.IssuedAccessToken;
 import com.crm.foundation.Domain.RefreshToken;
 import com.crm.foundation.Domain.User;
 
@@ -12,4 +13,6 @@ public interface TokenService {
     RefreshToken updateToken(UUID jti);
 
     Boolean revokeToken(UUID jti);
+
+    IssuedAccessToken createAccessToken(User user);
 }
