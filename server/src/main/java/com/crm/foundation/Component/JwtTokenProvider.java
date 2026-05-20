@@ -1,5 +1,6 @@
 package com.crm.foundation.Component;
 
+import com.crm.foundation.DTO.IssuedAccessToken;
 import com.crm.foundation.Domain.User;
 import io.jsonwebtoken.*;
 import io.jsonwebtoken.security.Keys;
@@ -32,15 +33,22 @@ public class JwtTokenProvider {
         this.jwtExpirationMillis = Math.multiplyExact(accessTtlSeconds, 1000L);
     }
 
-    public String generateToken(User user) {
+    /** Issues an access JWT and the {@code exp} instant used for that token (single clock basis). */
+    public IssuedAccessToken issueAccessToken(User user) {
         Date now = new Date();
         Date expiryDate = new Date(now.getTime() + jwtExpirationMillis);
-        return Jwts.builder()
-                .subject(user.getId().toString())
-                .issuedAt(now)
-                .expiration(expiryDate)
-                .signWith(signingKey)
-                .compact();
+        String compact =
+                Jwts.builder()
+                        .subject(user.getId().toString())
+                        .issuedAt(now)
+                        .expiration(expiryDate)
+                        .signWith(signingKey)
+                        .compact();
+        return new IssuedAccessToken(compact, expiryDate.toInstant());
+    }
+
+    public String generateToken(User user) {
+        return issueAccessToken(user).token();
     }
 
     public UUID getUserIdFromJWT(String token) {

@@ -1,5 +1,6 @@
 package com.crm.foundation.Controller;
 
+import com.crm.foundation.DTO.AuthResponse;
 import com.crm.foundation.DTO.CommonResponse;
 import com.crm.foundation.DTO.LoginRequest;
 import com.crm.foundation.DTO.UserResponse;
@@ -30,7 +31,7 @@ public class AuthController {
     private final UserService userService;
 
     @PostMapping("/login")
-    public ResponseEntity<CommonResponse<String>> login(@Valid @RequestBody LoginRequest loginRequest) {
+    public ResponseEntity<CommonResponse<AuthResponse>> login(@Valid @RequestBody LoginRequest loginRequest) {
         if (!Boolean.TRUE.equals(userService.checkUserByUsernamePassword(loginRequest))) {
             return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
                 .body(CommonResponse.from(null, "Invalid username or password"));
@@ -38,8 +39,13 @@ public class AuthController {
         String username = Objects.requireNonNull(loginRequest.getUsername(), "username");
         Optional<User> user = userService.findByUsername(username);
         return user
-            .map(u -> ResponseEntity.ok(
-                CommonResponse.from(tokenService.createToken(u).getJti().toString())))
+            .map(u -> {
+                var access = tokenService.createAccessToken(u);
+                var refresh = tokenService.createToken(u);
+                return ResponseEntity.ok(
+                    CommonResponse.from(
+                        AuthResponse.from(access.token(), access.expiresAt(), refresh)));
+            })
             .orElseGet(() -> ResponseEntity.status(HttpStatus.UNAUTHORIZED)
                 .body(CommonResponse.from(null, "Invalid username or password")));
     }
