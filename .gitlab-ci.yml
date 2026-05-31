@@ -1,0 +1,14 @@
+stages:
+  - build
+
+default:
+  tags:
+    - homelab
+
+build_server:
+  stage: build
+  script:
+    - docker build -t 10.0.0.7:30500/crm-server:latest ./server
+    - docker push 10.0.0.7:30500/crm-server:latest
+  rules:
+    - if: $CI_COMMIT_BRANCH == "main"
