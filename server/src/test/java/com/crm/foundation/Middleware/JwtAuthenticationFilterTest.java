@@ -9,12 +9,15 @@ import jakarta.servlet.ServletException;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
 import org.springframework.mock.web.MockFilterChain;
 import org.springframework.mock.web.MockHttpServletRequest;
 import org.springframework.mock.web.MockHttpServletResponse;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.lang.NonNull;
+import org.springframework.boot.test.system.CapturedOutput;
+import org.springframework.boot.test.system.OutputCaptureExtension;
 
 import java.io.IOException;
 import java.util.Map;
@@ -139,7 +142,8 @@ class JwtAuthenticationFilterTest {
     }
 
     @Test
-    void userIdParsingThrows_filterStillContinuesWithoutAuthentication() throws ServletException, IOException {
+    @ExtendWith(OutputCaptureExtension.class)
+    void userIdParsingThrows_filterStillContinuesWithoutAuthentication(CapturedOutput output) throws ServletException, IOException {
         String jwt =
                 io.jsonwebtoken.Jwts.builder()
                         .subject("not-a-uuid")
@@ -158,6 +162,7 @@ class JwtAuthenticationFilterTest {
         filter.doFilter(req, res, new MockFilterChain());
 
         assertThat(SecurityContextHolder.getContext().getAuthentication()).isNull();
+        assertThat(output.getOut()).doesNotContain("java.lang.IllegalArgumentException");
     }
 
     private record InMemoryUserService(Map<UUID, User> byId) implements UserService {
@@ -204,4 +209,3 @@ class JwtAuthenticationFilterTest {
         }
     }
 }
-

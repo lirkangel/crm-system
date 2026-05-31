@@ -6,17 +6,19 @@ import java.time.Instant;
 
 public record AuthResponse(
     String accessToken,
-    Instant accessTokenExpiredAt,
+    Instant accessTokenExpiresAt,
     String refreshToken,
-    Instant refreshTokenExpireAt
+    Instant refreshTokenExpiresAt,
+    String tokenType
 ) {
     public static final String TOKEN_TYPE = "Bearer";
 
-    public static AuthResponse from(String accessToken, Instant accessTokenExpiredAt, RefreshToken refreshToken) {
+    public static AuthResponse from(String accessToken, Instant accessTokenExpiresAt, RefreshToken refreshToken) {
         return new AuthResponse(
             accessToken,
-            accessTokenExpiredAt,
+            accessTokenExpiresAt,
             refreshToken.getJti().toString(),
-            refreshToken.getExpiresAt());
+            refreshToken.getExpiresAt(),
+            TOKEN_TYPE);
     }
 }

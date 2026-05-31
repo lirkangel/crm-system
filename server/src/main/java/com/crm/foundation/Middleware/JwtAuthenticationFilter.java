@@ -62,8 +62,10 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
                     SecurityContextHolder.getContext().setAuthentication(authentication);
                 }
             }
+        } catch (IllegalArgumentException e) {
+            logger.warn("Ignoring JWT with invalid subject");
         } catch (Exception e) {
-            logger.error("something wrong", e);
+            logger.error("Unexpected JWT authentication failure", e);
         }
         filterChain.doFilter(request, response);
     }

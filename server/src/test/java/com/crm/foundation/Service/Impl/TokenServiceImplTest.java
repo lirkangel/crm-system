@@ -4,7 +4,6 @@ import com.crm.foundation.Component.JwtTokenProvider;
 import com.crm.foundation.Domain.RefreshToken;
 import com.crm.foundation.Domain.User;
 import com.crm.foundation.Repository.RefreshTokenRepository;
-import com.crm.foundation.Service.UserService;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.junit.jupiter.api.BeforeEach;
@@ -28,9 +27,6 @@ class TokenServiceImplTest {
     @Mock
     private RefreshTokenRepository refreshTokenRepository;
 
-    @Mock
-    private UserService userService;
-
     private JwtTokenProvider jwtTokenProvider;
 
     private TokenServiceImpl tokenService;
@@ -38,7 +34,7 @@ class TokenServiceImplTest {
     @BeforeEach
     void setUp() {
         jwtTokenProvider = new JwtTokenProvider("abcdefghijklmnopqrstuvwxyz123456", 900L);
-        tokenService = new TokenServiceImpl(refreshTokenRepository, 900L, jwtTokenProvider, userService);
+        tokenService = new TokenServiceImpl(refreshTokenRepository, 900L, jwtTokenProvider);
     }
 
     @Test

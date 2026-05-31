@@ -4,10 +4,8 @@ import com.crm.foundation.Component.JwtTokenProvider;
 import com.crm.foundation.DTO.IssuedAccessToken;
 import com.crm.foundation.Domain.RefreshToken;
 import com.crm.foundation.Domain.User;
-import com.crm.foundation.Exception.NotFoundException;
 import com.crm.foundation.Repository.RefreshTokenRepository;
 import com.crm.foundation.Service.TokenService;
-import com.crm.foundation.Service.UserService;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
@@ -25,14 +23,11 @@ public class TokenServiceImpl implements TokenService {
 
     private final JwtTokenProvider jwtTokenProvider;
 
-    private final UserService userService;
-
     public TokenServiceImpl(RefreshTokenRepository refreshTokenRepository,
-                            @Value("${foundation.jwt.refresh-ttl-seconds}") long refreshTtlSeconds, JwtTokenProvider jwtTokenProvider, UserService userService) {
+                            @Value("${foundation.jwt.refresh-ttl-seconds}") long refreshTtlSeconds, JwtTokenProvider jwtTokenProvider) {
         this.refreshTokenRepository = refreshTokenRepository;
         this.jwtExpirationMillis = refreshTtlSeconds;
         this.jwtTokenProvider = jwtTokenProvider;
-        this.userService = userService;
     }
 
     @Override
@@ -76,10 +71,8 @@ public class TokenServiceImpl implements TokenService {
 
     @Override
     public IssuedAccessToken createAccessToken(User user) {
-        UUID userId = Objects.requireNonNull(user.getId(), "user id");
-        Optional<User> existingUser = userService.findById(userId);
-        return existingUser
-            .map(jwtTokenProvider::issueAccessToken)
-            .orElseThrow(() -> new NotFoundException("User not found"));
+        Objects.requireNonNull(user, "user");
+        Objects.requireNonNull(user.getId(), "user id");
+        return jwtTokenProvider.issueAccessToken(user);
     }
 }
