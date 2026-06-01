@@ -1,3 +1,3 @@
 fn main() {
-    println!("Hello, world!");
+    crm_desktop_shell_lib::run();
 }

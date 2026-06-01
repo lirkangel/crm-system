@@ -12,6 +12,7 @@ target/
 # Rust / Tauri
 src-tauri/target/
 desktop/target/
+desktop/src-tauri/gen/
 dist/
 
 # Node
