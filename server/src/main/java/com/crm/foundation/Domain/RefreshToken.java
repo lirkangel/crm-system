@@ -34,6 +34,9 @@ public class RefreshToken {
     @Column(name = "replaced_by")
     private UUID replacedBy;
 
+    @Column(name = "revoked_at")
+    private Instant revokedAt;
+
     @NotNull
     @Column(name = "created_at", nullable = false)
     private Instant createdAt;
@@ -84,6 +87,14 @@ public class RefreshToken {
 
     public void setReplacedBy(UUID replacedBy) {
         this.replacedBy = replacedBy;
+    }
+
+    public Instant getRevokedAt() {
+        return revokedAt;
+    }
+
+    public void setRevokedAt(Instant revokedAt) {
+        this.revokedAt = revokedAt;
     }
 
     public Instant getCreatedAt() {

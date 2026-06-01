@@ -1,6 +1,7 @@
 package com.crm.foundation.Controller;
 
 import com.crm.foundation.Config.OpenApiConfig;
+import com.crm.foundation.DTO.CommonResponse;
 import com.crm.foundation.DTO.UserResponse;
 import com.crm.foundation.Service.UserService;
 import io.swagger.v3.oas.annotations.security.SecurityRequirement;
@@ -23,10 +24,11 @@ public class UserController {
     private final UserService userService;
 
     @GetMapping("/{id}")
-    public ResponseEntity<UserResponse> getUserById(@PathVariable @NonNull UUID id) {
+    public ResponseEntity<CommonResponse<UserResponse>> getUserById(@PathVariable @NonNull UUID id) {
         return userService.findById(id)
                 .map(UserResponse::from)
-                .map(ResponseEntity::ok)
-                .orElseGet(() -> ResponseEntity.notFound().build());
+                .map(response -> ResponseEntity.ok(CommonResponse.success("USER_GET_OK", "User found", response)))
+                .orElseGet(() -> ResponseEntity.status(404)
+                    .body(CommonResponse.failure("USER_NOT_FOUND", "User not found")));
     }
 }

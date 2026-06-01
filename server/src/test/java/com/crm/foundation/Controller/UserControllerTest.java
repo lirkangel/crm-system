@@ -1,5 +1,6 @@
 package com.crm.foundation.Controller;
 
+import com.crm.foundation.DTO.CommonResponse;
 import com.crm.foundation.DTO.UserResponse;
 import com.crm.foundation.Domain.User;
 import com.crm.foundation.Service.UserService;
@@ -38,11 +39,15 @@ class UserControllerTest {
         user.setEnabled(true);
         when(userService.findById(id)).thenReturn(Optional.of(user));
 
-        ResponseEntity<UserResponse> result = userController.getUserById(id);
+        ResponseEntity<CommonResponse<UserResponse>> result = userController.getUserById(id);
 
         assertThat(result.getStatusCode()).isEqualTo(HttpStatus.OK);
-        assertThat(result.getBody()).isEqualTo(
-                new UserResponse(id, "bob", "bob@example.com", true));
+        assertThat(result.getBody()).isNotNull();
+        assertThat(result.getBody().success()).isTrue();
+        assertThat(result.getBody().code()).isEqualTo("USER_GET_OK");
+        assertThat(result.getBody().message()).isEqualTo("User found");
+        assertThat(result.getBody().data()).isEqualTo(
+            new UserResponse(id, "bob", "bob@example.com", true));
         verify(userService).findById(id);
     }
 
@@ -51,10 +56,14 @@ class UserControllerTest {
         UUID id = Objects.requireNonNull(UUID.fromString("00000000-0000-0000-0000-000000000404"));
         when(userService.findById(id)).thenReturn(Optional.empty());
 
-        ResponseEntity<UserResponse> result = userController.getUserById(id);
+        ResponseEntity<CommonResponse<UserResponse>> result = userController.getUserById(id);
 
         assertThat(result.getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND);
-        assertThat(result.getBody()).isNull();
+        assertThat(result.getBody()).isNotNull();
+        assertThat(result.getBody().success()).isFalse();
+        assertThat(result.getBody().code()).isEqualTo("USER_NOT_FOUND");
+        assertThat(result.getBody().message()).isEqualTo("User not found");
+        assertThat(result.getBody().data()).isNull();
         verify(userService).findById(id);
     }
 }

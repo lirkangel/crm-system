@@ -18,20 +18,20 @@ public class ErrorHandler {
     @ExceptionHandler(IllegalArgumentException.class)
     public CommonResponse<Void> processValidationError(IllegalArgumentException ex) {
         log.debug("Returning HTTP 400 for IllegalArgumentException", ex);
-        return CommonResponse.from(null, ex.getMessage());
+        return CommonResponse.failure("BAD_REQUEST", ex.getMessage());
     }
 
     @ResponseStatus(HttpStatus.BAD_REQUEST)
     @ExceptionHandler(BadRequestException.class)
     public CommonResponse<Void> processBadRequest(BadRequestException ex) {
         log.debug("Returning HTTP 400 for BadRequestException", ex);
-        return CommonResponse.from(null, ex.getMessage());
+        return CommonResponse.failure("BAD_REQUEST", ex.getMessage());
     }
 
     @ResponseStatus(HttpStatus.NOT_FOUND)
     @ExceptionHandler(NotFoundException.class)
     public CommonResponse<Void> processNotFound(NotFoundException ex) {
         log.debug("Returning HTTP 404 for NotFoundException", ex);
-        return CommonResponse.from(null, ex.getMessage());
+        return CommonResponse.failure("NOT_FOUND", ex.getMessage());
     }
 }

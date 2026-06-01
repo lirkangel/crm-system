@@ -1,6 +1,7 @@
 package com.crm.foundation.Service.Impl;
 
 import com.crm.foundation.Component.JwtTokenProvider;
+import com.crm.foundation.DTO.LogoutStatus;
 import com.crm.foundation.Domain.RefreshToken;
 import com.crm.foundation.Domain.User;
 import com.crm.foundation.Repository.RefreshTokenRepository;
@@ -115,12 +116,12 @@ class TokenServiceImplTest {
         UUID jti = Objects.requireNonNull(UUID.fromString("00000000-0000-0000-0000-000000000077"));
         when(refreshTokenRepository.findByJti(jti)).thenReturn(null);
 
-        assertThat(tokenService.revokeToken(jti)).isFalse();
+        assertThat(tokenService.revokeToken(jti)).isEqualTo(LogoutStatus.NOT_FOUND);
         verify(refreshTokenRepository).findByJti(jti);
     }
 
     @Test
-    void revokeToken_returnsTrueAndSetsExpiresAtWhenJtiFound() {
+    void revokeToken_returnsRevokedAndSetsRevokedAtWhenJtiFound() {
         UUID jti = Objects.requireNonNull(UUID.fromString("00000000-0000-0000-0000-000000000066"));
         User user = new User();
         user.setId(UUID.randomUUID());
@@ -131,9 +132,148 @@ class TokenServiceImplTest {
         Instant before = Instant.now();
         when(refreshTokenRepository.findByJti(jti)).thenReturn(token);
 
-        assertThat(tokenService.revokeToken(jti)).isTrue();
-        assertThat(token.getExpiresAt()).isBeforeOrEqualTo(Instant.now().plusSeconds(1));
-        assertThat(token.getExpiresAt()).isAfterOrEqualTo(before);
+        assertThat(tokenService.revokeToken(jti)).isEqualTo(LogoutStatus.REVOKED);
+        assertThat(token.getRevokedAt()).isBeforeOrEqualTo(Instant.now().plusSeconds(1));
+        assertThat(token.getRevokedAt()).isAfterOrEqualTo(before);
         verify(refreshTokenRepository).findByJti(jti);
+    }
+
+    @Test
+    void revokeToken_returnsAlreadyRevokedWhenRevokedAtAlreadySet() {
+        UUID jti = Objects.requireNonNull(UUID.fromString("00000000-0000-0000-0000-000000000067"));
+        User user = new User();
+        user.setId(UUID.randomUUID());
+        user.setUsername("revoked");
+        user.setEmail("revoked@example.com");
+        RefreshToken token = RefreshToken.issueFor(user, Instant.now().plusSeconds(900));
+        token.setJti(jti);
+        token.setRevokedAt(Instant.now().minusSeconds(5));
+        when(refreshTokenRepository.findByJti(jti)).thenReturn(token);
+
+        assertThat(tokenService.revokeToken(jti)).isEqualTo(LogoutStatus.ALREADY_REVOKED);
+        verify(refreshTokenRepository).findByJti(jti);
+    }
+
+    @Test
+    void revokeToken_returnsAlreadyUsedWhenUsedAtAlreadySet() {
+        UUID jti = Objects.requireNonNull(UUID.fromString("00000000-0000-0000-0000-000000000068"));
+        User user = new User();
+        user.setId(UUID.randomUUID());
+        user.setUsername("used");
+        user.setEmail("used@example.com");
+        RefreshToken token = RefreshToken.issueFor(user, Instant.now().plusSeconds(900));
+        token.setJti(jti);
+        token.setUsedAt(Instant.now().minusSeconds(5));
+        when(refreshTokenRepository.findByJti(jti)).thenReturn(token);
+
+        assertThat(tokenService.revokeToken(jti)).isEqualTo(LogoutStatus.ALREADY_USED);
+        verify(refreshTokenRepository).findByJti(jti);
+    }
+
+    @Test
+    void revokeToken_returnsExpiredWhenTokenAlreadyExpired() {
+        UUID jti = Objects.requireNonNull(UUID.fromString("00000000-0000-0000-0000-000000000069"));
+        User user = new User();
+        user.setId(UUID.randomUUID());
+        user.setUsername("expired");
+        user.setEmail("expired@example.com");
+        RefreshToken token = RefreshToken.issueFor(user, Instant.now().minusSeconds(60));
+        token.setJti(jti);
+        when(refreshTokenRepository.findByJti(jti)).thenReturn(token);
+
+        assertThat(tokenService.revokeToken(jti)).isEqualTo(LogoutStatus.EXPIRED);
+        verify(refreshTokenRepository).findByJti(jti);
+    }
+
+    @Test
+    void refreshToken_returnsNullWhenJtiNotFound() {
+        UUID jti = Objects.requireNonNull(UUID.fromString("00000000-0000-0000-0000-000000000055"));
+        when(refreshTokenRepository.findByJti(jti)).thenReturn(null);
+
+        assertThat(tokenService.refreshToken(jti)).isNull();
+        verify(refreshTokenRepository).findByJti(jti);
+    }
+
+    @Test
+    void refreshToken_returnsNullWhenTokenIsExpired() {
+        UUID jti = Objects.requireNonNull(UUID.fromString("00000000-0000-0000-0000-000000000056"));
+        User user = new User();
+        user.setId(UUID.randomUUID());
+        user.setUsername("expired");
+        user.setEmail("expired@example.com");
+        RefreshToken token = RefreshToken.issueFor(user, Instant.now().minusSeconds(60));
+        token.setJti(jti);
+        when(refreshTokenRepository.findByJti(jti)).thenReturn(token);
+
+        assertThat(tokenService.refreshToken(jti)).isNull();
+        assertThat(token.getUsedAt()).isNull();
+        assertThat(token.getReplacedBy()).isNull();
+        verify(refreshTokenRepository).findByJti(jti);
+    }
+
+    @Test
+    void refreshToken_returnsNullWhenTokenWasAlreadyUsed() {
+        UUID jti = Objects.requireNonNull(UUID.fromString("00000000-0000-0000-0000-000000000057"));
+        User user = new User();
+        user.setId(UUID.randomUUID());
+        user.setUsername("used");
+        user.setEmail("used@example.com");
+        RefreshToken token = RefreshToken.issueFor(user, Instant.now().plusSeconds(900));
+        token.setJti(jti);
+        token.setUsedAt(Instant.now().minusSeconds(10));
+        when(refreshTokenRepository.findByJti(jti)).thenReturn(token);
+
+        assertThat(tokenService.refreshToken(jti)).isNull();
+        assertThat(token.getReplacedBy()).isNull();
+        verify(refreshTokenRepository).findByJti(jti);
+    }
+
+    @Test
+    void refreshToken_returnsNullWhenTokenWasRevoked() {
+        UUID jti = Objects.requireNonNull(UUID.fromString("00000000-0000-0000-0000-000000000059"));
+        User user = new User();
+        user.setId(UUID.randomUUID());
+        user.setUsername("revoked");
+        user.setEmail("revoked@example.com");
+        RefreshToken token = RefreshToken.issueFor(user, Instant.now().plusSeconds(900));
+        token.setJti(jti);
+        token.setRevokedAt(Instant.now().minusSeconds(10));
+        when(refreshTokenRepository.findByJti(jti)).thenReturn(token);
+
+        assertThat(tokenService.refreshToken(jti)).isNull();
+        assertThat(token.getUsedAt()).isNull();
+        assertThat(token.getReplacedBy()).isNull();
+        verify(refreshTokenRepository).findByJti(jti);
+    }
+
+    @Test
+    @SuppressWarnings("null") // Mockito captor/saveAndFlush nullness annotations
+    void refreshToken_rotatesTokenAndMarksOriginalAsUsed() {
+        UUID jti = Objects.requireNonNull(UUID.fromString("00000000-0000-0000-0000-000000000058"));
+        User user = new User();
+        user.setId(UUID.randomUUID());
+        user.setUsername("rotate");
+        user.setEmail("rotate@example.com");
+        RefreshToken existing = RefreshToken.issueFor(user, Instant.now().plusSeconds(900));
+        existing.setJti(jti);
+
+        when(refreshTokenRepository.findByJti(jti)).thenReturn(existing);
+        when(refreshTokenRepository.saveAndFlush(any()))
+            .thenAnswer(invocation -> Objects.requireNonNull(invocation.getArgument(0, RefreshToken.class)));
+
+        RefreshToken result = tokenService.refreshToken(jti);
+
+        assertThat(result).isNotNull();
+        assertThat(result.getUser()).isSameAs(user);
+        assertThat(result.getJti()).isNotEqualTo(jti);
+        assertThat(result.getExpiresAt()).isAfter(Instant.now());
+        assertThat(existing.getUsedAt()).isNotNull();
+        assertThat(existing.getReplacedBy()).isEqualTo(result.getJti());
+
+        ArgumentCaptor<RefreshToken> captor = ArgumentCaptor.forClass(RefreshToken.class);
+        verify(refreshTokenRepository, org.mockito.Mockito.times(2)).saveAndFlush(captor.capture());
+        assertThat(captor.getAllValues()).hasSize(2);
+        assertThat(captor.getAllValues().get(0).getJti()).isEqualTo(result.getJti());
+        assertThat(captor.getAllValues().get(1).getJti()).isEqualTo(existing.getJti());
     }
 }

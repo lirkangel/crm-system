@@ -2,6 +2,7 @@ package com.crm.foundation.Service.Impl;
 
 import com.crm.foundation.Component.JwtTokenProvider;
 import com.crm.foundation.DTO.IssuedAccessToken;
+import com.crm.foundation.DTO.LogoutStatus;
 import com.crm.foundation.Domain.RefreshToken;
 import com.crm.foundation.Domain.User;
 import com.crm.foundation.Repository.RefreshTokenRepository;
@@ -58,15 +59,29 @@ public class TokenServiceImpl implements TokenService {
     }
 
     @Override
-    public Boolean revokeToken(UUID jti) {
+    public LogoutStatus revokeToken(UUID jti) {
         RefreshToken existingToken = refreshTokenRepository.findByJti(jti);
         if (existingToken == null) {
-            return false;
+            return LogoutStatus.NOT_FOUND;
         }
-        Instant expiresAt = Instant.now();
-        existingToken.setExpiresAt(expiresAt);
+
+        Instant now = Instant.now();
+
+        if (existingToken.getRevokedAt() != null) {
+            return LogoutStatus.ALREADY_REVOKED;
+        }
+
+        if (existingToken.getUsedAt() != null) {
+            return LogoutStatus.ALREADY_USED;
+        }
+
+        if (existingToken.getExpiresAt().isBefore(now)) {
+            return LogoutStatus.EXPIRED;
+        }
+
+        existingToken.setRevokedAt(now);
         refreshTokenRepository.saveAndFlush(existingToken);
-        return true;
+        return LogoutStatus.REVOKED;
     }
 
     @Override
@@ -74,5 +89,41 @@ public class TokenServiceImpl implements TokenService {
         Objects.requireNonNull(user, "user");
         Objects.requireNonNull(user.getId(), "user id");
         return jwtTokenProvider.issueAccessToken(user);
+    }
+
+    @Override
+    public RefreshToken refreshToken(UUID jti) {
+        RefreshToken existingToken =
+            refreshTokenRepository.findByJti(jti);
+        if (existingToken == null) {
+            return null;
+        }
+
+        Instant now = Instant.now();
+
+        if (existingToken.getExpiresAt().isBefore(now)) {
+            return null;
+        }
+
+        if (existingToken.getRevokedAt() != null) {
+            return null;
+        }
+
+        if (existingToken.getUsedAt() != null) {
+            return null;
+        }
+
+        existingToken.setUsedAt(now);
+
+        RefreshToken replacement =
+            RefreshToken.issueFor(
+                existingToken.getUser(),
+                now.plusSeconds(jwtExpirationMillis));
+
+        refreshTokenRepository.saveAndFlush(replacement);
+
+        existingToken.setReplacedBy(replacement.getJti());
+        refreshTokenRepository.saveAndFlush(existingToken);
+        return replacement;
     }
 }

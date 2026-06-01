@@ -25,9 +25,12 @@ pub struct AuthStatus {
 }
 
 #[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct CommonResponse<T> {
-    pub data: T,
+    pub success: bool,
+    pub code: String,
     pub message: String,
+    pub data: Option<T>,
 }
 
 #[derive(Debug, Deserialize)]

@@ -1,9 +1,7 @@
 package com.crm.foundation.Controller;
 
-import com.crm.foundation.DTO.AuthResponse;
-import com.crm.foundation.DTO.CommonResponse;
-import com.crm.foundation.DTO.LoginRequest;
-import com.crm.foundation.DTO.UserResponse;
+import com.crm.foundation.DTO.*;
+import com.crm.foundation.Domain.RefreshToken;
 import com.crm.foundation.Domain.User;
 import com.crm.foundation.Service.TokenService;
 import com.crm.foundation.Service.UserService;
@@ -11,12 +9,7 @@ import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
-import org.springframework.web.bind.annotation.DeleteMapping;
-import org.springframework.web.bind.annotation.PathVariable;
-import org.springframework.web.bind.annotation.PostMapping;
-import org.springframework.web.bind.annotation.RequestBody;
-import org.springframework.web.bind.annotation.RequestMapping;
-import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.bind.annotation.*;
 
 import java.util.Objects;
 import java.util.Optional;
@@ -34,7 +27,7 @@ public class AuthController {
     public ResponseEntity<CommonResponse<AuthResponse>> login(@Valid @RequestBody LoginRequest loginRequest) {
         if (!Boolean.TRUE.equals(userService.checkUserByUsernamePassword(loginRequest))) {
             return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
-                .body(CommonResponse.from(null, "Invalid username or password"));
+                .body(CommonResponse.failure("AUTH_LOGIN_INVALID_CREDENTIALS", "Invalid username or password"));
         }
         String username = Objects.requireNonNull(loginRequest.getUsername(), "username");
         Optional<User> user = userService.findByUsername(username);
@@ -43,11 +36,13 @@ public class AuthController {
                 var access = tokenService.createAccessToken(u);
                 var refresh = tokenService.createToken(u);
                 return ResponseEntity.ok(
-                    CommonResponse.from(
+                    CommonResponse.success(
+                        "AUTH_LOGIN_OK",
+                        "Login successful",
                         AuthResponse.from(access.token(), access.expiresAt(), refresh)));
             })
             .orElseGet(() -> ResponseEntity.status(HttpStatus.UNAUTHORIZED)
-                .body(CommonResponse.from(null, "Invalid username or password")));
+                .body(CommonResponse.failure("AUTH_LOGIN_INVALID_CREDENTIALS", "Invalid username or password")));
     }
 
     @PostMapping("/register")
@@ -56,16 +51,64 @@ public class AuthController {
         Optional<User> existing = userService.findByUsername(username);
         if (existing.isPresent()) {
             return ResponseEntity.badRequest()
-                .body(CommonResponse.from(UserResponse.from(existing.get()), "Username already taken"));
+                .body(CommonResponse.failure(
+                    "AUTH_REGISTER_USERNAME_TAKEN",
+                    "Username already taken",
+                    UserResponse.from(existing.get())));
         }
         User saved = userService.register(loginRequest);
-        return ResponseEntity.ok(CommonResponse.from(UserResponse.from(saved)));
+        return ResponseEntity.ok(
+            CommonResponse.success(
+                "AUTH_REGISTER_OK",
+                "User registered",
+                UserResponse.from(saved)));
     }
 
     @DeleteMapping("/revoke/{jti}")
-    public ResponseEntity<CommonResponse<Boolean>> revoke(@PathVariable UUID jti) {
-        boolean revoked = Boolean.TRUE.equals(tokenService.revokeToken(jti));
-        String message = revoked ? "Token revoked" : "Token not found or already inactive";
-        return ResponseEntity.ok(CommonResponse.from(revoked, message));
+    public ResponseEntity<CommonResponse<LogoutResponse>> revoke(@PathVariable UUID jti) {
+        return toLogoutResponse(tokenService.revokeToken(jti));
+    }
+
+    @PostMapping("/refresh")
+    public ResponseEntity<CommonResponse<AuthResponse>> refresh(@Valid @RequestBody RefreshRequest
+                                                                    request) {
+        RefreshToken refresh = tokenService.refreshToken(request.refreshToken());
+        if (refresh == null) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
+                .body(CommonResponse.failure("AUTH_REFRESH_INVALID", "Refresh token is invalid or expired"));
+        }
+
+        User user = refresh.getUser();
+        var access = tokenService.createAccessToken(user);
+
+        return ResponseEntity.ok(
+            CommonResponse.success(
+                "AUTH_REFRESH_OK",
+                "Refresh successful",
+                AuthResponse.from(access.token(), access.expiresAt(), refresh)
+            )
+        );
+    }
+
+    @PostMapping("/logout")
+    public ResponseEntity<CommonResponse<LogoutResponse>> logout(@Valid @RequestBody RefreshRequest request) {
+        return toLogoutResponse(tokenService.revokeToken(request.refreshToken()));
+    }
+
+    private ResponseEntity<CommonResponse<LogoutResponse>> toLogoutResponse(LogoutStatus status) {
+        LogoutResponse response = switch (status) {
+            case REVOKED -> new LogoutResponse(status, "Token revoked");
+            case NOT_FOUND -> new LogoutResponse(status, "Refresh token not found");
+            case EXPIRED -> new LogoutResponse(status, "Refresh token expired");
+            case ALREADY_USED -> new LogoutResponse(status, "Refresh token already used");
+            case ALREADY_REVOKED -> new LogoutResponse(status, "Refresh token already revoked");
+        };
+
+        HttpStatus httpStatus = status == LogoutStatus.REVOKED ? HttpStatus.OK : HttpStatus.UNAUTHORIZED;
+        return ResponseEntity.status(httpStatus).body(
+            status == LogoutStatus.REVOKED
+                ? CommonResponse.success("AUTH_LOGOUT_REVOKED", response.message(), response)
+                : CommonResponse.failure("AUTH_LOGOUT_" + status.name(), response.message(), response)
+        );
     }
 }
