@@ -10,6 +10,12 @@
   "common": {
     "logout": "Sign out"
   },
+  "nav": {
+    "dashboard": "Dashboard"
+  },
+  "sync": {
+    "synced": "Synced"
+  },
   "dashboard": {
     "title": "Dashboard",
     "welcome": "You are signed in"

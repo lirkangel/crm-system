@@ -10,6 +10,12 @@
   "common": {
     "logout": "Đăng xuất"
   },
+  "nav": {
+    "dashboard": "Bảng điều khiển"
+  },
+  "sync": {
+    "synced": "Đã đồng bộ"
+  },
   "dashboard": {
     "title": "Bảng điều khiển",
     "welcome": "Bạn đã đăng nhập thành công"
