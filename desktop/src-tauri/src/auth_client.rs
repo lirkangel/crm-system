@@ -1,4 +1,6 @@
-use crate::auth::{AuthSession, CommonResponse, LoginPayload, OptionalCommonResponse};
+use crate::auth::{
+    AuthSession, CommonResponse, LoginPayload, LogoutResponse, LogoutStatus, RefreshPayload,
+};
 use crate::config::BackendConfig;
 use crate::error::ShellError;
 use reqwest::StatusCode;
@@ -33,10 +35,52 @@ impl AuthApiClient {
             StatusCode::OK => {
                 let payload: CommonResponse<AuthSession> =
                     response.json().await.map_err(ShellError::from)?;
-                Ok(payload.data)
+                if payload.success {
+                    payload
+                        .data
+                        .ok_or(ShellError::UnexpectedHttpStatus(StatusCode::OK.as_u16()))
+                } else {
+                    Err(ShellError::Unauthorized(payload.message))
+                }
             }
             StatusCode::UNAUTHORIZED => {
-                let payload: OptionalCommonResponse<AuthSession> =
+                let payload: CommonResponse<AuthSession> =
+                    response.json().await.map_err(ShellError::from)?;
+                Err(ShellError::Unauthorized(payload.message))
+            }
+            status => Err(ShellError::UnexpectedHttpStatus(status.as_u16())),
+        }
+    }
+
+    pub async fn refresh(
+        &self,
+        config: &BackendConfig,
+        refresh_token: &str,
+    ) -> Result<AuthSession, ShellError> {
+        let response = self
+            .client
+            .post(config.refresh_url())
+            .json(&RefreshPayload {
+                refresh_token: refresh_token.to_string(),
+            })
+            .send()
+            .await
+            .map_err(ShellError::from)?;
+
+        match response.status() {
+            StatusCode::OK => {
+                let payload: CommonResponse<AuthSession> =
+                    response.json().await.map_err(ShellError::from)?;
+                if payload.success {
+                    payload
+                        .data
+                        .ok_or(ShellError::UnexpectedHttpStatus(StatusCode::OK.as_u16()))
+                } else {
+                    Err(ShellError::Unauthorized(payload.message))
+                }
+            }
+            StatusCode::UNAUTHORIZED => {
+                let payload: CommonResponse<AuthSession> =
                     response.json().await.map_err(ShellError::from)?;
                 Err(ShellError::Unauthorized(payload.message))
             }
@@ -53,14 +97,12 @@ impl AuthApiClient {
             .map_err(ShellError::from)?;
 
         let status = response.status();
-        let payload: CommonResponse<bool> = response.json().await.map_err(ShellError::from)?;
+        let payload: CommonResponse<LogoutResponse> = response.json().await.map_err(ShellError::from)?;
 
-        if status.is_success() && payload.data {
-            Ok(())
-        } else if status.is_success() {
-            Err(ShellError::RevokeRejected(payload.message))
-        } else {
-            Err(ShellError::UnexpectedHttpStatus(status.as_u16()))
+        match (status, payload.success, payload.data) {
+            (StatusCode::OK, true, Some(LogoutResponse { status: LogoutStatus::REVOKED, .. })) => Ok(()),
+            (_, _, Some(logout)) => Err(ShellError::RevokeRejected(logout.message)),
+            (_, _, None) => Err(ShellError::UnexpectedHttpStatus(status.as_u16())),
         }
     }
 }

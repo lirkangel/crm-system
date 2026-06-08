@@ -30,6 +30,10 @@ impl BackendConfig {
             refresh_token
         )
     }
+
+    pub fn refresh_url(&self) -> String {
+        format!("{}/api/v1/auth/refresh", self.base_url.trim_end_matches('/'))
+    }
 }
 
 #[cfg(test)]
@@ -53,6 +57,10 @@ mod tests {
         assert_eq!(
             config.revoke_url("refresh-token"),
             "http://127.0.0.1:8082/api/v1/auth/revoke/refresh-token"
+        );
+        assert_eq!(
+            config.refresh_url(),
+            "http://127.0.0.1:8082/api/v1/auth/refresh"
         );
     }
 }

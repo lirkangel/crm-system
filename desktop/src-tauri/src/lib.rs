@@ -20,6 +20,7 @@ pub fn run() {
             commands::auth_status,
             commands::login,
             commands::logout,
+            commands::refresh,
             commands::sync_pending_logout_revoke
         ])
         .run(tauri::generate_context!())

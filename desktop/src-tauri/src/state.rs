@@ -82,6 +82,21 @@ impl ShellState {
         })
     }
 
+    /// Drops the active session outright (e.g. the refresh token was rejected
+    /// and cannot be recovered). Unlike `logout_locally`, this records no
+    /// pending-revoke marker, since the backend has already invalidated it.
+    pub fn clear_session(&self) -> AuthStatus {
+        let mut inner = self.inner.lock().unwrap();
+        inner.auth_session = None;
+        inner.pending_logout_revoke = None;
+
+        AuthStatus {
+            session: None,
+            pending_logout_revoke: None,
+            is_authenticated: false,
+        }
+    }
+
     pub fn pending_logout_revoke(&self) -> Option<String> {
         self.inner.lock().unwrap().pending_logout_revoke.clone()
     }
@@ -151,6 +166,18 @@ mod tests {
 
         assert_eq!(status.pending_logout_revoke, None);
         assert!(!status.is_authenticated);
+    }
+
+    #[test]
+    fn clear_session_drops_active_session_without_pending_revoke() {
+        let state = ShellState::new(BackendConfig::default());
+        state.set_auth_session(sample_session());
+
+        let status = state.clear_session();
+
+        assert!(!status.is_authenticated);
+        assert_eq!(status.session, None);
+        assert_eq!(status.pending_logout_revoke, None);
     }
 
     fn sample_session() -> AuthSession {
