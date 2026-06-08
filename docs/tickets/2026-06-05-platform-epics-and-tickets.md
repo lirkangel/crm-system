@@ -94,25 +94,30 @@ F-EPIC-1 (scaffold) ─► F-EPIC-2 (auth UI) ─► F-EPIC-3 (data) ─► F-EP
 ## B-EPIC-3 — Audit Log (hash-chained)
 *Goal: append-only, tamper-evident audit trail.*
 
-### T009 — `AuditService` with hash chaining · `TODO` · P0
+### T009 — `AuditService` with hash chaining · `DONE` · P0
 **Expected:** `AuditService.record(...)` computes `prev_hash` and `hash = SHA-256(prev_hash || canonical_json(payload))`; first event uses 32 zero bytes.
 **Acceptance:** create/update/delete writes a chained row; recomputing the chain in a test validates integrity; tampering a past row breaks all later links.
+**Done:** `HashChainComputer` computes `SHA-256(prevHash || canonicalJson(payload))` with a 32-zero-byte genesis; `AuditServiceImpl`/`AuditWriter` persist chained rows via `AuditEventRepository`. Verified 2026-06-09 (commits a423b61, 1dee5c8, 8e9deee).
 
-### T009a — Single-writer chain serialization · `TODO` · P0 · (needs T009)
+### T009a — Single-writer chain serialization · `DONE` · P0 · (needs T009)
 **Expected:** serialize audit writes (single dedicated writer or `SELECT … FOR UPDATE` on latest) so concurrent writes can't fork the chain.
 **Acceptance:** concurrent writes produce a single unbroken chain in a test.
+**Done:** `AuditWriter` is the single dedicated writer bean; a `ReentrantLock` serializes read-latest/compute/persist. `AuditServiceIT` fires 100 concurrent writes via `ExecutorService` and walks the resulting chain to confirm it's unbroken. Verified 2026-06-09 (commit 8e9deee).
 
-### T009b — Full audit payload capture · `TODO` · P0 · (needs T009)
+### T009b — Full audit payload capture · `IN PROGRESS` · P0 · (needs T009)
 **Expected:** persist actor, source IP, entity type/id, op, before/after JSON, severity.
 **Acceptance:** an audited operation records all fields; sensitive reads (e.g. guest IDs) and auth events are auditable.
+**Status:** `AuditPayload`/`AuditWriter` capture and persist all listed fields (actor, source IP, entity type/id, op, before/after JSON, severity). Wiring actual call sites — auth events, sensitive entity reads — into `AuditService.record(...)` is still open; blocked on the in-flight M1 `AuthService` extraction (parallel session). 2026-06-09.
 
-### T009c — Weekly chain-verification job · `TODO` · P2 · (needs T009)
+### T009c — Weekly chain-verification job · `DONE` · P2 · (needs T009)
 **Expected:** scheduled task recomputes the chain; on break, writes a `CRITICAL` event + admin alert.
 **Acceptance:** a deliberately broken chain triggers a CRITICAL event in a test.
+**Done:** `ChainVerifier` runs weekly (`@Scheduled(cron = "0 0 3 * * SUN")`), recomputes the chain end-to-end, and on the first divergence records a `CHAIN_BREAK_DETECTED`/`CRITICAL` audit event. `ChainVerifierIT` tampers rows via raw JDBC and asserts detection + correct break index + recorded event. Verified 2026-06-09 (commit afa72b6).
 
-### T010 — Narrow `AuditListener` to defaults only · `TODO` · P1 · (needs T009)
+### T010 — Narrow `AuditListener` to defaults only · `DONE` · P1 · (needs T009)
 **Expected:** keep the JPA listener limited to timestamp/defaulting; move all `audit_event` writes into explicit services.
 **Acceptance:** no audit rows are produced inside entity lifecycle callbacks; intent is clear from the class name/docs.
+**Done:** renamed `Audit.AuditListener` → `Component.TimestampingListener` (it only fills `createdAt`/`updatedAt`); updated `@EntityListeners` references on `User`, `Role`, `Permission`, `Attachment`, `PasswordResetToken`, `PluginRegistry`. The `Audit` package/class names are now free for the real hash-chain audit log (T009). Verified 2026-06-09 (commit 8c66422).
 
 ---
 
