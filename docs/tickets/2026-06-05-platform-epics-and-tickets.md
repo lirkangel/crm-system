@@ -44,9 +44,10 @@ F-EPIC-1 (scaffold) ─► F-EPIC-2 (auth UI) ─► F-EPIC-3 (data) ─► F-EP
 **Expected:** logout endpoint that distinguishes `EXPIRED` / `REVOKED` / `ALREADY_USED` / `NOT_FOUND`; `revoked_at` column (V2 migration); stop using expiry-overwrite as the only revocation path.
 **Acceptance:** logout makes future refresh attempts fail; states are explicit and test-covered.
 
-### T004 — Separate JWT signing from refresh-token persistence · `TODO` · P1
+### T004 — Separate JWT signing from refresh-token persistence · `DONE` · P1
 **Expected:** one component owns signed access JWTs (`JwtTokenProvider`); one service owns refresh-token persistence + rotation (`TokenService`). Names match behavior; remove dead `updateToken` if unused.
 **Acceptance:** service boundaries are obvious from class names and tests; `AuthController` orchestration reads simply.
+**Done:** `JwtTokenProvider` solely issues/validates access JWTs (`issueAccessToken`); `TokenServiceImpl` solely owns refresh-token persistence + rotation. Dropped dead `JwtTokenProvider.generateToken`, `TokenService.updateToken`, `RefreshTokenRepository.findByUser`; renamed `jwtExpirationMillis`→`refreshTtlSeconds`. Verified 2026-06-08 (commit 9f6a9b2).
 
 ---
 
