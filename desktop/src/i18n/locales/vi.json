@@ -1,0 +1,34 @@
+{
+  "app": {
+    "title": "Hệ thống CRM",
+    "welcome": "Chào mừng đến với CRM Desktop"
+  },
+  "language": {
+    "vi": "Tiếng Việt",
+    "en": "English"
+  },
+  "common": {
+    "logout": "Đăng xuất"
+  },
+  "dashboard": {
+    "title": "Bảng điều khiển",
+    "welcome": "Bạn đã đăng nhập thành công"
+  },
+  "auth": {
+    "login": {
+      "title": "Đăng nhập",
+      "subtitle": "Đăng nhập vào hệ thống CRM",
+      "username": "Tên đăng nhập",
+      "usernamePlaceholder": "Nhập tên đăng nhập",
+      "password": "Mật khẩu",
+      "passwordPlaceholder": "Nhập mật khẩu",
+      "submit": "Đăng nhập",
+      "submitting": "Đang đăng nhập…"
+    },
+    "errors": {
+      "usernameRequired": "Vui lòng nhập tên đăng nhập",
+      "passwordRequired": "Vui lòng nhập mật khẩu",
+      "loginFailed": "Tên đăng nhập hoặc mật khẩu không đúng"
+    }
+  }
+}

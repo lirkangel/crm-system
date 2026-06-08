@@ -1,0 +1,34 @@
+{
+  "app": {
+    "title": "CRM System",
+    "welcome": "Welcome to CRM Desktop"
+  },
+  "language": {
+    "vi": "Tiếng Việt",
+    "en": "English"
+  },
+  "common": {
+    "logout": "Sign out"
+  },
+  "dashboard": {
+    "title": "Dashboard",
+    "welcome": "You are signed in"
+  },
+  "auth": {
+    "login": {
+      "title": "Sign in",
+      "subtitle": "Sign in to the CRM system",
+      "username": "Username",
+      "usernamePlaceholder": "Enter your username",
+      "password": "Password",
+      "passwordPlaceholder": "Enter your password",
+      "submit": "Sign in",
+      "submitting": "Signing in…"
+    },
+    "errors": {
+      "usernameRequired": "Please enter your username",
+      "passwordRequired": "Please enter your password",
+      "loginFailed": "Incorrect username or password"
+    }
+  }
+}
