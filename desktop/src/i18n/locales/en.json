@@ -35,6 +35,14 @@
       "usernameRequired": "Please enter your username",
       "passwordRequired": "Please enter your password",
       "loginFailed": "Incorrect username or password"
+    },
+    "logoutFailedLocal": "Couldn't reach the server — signed out locally"
+  },
+  "errors": {
+    "boundary": {
+      "title": "Something went wrong",
+      "message": "This page ran into an unexpected error.",
+      "retry": "Try again"
     }
   }
 }

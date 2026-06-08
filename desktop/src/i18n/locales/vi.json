@@ -35,6 +35,14 @@
       "usernameRequired": "Vui lòng nhập tên đăng nhập",
       "passwordRequired": "Vui lòng nhập mật khẩu",
       "loginFailed": "Tên đăng nhập hoặc mật khẩu không đúng"
+    },
+    "logoutFailedLocal": "Không thể kết nối máy chủ — đã đăng xuất cục bộ"
+  },
+  "errors": {
+    "boundary": {
+      "title": "Đã xảy ra lỗi",
+      "message": "Trang này gặp lỗi không mong muốn.",
+      "retry": "Thử lại"
     }
   }
 }

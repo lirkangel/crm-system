@@ -1,4 +1,5 @@
 import { BrowserRouter } from "react-router";
+import { Toaster } from "sonner";
 
 import { ApiProvider } from "@/api/ApiProvider";
 import { AuthProvider } from "@/auth/AuthContext";
@@ -11,6 +12,7 @@ function App() {
         <BrowserRouter>
           <AppRoutes />
         </BrowserRouter>
+        <Toaster richColors position="top-right" />
       </ApiProvider>
     </AuthProvider>
   );

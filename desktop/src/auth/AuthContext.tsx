@@ -1,4 +1,6 @@
 import { createContext, useCallback, useContext, useEffect, useState, type ReactNode } from "react";
+import { useTranslation } from "react-i18next";
+import { toast } from "sonner";
 
 import { getAuthStatus, logout as logoutClient } from "./authClient";
 import type { AuthStatus } from "./types";
@@ -21,6 +23,7 @@ export interface AuthContextValue {
 const AuthContext = createContext<AuthContextValue | undefined>(undefined);
 
 export function AuthProvider({ children }: { children: ReactNode }) {
+  const { t } = useTranslation();
   const [status, setStatus] = useState<AuthStatus | null>(null);
   const [loading, setLoading] = useState(true);
 
@@ -56,10 +59,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       const next = await logoutClient();
       setStatus(next);
     } catch {
-      // Even if the revoke call fails, drop the local session.
+      // Even if the revoke call fails, drop the local session — but tell the
+      // user, since silently appearing logged-out without a server confirm
+      // would be confusing.
       setStatus(null);
+      toast.error(t("auth.logoutFailedLocal"));
     }
-  }, []);
+  }, [t]);
 
   const value: AuthContextValue = {
     status,
