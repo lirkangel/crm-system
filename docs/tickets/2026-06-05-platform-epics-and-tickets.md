@@ -310,9 +310,10 @@ F-EPIC-1 (scaffold) ─► F-EPIC-2 (auth UI) ─► F-EPIC-3 (data) ─► F-EP
 **Acceptance:** routes navigate within a persistent shell.
 **Done:** `AppShell` (`components/layout/`) — header with brand, nav links (`NavLink`, active-state styling), `SyncStatusPill` (static "Synced" placeholder — F501 wires it to live engine state), `LanguageToggle`, and sign-out, wrapping an `<Outlet/>`. Wired into `routes.tsx` as a layout route (`RequireAuth` → `AppShell` → nested `Dashboard`); Dashboard's standalone logout button removed (now lives in the shell header). TDD: `AppShell.test.tsx` covers brand/nav rendering, routed page content via Outlet, sync pill + language toggle, and logout dispatch through the auth context. Verified 2026-06-09 (commit 81123a1).
 
-### F702 — Error boundaries + toasts · `TODO` · P1 · (needs F701)
+### F702 — Error boundaries + toasts · `DONE` · P1 · (needs F701)
 **Expected:** per-route error boundaries; toast notifications for transient errors.
 **Acceptance:** a thrown render error is contained to its route; transient errors toast.
+**Done:** `RouteErrorBoundary` (class component + localized `RouteErrorFallback`) wraps every routed page in `routes.tsx` — a render error shows a "Something went wrong / Try again" fallback for that page only, leaving `AppShell` (and `/login`) intact; retry resets and re-renders. `sonner`'s `<Toaster/>` mounted app-wide in `App`; `AuthContext.logout` now toasts `auth.logoutFailedLocal` when the server-side revoke fails (session still clears locally, but the user is told why). TDD: `RouteErrorBoundary.test.tsx` covers pass-through, fallback, and recovery-on-retry. Verified 2026-06-09 (commit 79673e3).
 
 ### F703 — Permission-aware nav · `TODO` · P1 · (needs F204, B-EPIC-2)
 **Expected:** hide nav items the user lacks permission for.
