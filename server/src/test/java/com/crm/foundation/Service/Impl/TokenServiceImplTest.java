@@ -14,7 +14,6 @@ import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.time.Instant;
 import java.util.Objects;
-import java.util.Optional;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -40,12 +39,11 @@ class TokenServiceImplTest {
 
     @Test
     @SuppressWarnings("null") // Mockito any()/ArgumentCaptor.capture() are not @NonNull for JDT null analysis
-    void createToken_savesNewTokenWhenUserHasNone() {
+    void createToken_alwaysIssuesNewToken() {
         User user = new User();
         user.setId(Objects.requireNonNull(UUID.fromString("00000000-0000-0000-0000-000000000001")));
         user.setUsername("alice");
         user.setEmail("alice@example.com");
-        when(refreshTokenRepository.findByUser(user)).thenReturn(Optional.empty());
         when(refreshTokenRepository.saveAndFlush(any()))
                 .thenAnswer(
                         invocation ->
@@ -65,50 +63,20 @@ class TokenServiceImplTest {
     }
 
     @Test
-    @SuppressWarnings("null") // Mockito when/verify with entity reference vs @NonNull repository API
-    void createToken_updatesExpiryAndSavesWhenUserAlreadyHasToken() {
+    @SuppressWarnings("null") // Mockito any()/ArgumentCaptor.capture() are not @NonNull for JDT null analysis
+    void createToken_issuesDistinctTokenOnEachCall() {
         User user = new User();
         user.setId(Objects.requireNonNull(UUID.fromString("00000000-0000-0000-0000-000000000002")));
         user.setUsername("bob");
         user.setEmail("bob@example.com");
-        Instant oldExpiry = Instant.parse("2020-01-01T00:00:00Z");
-        RefreshToken existing =
-                Objects.requireNonNull(RefreshToken.issueFor(user, oldExpiry));
-        when(refreshTokenRepository.findByUser(user)).thenReturn(Optional.of(existing));
-        when(refreshTokenRepository.saveAndFlush(existing)).thenReturn(existing);
+        when(refreshTokenRepository.saveAndFlush(any()))
+                .thenAnswer(invocation ->
+                        Objects.requireNonNull(invocation.getArgument(0, RefreshToken.class)));
 
-        RefreshToken result = tokenService.createToken(user);
+        RefreshToken first = tokenService.createToken(user);
+        RefreshToken second = tokenService.createToken(user);
 
-        assertThat(result).isSameAs(existing);
-        assertThat(result.getExpiresAt()).isAfter(oldExpiry);
-        verify(refreshTokenRepository).saveAndFlush(existing);
-    }
-
-    @Test
-    void updateToken_returnsNullWhenJtiNotFound() {
-        UUID jti = Objects.requireNonNull(UUID.fromString("00000000-0000-0000-0000-000000000099"));
-        when(refreshTokenRepository.findByJti(jti)).thenReturn(null);
-
-        assertThat(tokenService.updateToken(jti)).isNull();
-        verify(refreshTokenRepository).findByJti(jti);
-    }
-
-    @Test
-    void updateToken_refreshesExpiryWhenJtiFound() {
-        UUID jti = Objects.requireNonNull(UUID.fromString("00000000-0000-0000-0000-000000000088"));
-        User user = new User();
-        user.setId(UUID.randomUUID());
-        user.setUsername("u");
-        user.setEmail("u@e.com");
-        RefreshToken token = RefreshToken.issueFor(user, Instant.EPOCH);
-        token.setJti(jti);
-        when(refreshTokenRepository.findByJti(jti)).thenReturn(token);
-
-        RefreshToken result = tokenService.updateToken(jti);
-
-        assertThat(result).isSameAs(token);
-        assertThat(token.getExpiresAt()).isAfter(Instant.EPOCH);
-        verify(refreshTokenRepository).findByJti(jti);
+        assertThat(first.getJti()).isNotEqualTo(second.getJti());
     }
 
     @Test

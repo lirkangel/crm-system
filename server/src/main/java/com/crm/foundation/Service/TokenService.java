@@ -11,11 +11,7 @@ public interface TokenService {
 
     RefreshToken createToken(User user);
 
-    RefreshToken updateToken(UUID jti);
-
     RefreshToken refreshToken(UUID jti);
-
-
 
     LogoutStatus revokeToken(UUID jti);
 

@@ -46,14 +46,14 @@ class JwtTokenProviderTest {
     }
 
     @Test
-    void generateToken_thenGetUserIdFromJWT_roundTripsSubject() {
+    void issueAccessToken_thenGetUserIdFromJWT_roundTripsSubject() {
         UUID id = Objects.requireNonNull(UUID.fromString("00000000-0000-0000-0000-000000000001"));
         User user = new User();
         user.setId(id);
         user.setUsername("alice");
         user.setEmail("alice@example.com");
 
-        String jwt = provider.generateToken(user);
+        String jwt = provider.issueAccessToken(user).token();
 
         assertThat(provider.getUserIdFromJWT(jwt)).isEqualTo(id);
     }
@@ -65,7 +65,7 @@ class JwtTokenProviderTest {
         user.setUsername("bob");
         user.setEmail("bob@example.com");
 
-        assertThat(provider.validateToken(provider.generateToken(user))).isTrue();
+        assertThat(provider.validateToken(provider.issueAccessToken(user).token())).isTrue();
     }
 
     @Test
@@ -94,7 +94,7 @@ class JwtTokenProviderTest {
         user.setId(Objects.requireNonNull(UUID.fromString("00000000-0000-0000-0000-000000000003")));
         user.setUsername("carol");
         user.setEmail("carol@example.com");
-        String jwt = provider.generateToken(user);
+        String jwt = provider.issueAccessToken(user).token();
         String tampered = jwt.substring(0, jwt.length() - 1) + (jwt.endsWith("a") ? "b" : "a");
 
         assertThat(provider.validateToken(tampered)).isFalse();

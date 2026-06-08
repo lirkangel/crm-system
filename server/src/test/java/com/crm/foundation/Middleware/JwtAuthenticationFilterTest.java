@@ -98,7 +98,7 @@ class JwtAuthenticationFilterTest {
         user.setUsername("u");
         user.setEmail("u@example.com");
 
-        String jwt = jwtTokenProvider.generateToken(user);
+        String jwt = jwtTokenProvider.issueAccessToken(user).token();
 
         MockHttpServletRequest req = new MockHttpServletRequest();
         req.addHeader("Authorization", "Bearer " + jwt);
@@ -117,7 +117,7 @@ class JwtAuthenticationFilterTest {
         user.setUsername("alice");
         user.setEmail("alice@example.com");
 
-        String jwt = jwtTokenProvider.generateToken(user);
+        String jwt = jwtTokenProvider.issueAccessToken(user).token();
 
         filter =
                 new JwtAuthenticationFilter(

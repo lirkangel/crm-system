@@ -18,7 +18,7 @@ Purpose: convert the current scaffold into a real Foundation v0 backend, in the 
 
 ## T001 - Return a real auth response from login
 
-- Status: `TODO`
+- Status: `DONE`
 - Priority: `P0`
 - Area: `identity`
 - Files:
@@ -39,10 +39,11 @@ Purpose: convert the current scaffold into a real Foundation v0 backend, in the 
 - Acceptance:
   - Client can call a protected endpoint immediately after login using returned bearer token.
   - No controller returns raw `jti` as the primary login result.
+  - Verified by `AuthControllerTest` and `TokenServiceCreateAccessTokenTest`.
 
 ## T002 - Add refresh-token rotation endpoint
 
-- Status: `TODO`
+- Status: `DONE`
 - Priority: `P0`
 - Area: `identity`
 - Files:
@@ -62,10 +63,11 @@ Purpose: convert the current scaffold into a real Foundation v0 backend, in the 
   - Refresh token can only be used once.
   - Second reuse of the same token is rejected.
   - Rotation chain is persisted in DB.
+  - Verified by `AuthControllerTest` and `TokenServiceImplTest`.
 
 ## T003 - Add logout and token revocation semantics
 
-- Status: `TODO`
+- Status: `DONE`
 - Priority: `P0`
 - Area: `identity`
 - Files:
@@ -85,10 +87,11 @@ Purpose: convert the current scaffold into a real Foundation v0 backend, in the 
 - Acceptance:
   - Logout makes future refresh attempts fail.
   - Service behavior is explicit and test-covered.
+  - Verified by `AuthControllerTest` and `TokenServiceImplTest`.
 
 ## T004 - Separate JwtService from refresh-token persistence
 
-- Status: `TODO`
+- Status: `DONE`
 - Priority: `P1`
 - Area: `identity`
 - Files:

@@ -47,10 +47,6 @@ public class JwtTokenProvider {
         return new IssuedAccessToken(compact, expiryDate.toInstant());
     }
 
-    public String generateToken(User user) {
-        return issueAccessToken(user).token();
-    }
-
     public UUID getUserIdFromJWT(String token) {
         Claims claims =
                 Jwts.parser()
