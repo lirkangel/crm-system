@@ -305,9 +305,10 @@ F-EPIC-1 (scaffold) ─► F-EPIC-2 (auth UI) ─► F-EPIC-3 (data) ─► F-EP
 
 ## F-EPIC-7 — App shell & routing
 
-### F701 — Router + layout · `TODO` · P0 · (needs F101)
+### F701 — Router + layout · `DONE` · P0 · (needs F101)
 **Expected:** router with a layout (nav, header containing sync pill + user menu).
 **Acceptance:** routes navigate within a persistent shell.
+**Done:** `AppShell` (`components/layout/`) — header with brand, nav links (`NavLink`, active-state styling), `SyncStatusPill` (static "Synced" placeholder — F501 wires it to live engine state), `LanguageToggle`, and sign-out, wrapping an `<Outlet/>`. Wired into `routes.tsx` as a layout route (`RequireAuth` → `AppShell` → nested `Dashboard`); Dashboard's standalone logout button removed (now lives in the shell header). TDD: `AppShell.test.tsx` covers brand/nav rendering, routed page content via Outlet, sync pill + language toggle, and logout dispatch through the auth context. Verified 2026-06-09 (commit 81123a1).
 
 ### F702 — Error boundaries + toasts · `TODO` · P1 · (needs F701)
 **Expected:** per-route error boundaries; toast notifications for transient errors.
