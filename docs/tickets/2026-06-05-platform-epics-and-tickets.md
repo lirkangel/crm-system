@@ -68,9 +68,10 @@ F-EPIC-1 (scaffold) ─► F-EPIC-2 (auth UI) ─► F-EPIC-3 (data) ─► F-EP
 **Expected:** enable method security; add `@PreAuthorize` to User/Role controller endpoints using core permissions.
 **Acceptance:** a user with `core.users.read` reaches the guarded user endpoint; a user without it gets 403 (not just 401).
 
-### T006a — Core permission constants · `TODO` · P0
+### T006a — Core permission constants · `DONE` · P0
 **Expected:** define `core.users.read/write`, `core.roles.read/write`, `core.audit.read`, `core.plugins.manage` as constants and seed them.
 **Acceptance:** constants referenced by `@PreAuthorize`; seeded permissions exist in DB; admin role maps to all.
+**Done:** `CorePermissions` (`Security/`) holds the 7 built-in permission key constants (incl. `core.users.delete`, already seeded) + `all()`. `V3__seed_admin_role_permissions.sql` maps the `admin` role to every built-in permission. `CorePermissionsTest` (unit) + `AdminRolePermissionSeedIntegrationTest` (Testcontainers, tagged `integration`) cover it; migration verified directly against a throwaway Postgres container (admin → all 7 perms). `@PreAuthorize` wiring itself lands with **T006** once method security is enabled by **T005**. Verified 2026-06-09.
 
 ### T007 — Account lockout + enabled checks · `TODO` · P0
 **Expected:** increment `failed_logins` on bad credentials; lock after 5 fails within 15 min via `locked_until`; block disabled users; reset count on success.
