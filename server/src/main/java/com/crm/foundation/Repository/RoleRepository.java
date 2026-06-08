@@ -7,6 +7,7 @@ import org.springframework.data.repository.query.Param;
 
 import java.util.List;
 import java.util.Optional;
+import java.util.Set;
 import java.util.UUID;
 
 public interface RoleRepository extends JpaRepository<Role, UUID> {
@@ -25,4 +26,15 @@ public interface RoleRepository extends JpaRepository<Role, UUID> {
             """,
         nativeQuery = true)
     List<Role> findByName(@Param("name") String name);
+
+    @Query(
+        value = """
+            select distinct p.key
+            from permissions p
+            join role_permissions rp on rp.permission_id = p.id
+            join user_roles ur on ur.role_id = rp.role_id
+            where ur.user_id = :userId
+            """,
+        nativeQuery = true)
+    Set<String> findPermissionKeysForUser(@Param("userId") UUID userId);
 }

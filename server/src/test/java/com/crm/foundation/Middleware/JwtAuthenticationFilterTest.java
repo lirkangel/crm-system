@@ -22,7 +22,10 @@ import org.springframework.boot.test.system.OutputCaptureExtension;
 import java.io.IOException;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import java.util.UUID;
+
+import org.springframework.security.core.GrantedAuthority;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -142,6 +145,36 @@ class JwtAuthenticationFilterTest {
     }
 
     @Test
+    void validToken_userFound_authoritiesReflectResolvedPermissions() throws ServletException, IOException {
+        UUID userId = UUID.fromString("00000000-0000-0000-0000-000000000012");
+        User user = new User();
+        user.setId(userId);
+        user.setUsername("bob");
+        user.setEmail("bob@example.com");
+
+        String jwt = jwtTokenProvider.issueAccessToken(user).token();
+
+        filter =
+                new JwtAuthenticationFilter(
+                        jwtTokenProvider,
+                        new InMemoryUserService(Map.of(userId, user)),
+                        new StubRoleService(Map.of(userId, Set.of("core.users.read", "core.roles.read"))));
+
+        MockHttpServletRequest req = new MockHttpServletRequest();
+        req.setRemoteAddr("127.0.0.1");
+        req.addHeader("Authorization", "Bearer " + jwt);
+        MockHttpServletResponse res = new MockHttpServletResponse();
+
+        filter.doFilter(req, res, new MockFilterChain());
+
+        Authentication auth = SecurityContextHolder.getContext().getAuthentication();
+        assertThat(auth).isNotNull();
+        assertThat(auth.getAuthorities())
+                .extracting(GrantedAuthority::getAuthority)
+                .containsExactlyInAnyOrder("core.users.read", "core.roles.read");
+    }
+
+    @Test
     @ExtendWith(OutputCaptureExtension.class)
     void userIdParsingThrows_filterStillContinuesWithoutAuthentication(CapturedOutput output) throws ServletException, IOException {
         String jwt =
@@ -206,6 +239,33 @@ class JwtAuthenticationFilterTest {
         @Override
         public java.util.List<com.crm.foundation.Domain.Role> findAll() {
             return java.util.List.of();
+        }
+
+        @Override
+        public Set<String> permissionKeysForUser(@NonNull UUID userId) {
+            return Set.of();
+        }
+    }
+
+    private record StubRoleService(Map<UUID, Set<String>> permissionKeysByUserId) implements RoleService {
+        @Override
+        public Optional<com.crm.foundation.Domain.Role> findById(@NonNull UUID id) {
+            return Optional.empty();
+        }
+
+        @Override
+        public java.util.List<com.crm.foundation.Domain.Role> findByName(String name) {
+            return java.util.List.of();
+        }
+
+        @Override
+        public java.util.List<com.crm.foundation.Domain.Role> findAll() {
+            return java.util.List.of();
+        }
+
+        @Override
+        public Set<String> permissionKeysForUser(@NonNull UUID userId) {
+            return permissionKeysByUserId.getOrDefault(userId, Set.of());
         }
     }
 }

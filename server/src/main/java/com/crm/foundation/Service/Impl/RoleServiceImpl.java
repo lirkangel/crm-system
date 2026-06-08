@@ -9,6 +9,7 @@ import org.springframework.stereotype.Service;
 
 import java.util.List;
 import java.util.Optional;
+import java.util.Set;
 import java.util.UUID;
 
 @RequiredArgsConstructor
@@ -30,5 +31,10 @@ public class RoleServiceImpl implements RoleService {
     @Override
     public List<Role> findAll() {
         return roleRepository.findAll();
+    }
+
+    @Override
+    public Set<String> permissionKeysForUser(@NonNull UUID userId) {
+        return roleRepository.findPermissionKeysForUser(userId);
     }
 }

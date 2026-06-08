@@ -11,6 +11,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.Set;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -61,6 +62,18 @@ public class RoleServiceImplTest {
 
         assertThat(roleService.findById(id)).isEmpty();
         verify(roleRepository).findById(id);
+    }
+
+    @Test
+    void permissionKeysForUser_delegatesToRepository() {
+        UUID userId = Objects.requireNonNull(UUID.fromString("00000000-0000-0000-0000-000000000020"));
+        when(roleRepository.findPermissionKeysForUser(userId))
+            .thenReturn(Set.of("core.users.read", "core.roles.read"));
+
+        Set<String> result = roleService.permissionKeysForUser(userId);
+
+        assertThat(result).containsExactlyInAnyOrder("core.users.read", "core.roles.read");
+        verify(roleRepository).findPermissionKeysForUser(userId);
     }
 
     @Test

@@ -5,6 +5,7 @@ import org.springframework.lang.NonNull;
 
 import java.util.List;
 import java.util.Optional;
+import java.util.Set;
 import java.util.UUID;
 
 public interface RoleService {
@@ -13,4 +14,6 @@ public interface RoleService {
     List<Role> findByName(String name);
 
     List<Role> findAll();
+
+    Set<String> permissionKeysForUser(@NonNull UUID userId);
 }
