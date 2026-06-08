@@ -54,11 +54,10 @@ F-EPIC-1 (scaffold) ─► F-EPIC-2 (auth UI) ─► F-EPIC-3 (data) ─► F-EP
 ## B-EPIC-2 — RBAC & Account Security
 *Goal: real permission enforcement, not just "is authenticated".* — **highest value next**
 
-> ⚠️ Current `JwtAuthenticationFilter` sets `Collections.emptyList()` authorities — every authenticated user has zero permissions. T005 unblocks this whole epic.
-
-### T005 — Map roles→permissions into authorities · `TODO` · P0 · (needs T004)
+### T005 — Map roles→permissions into authorities · `DONE` · P0 · (needs T004)
 **Expected:** build a `GrantedAuthority` list from the user's role permissions and put it on the `Authentication` in `JwtAuthenticationFilter`.
 **Acceptance:** an authenticated user's authorities reflect their permissions (verified in `JwtAuthenticationFilterTest`); no more empty authority list.
+**Done:** `RoleRepository.findPermissionKeysForUser` (native join `roles ⋈ role_permissions ⋈ permissions ⋈ user_roles`) backs `RoleService.permissionKeysForUser`; `JwtAuthenticationFilter` maps the resolved keys to `SimpleGrantedAuthority` and grants them on the `Authentication`, replacing the hard-coded `Collections.emptyList()`. Covered by `RoleServiceImplTest#permissionKeysForUser_delegatesToRepository` and `JwtAuthenticationFilterTest#validToken_userFound_authoritiesReflectResolvedPermissions`. Verified 2026-06-09 (commit cc91afc).
 
 ### T005a — Embed permission claims in the access JWT · `TODO` · P1 · (needs T005)
 **Expected:** access JWT carries permission claims so the filter doesn't hit the DB on every request.
@@ -415,11 +414,11 @@ F-EPIC-1 (scaffold) ─► F-EPIC-2 (auth UI) ─► F-EPIC-3 (data) ─► F-EP
 ---
 
 ## Recommended next 5 tickets (in order)
-1. **T004** — tidy JWT/refresh boundaries (unblocks RBAC).
-2. **T006a + T005** — permission constants, then map authorities.
-3. **T006** — `@PreAuthorize` enforcement.
+1. ~~**T004** — tidy JWT/refresh boundaries (unblocks RBAC).~~ `DONE`
+2. ~~**T006a + T005** — permission constants, then map authorities.~~ `DONE`
+3. **T006** — `@PreAuthorize` enforcement. ← next
 4. **T007** — account lockout.
-5. **F101–F103** — stand up the React app.
+5. **F101–F103** — stand up the React app. `DONE`
 
 ## Notes
 - Hotel plugin work stays out until Backend EPIC-1 + EPIC-2 are green.
