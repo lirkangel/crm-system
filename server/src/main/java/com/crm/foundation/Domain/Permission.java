@@ -1,6 +1,6 @@
 package com.crm.foundation.Domain;
 
-import com.crm.foundation.Audit.AuditListener;
+import com.crm.foundation.Component.TimestampingListener;
 import jakarta.persistence.*;
 import jakarta.validation.constraints.NotNull;
 import org.hibernate.annotations.UuidGenerator;
@@ -11,7 +11,7 @@ import java.util.UUID;
 
 @Entity
 @Table(name = "permissions")
-@EntityListeners(AuditListener.class)
+@EntityListeners(TimestampingListener.class)
 public class Permission {
 
     @Id

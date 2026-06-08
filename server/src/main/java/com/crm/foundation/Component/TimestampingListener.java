@@ -1,4 +1,4 @@
-package com.crm.foundation.Audit;
+package com.crm.foundation.Component;
 
 import com.crm.foundation.Domain.Attachment;
 import com.crm.foundation.Domain.RefreshToken;
@@ -9,7 +9,7 @@ import jakarta.persistence.PreUpdate;
 
 import java.time.Instant;
 
-public class AuditListener {
+public class TimestampingListener {
     @PrePersist
       private void beforeCreate(Object object) {
           if (object instanceof User user) {

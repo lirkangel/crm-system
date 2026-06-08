@@ -1,6 +1,6 @@
 package com.crm.foundation.Domain;
 
-import com.crm.foundation.Audit.AuditListener;
+import com.crm.foundation.Component.TimestampingListener;
 import jakarta.persistence.*;
 import jakarta.validation.constraints.NotNull;
 import lombok.Getter;
@@ -16,7 +16,7 @@ import java.util.UUID;
 @Getter
 @Entity
 @Table(name = "users")
-@EntityListeners(AuditListener.class)
+@EntityListeners(TimestampingListener.class)
 public class User {
 
     @Id
