@@ -3,6 +3,7 @@ package com.crm.foundation.Service.Impl;
 import com.crm.foundation.Audit.AuditPayload;
 import com.crm.foundation.DTO.CreateUserRequest;
 import com.crm.foundation.DTO.LoginRequest;
+import com.crm.foundation.DTO.FailureReason;
 import com.crm.foundation.DTO.LoginResult;
 import com.crm.foundation.Domain.User;
 import com.crm.foundation.Repository.UserRepository;
@@ -60,18 +61,18 @@ public class UserServiceImpl implements UserService {
 
         Optional<User> maybeUser = userRepository.findByUsername(username);
         if (maybeUser.isEmpty()) {
-            return new LoginResult.Failure(LoginResult.FailureReason.BAD_CREDENTIALS);
+            return new LoginResult.Failure(FailureReason.BAD_CREDENTIALS);
         }
 
         User user = maybeUser.get();
 
         if (!Boolean.TRUE.equals(user.getEnabled())) {
-            return new LoginResult.Failure(LoginResult.FailureReason.ACCOUNT_DISABLED);
+            return new LoginResult.Failure(FailureReason.ACCOUNT_DISABLED);
         }
 
         Instant lockedUntil = user.getLockedUntil();
         if (lockedUntil != null && lockedUntil.isAfter(Instant.now())) {
-            return new LoginResult.Failure(LoginResult.FailureReason.ACCOUNT_LOCKED);
+            return new LoginResult.Failure(FailureReason.ACCOUNT_LOCKED);
         }
 
         if (!BCrypt.checkpw(password, user.getPassword())) {
@@ -81,7 +82,7 @@ public class UserServiceImpl implements UserService {
                 user.setLockedUntil(Instant.now().plusSeconds(15 * 60));
             }
             userRepository.save(user);
-            return new LoginResult.Failure(LoginResult.FailureReason.BAD_CREDENTIALS);
+            return new LoginResult.Failure(FailureReason.BAD_CREDENTIALS);
         }
 
         user.setFailedLogin(0);

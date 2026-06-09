@@ -1,6 +1,7 @@
 package com.crm.foundation.Service.Impl;
 
 import com.crm.foundation.DTO.LoginRequest;
+import com.crm.foundation.DTO.FailureReason;
 import com.crm.foundation.DTO.LoginResult;
 import com.crm.foundation.Domain.User;
 import com.crm.foundation.Repository.UserRepository;
@@ -66,7 +67,7 @@ class UserServiceLockoutTest {
 
         assertThat(result).isInstanceOf(LoginResult.Failure.class);
         assertThat(((LoginResult.Failure) result).reason())
-                .isEqualTo(LoginResult.FailureReason.BAD_CREDENTIALS);
+                .isEqualTo(FailureReason.BAD_CREDENTIALS);
         verify(userRepository, never()).save(any());
     }
 
@@ -80,7 +81,7 @@ class UserServiceLockoutTest {
 
         assertThat(result).isInstanceOf(LoginResult.Failure.class);
         assertThat(((LoginResult.Failure) result).reason())
-                .isEqualTo(LoginResult.FailureReason.ACCOUNT_DISABLED);
+                .isEqualTo(FailureReason.ACCOUNT_DISABLED);
         verify(userRepository, never()).save(any());
     }
 
@@ -94,7 +95,7 @@ class UserServiceLockoutTest {
 
         assertThat(result).isInstanceOf(LoginResult.Failure.class);
         assertThat(((LoginResult.Failure) result).reason())
-                .isEqualTo(LoginResult.FailureReason.ACCOUNT_LOCKED);
+                .isEqualTo(FailureReason.ACCOUNT_LOCKED);
         verify(userRepository, never()).save(any());
     }
 
@@ -120,7 +121,7 @@ class UserServiceLockoutTest {
 
         assertThat(result).isInstanceOf(LoginResult.Failure.class);
         assertThat(((LoginResult.Failure) result).reason())
-                .isEqualTo(LoginResult.FailureReason.BAD_CREDENTIALS);
+                .isEqualTo(FailureReason.BAD_CREDENTIALS);
     }
 
     @Test

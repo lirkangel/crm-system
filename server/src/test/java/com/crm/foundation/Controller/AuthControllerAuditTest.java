@@ -3,6 +3,7 @@ package com.crm.foundation.Controller;
 import com.crm.foundation.Audit.AuditPayload;
 import com.crm.foundation.DTO.IssuedAccessToken;
 import com.crm.foundation.DTO.LoginRequest;
+import com.crm.foundation.DTO.FailureReason;
 import com.crm.foundation.DTO.LoginResult;
 import com.crm.foundation.Domain.RefreshToken;
 import com.crm.foundation.Domain.User;
@@ -75,7 +76,7 @@ class AuthControllerAuditTest {
     @Test
     void login_failure_recordsAuditEventBeforeThrowing() {
         when(userService.attemptLogin(any()))
-            .thenReturn(new LoginResult.Failure(LoginResult.FailureReason.BAD_CREDENTIALS));
+            .thenReturn(new LoginResult.Failure(FailureReason.BAD_CREDENTIALS));
 
         assertThatThrownBy(() -> authService.login(new LoginRequest("nobody", "bad"), "10.0.0.2"))
             .isInstanceOf(AuthException.class);

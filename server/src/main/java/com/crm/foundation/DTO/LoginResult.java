@@ -7,10 +7,4 @@ public sealed interface LoginResult permits LoginResult.Success, LoginResult.Fai
     record Success(User user) implements LoginResult {}
 
     record Failure(FailureReason reason) implements LoginResult {}
-
-    enum FailureReason {
-        BAD_CREDENTIALS,
-        ACCOUNT_LOCKED,
-        ACCOUNT_DISABLED
-    }
 }

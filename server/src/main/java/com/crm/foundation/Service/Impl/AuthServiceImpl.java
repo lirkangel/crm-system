@@ -4,6 +4,7 @@ import com.crm.foundation.Audit.AuditPayload;
 import com.crm.foundation.DTO.AuthResponse;
 import com.crm.foundation.DTO.IssuedAccessToken;
 import com.crm.foundation.DTO.LoginRequest;
+import com.crm.foundation.DTO.FailureReason;
 import com.crm.foundation.DTO.LoginResult;
 import com.crm.foundation.DTO.LogoutStatus;
 import com.crm.foundation.DTO.MeResponse;
@@ -35,7 +36,7 @@ public class AuthServiceImpl implements AuthService {
     public AuthResponse login(LoginRequest request, String sourceIp) {
         LoginResult result = userService.attemptLogin(request);
 
-        if (result instanceof LoginResult.Failure(LoginResult.FailureReason reason)) {
+        if (result instanceof LoginResult.Failure(FailureReason reason)) {
             auditService.record(new AuditPayload(
                 Instant.now(), null, sourceIp,
                 null, null, null, "AUTH_LOGIN_FAILURE", null, null, "WARN"));

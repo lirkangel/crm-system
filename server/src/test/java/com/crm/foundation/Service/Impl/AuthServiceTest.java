@@ -92,7 +92,7 @@ class AuthServiceTest {
     @Test
     void login_badCredentials_throwsAuthExceptionWithCorrectCode() {
         when(userService.attemptLogin(any()))
-            .thenReturn(new LoginResult.Failure(LoginResult.FailureReason.BAD_CREDENTIALS));
+            .thenReturn(new LoginResult.Failure(FailureReason.BAD_CREDENTIALS));
 
         assertThatThrownBy(() -> authService.login(new LoginRequest("x", "y"), "1.2.3.4"))
             .isInstanceOf(AuthException.class)
@@ -105,7 +105,7 @@ class AuthServiceTest {
     @Test
     void login_accountLocked_throwsAuthExceptionWithCorrectCode() {
         when(userService.attemptLogin(any()))
-            .thenReturn(new LoginResult.Failure(LoginResult.FailureReason.ACCOUNT_LOCKED));
+            .thenReturn(new LoginResult.Failure(FailureReason.ACCOUNT_LOCKED));
 
         assertThatThrownBy(() -> authService.login(new LoginRequest("x", "y"), "1.2.3.4"))
             .isInstanceOf(AuthException.class)
@@ -116,7 +116,7 @@ class AuthServiceTest {
     @Test
     void login_accountDisabled_throwsAuthExceptionWithCorrectCode() {
         when(userService.attemptLogin(any()))
-            .thenReturn(new LoginResult.Failure(LoginResult.FailureReason.ACCOUNT_DISABLED));
+            .thenReturn(new LoginResult.Failure(FailureReason.ACCOUNT_DISABLED));
 
         assertThatThrownBy(() -> authService.login(new LoginRequest("x", "y"), "1.2.3.4"))
             .isInstanceOf(AuthException.class)
@@ -127,7 +127,7 @@ class AuthServiceTest {
     @Test
     void login_failure_recordsWarnAuditEvent() {
         when(userService.attemptLogin(any()))
-            .thenReturn(new LoginResult.Failure(LoginResult.FailureReason.BAD_CREDENTIALS));
+            .thenReturn(new LoginResult.Failure(FailureReason.BAD_CREDENTIALS));
 
         assertThatThrownBy(() -> authService.login(new LoginRequest("bad", "bad"), "10.0.0.2"))
             .isInstanceOf(AuthException.class);
