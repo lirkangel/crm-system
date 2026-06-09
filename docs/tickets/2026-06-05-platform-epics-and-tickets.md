@@ -78,17 +78,20 @@ F-EPIC-1 (scaffold) ─► F-EPIC-2 (auth UI) ─► F-EPIC-3 (data) ─► F-EP
 **Acceptance:** 5 bad attempts lock the account; locked/disabled users cannot log in until lock expires; covered by tests.
 **Done:** `LoginResult` sealed interface (`Success(User)` / `Failure(FailureReason)`) with `BAD_CREDENTIALS`, `ACCOUNT_LOCKED`, `ACCOUNT_DISABLED` reasons. `UserService.attemptLogin()` — transactional, checks `enabled` then active `locked_until`, then BCrypt; increments `failed_logins` on failure and sets `locked_until = now + 15 min` at the 5th; resets both fields on success. `AuthController.login` now uses `attemptLogin` exclusively, returning distinct 401 codes per failure reason. No migration needed (`failed_logins`, `locked_until`, `enabled` already in V1). `LoginRequest` gained `@AllArgsConstructor`. 9 new unit tests in `UserServiceLockoutTest`; 74/74 green. Verified 2026-06-09 (commit 1020870).
 
-### T008 — Admin-managed user creation (remove public register) · `TODO` · P1 · (needs T006)
+### T008 — Admin-managed user creation (remove public register) · `DONE` · P1 · (needs T006)
 **Expected:** remove/disable public `/register`; add admin-only user creation; separate login DTOs from user-create DTOs.
 **Acceptance:** unauthenticated users cannot create accounts; an admin can create a user via a protected endpoint.
+**Done:** `CreateUserRequest` record (`username`, `email`, `password` — all `@NotBlank`/`@Email`). `UserService.createUser(CreateUserRequest)` replaces `register(LoginRequest)` — stores BCrypt hash, sets real `email` field (no fake `@users.local` generation). `POST /api/v1/auth/register` removed. `POST /api/v1/users` added to `UserController`, guarded by `@PreAuthorize("hasAuthority('core.users.write')")`, returns 201. `WebSecurityConfig.permitAll` tightened to explicit paths (login/refresh/logout/revoke/**); generic `/auth/**` wildcard removed. `UserControllerCreateTest` confirms 201 with write authority, 403 without. 80/80 green. Verified 2026-06-09 (commit 041bf09).
 
-### T008a — `GET /auth/me` current-user endpoint · `TODO` · P1 · (needs T005)
+### T008a — `GET /auth/me` current-user endpoint · `DONE` · P1 · (needs T005)
 **Expected:** return the authenticated user's id, username, roles, and effective permissions.
 **Acceptance:** frontend can fetch identity to drive permission-aware nav; returns 401 when unauthenticated.
+**Done:** `MeResponse` record (`id`, `username`, `email`, `permissions`). `GET /api/v1/auth/me` added to `AuthController`; takes `Authentication` param (no `SecurityContextHolder` coupling); looks up user by UUID subject, fetches permissions via `RoleService.permissionKeysForUser`. `WebSecurityConfig` gains `authenticationEntryPoint` returning 401 for unauthenticated requests (was 403). `AuthControllerMeTest` (`@WebMvcTest`) confirms 200 + payload when authenticated, 401 without. 80/80 green. Verified 2026-06-09 (commit 041bf09).
 
-### T008b — Verify BCrypt password hashing end-to-end · `TODO` · P0
+### T008b — Verify BCrypt password hashing end-to-end · `DONE` · P0
 **Expected:** confirm register stores a BCrypt hash and login verifies against it (not plaintext / not a placeholder).
 **Acceptance:** stored password column is a BCrypt hash; wrong password fails; a test asserts the hash format.
+**Done:** `UserServiceCreateTest.createUser_storesBcryptHashedPassword` asserts the saved password starts with `$2` (BCrypt prefix) and is not equal to the plaintext input. Wrong-password path already covered by `UserServiceLockoutTest`. 80/80 green. Verified 2026-06-09 (commit 041bf09).
 
 ---
 
