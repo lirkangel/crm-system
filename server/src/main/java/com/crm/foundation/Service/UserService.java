@@ -1,6 +1,7 @@
 package com.crm.foundation.Service;
 
 import com.crm.foundation.DTO.LoginRequest;
+import com.crm.foundation.DTO.LoginResult;
 import com.crm.foundation.Domain.User;
 import jakarta.validation.constraints.NotNull;
 import org.springframework.lang.NonNull;
@@ -17,6 +18,8 @@ public interface UserService {
     Optional<User> findByUsername(@NonNull String username);
 
     Boolean checkUserByUsernamePassword(@NotNull LoginRequest loginRequest);
+
+    LoginResult attemptLogin(@NotNull LoginRequest loginRequest);
 
     User register(@NotNull LoginRequest loginRequest);
 }

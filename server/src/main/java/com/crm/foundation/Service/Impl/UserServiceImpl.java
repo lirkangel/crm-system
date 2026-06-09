@@ -1,6 +1,7 @@
 package com.crm.foundation.Service.Impl;
 
 import com.crm.foundation.DTO.LoginRequest;
+import com.crm.foundation.DTO.LoginResult;
 import com.crm.foundation.Domain.User;
 import com.crm.foundation.Exception.BadRequestException;
 import com.crm.foundation.Repository.UserRepository;
@@ -9,6 +10,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.lang.NonNull;
 import org.springframework.security.crypto.bcrypt.BCrypt;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Instant;
 import java.util.List;
@@ -43,6 +45,44 @@ public class UserServiceImpl implements UserService {
         String password = Objects.requireNonNull(loginRequest.getPassword(), "password");
         Optional<User> existingUser = findByUsername(username);
         return existingUser.filter(user -> BCrypt.checkpw(password, user.getPassword())).isPresent();
+    }
+
+    @Override
+    @Transactional
+    public LoginResult attemptLogin(LoginRequest loginRequest) {
+        String username = Objects.requireNonNull(loginRequest.getUsername(), "username");
+        String password = Objects.requireNonNull(loginRequest.getPassword(), "password");
+
+        Optional<User> maybeUser = userRepository.findByUsername(username);
+        if (maybeUser.isEmpty()) {
+            return new LoginResult.Failure(LoginResult.FailureReason.BAD_CREDENTIALS);
+        }
+
+        User user = maybeUser.get();
+
+        if (!Boolean.TRUE.equals(user.getEnabled())) {
+            return new LoginResult.Failure(LoginResult.FailureReason.ACCOUNT_DISABLED);
+        }
+
+        Instant lockedUntil = user.getLockedUntil();
+        if (lockedUntil != null && lockedUntil.isAfter(Instant.now())) {
+            return new LoginResult.Failure(LoginResult.FailureReason.ACCOUNT_LOCKED);
+        }
+
+        if (!BCrypt.checkpw(password, user.getPassword())) {
+            int newCount = user.getFailedLogin() + 1;
+            user.setFailedLogin(newCount);
+            if (newCount >= 5) {
+                user.setLockedUntil(Instant.now().plusSeconds(15 * 60));
+            }
+            userRepository.save(user);
+            return new LoginResult.Failure(LoginResult.FailureReason.BAD_CREDENTIALS);
+        }
+
+        user.setFailedLogin(0);
+        user.setLockedUntil(null);
+        userRepository.save(user);
+        return new LoginResult.Success(user);
     }
 
     @Override

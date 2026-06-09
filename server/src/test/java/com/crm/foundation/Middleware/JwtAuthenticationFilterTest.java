@@ -220,6 +220,11 @@ class JwtAuthenticationFilterTest {
         }
 
         @Override
+        public com.crm.foundation.DTO.LoginResult attemptLogin(LoginRequest loginRequest) {
+            throw new UnsupportedOperationException();
+        }
+
+        @Override
         public User register(LoginRequest loginRequest) {
             throw new UnsupportedOperationException();
         }

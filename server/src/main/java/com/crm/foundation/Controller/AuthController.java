@@ -11,8 +11,6 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
-import java.util.Objects;
-import java.util.Optional;
 import java.util.UUID;
 
 @RestController
@@ -25,24 +23,29 @@ public class AuthController {
 
     @PostMapping("/login")
     public ResponseEntity<CommonResponse<AuthResponse>> login(@Valid @RequestBody LoginRequest loginRequest) {
-        if (!Boolean.TRUE.equals(userService.checkUserByUsernamePassword(loginRequest))) {
+        LoginResult result = userService.attemptLogin(loginRequest);
+        if (result instanceof LoginResult.Failure failure) {
+            String code = switch (failure.reason()) {
+                case BAD_CREDENTIALS -> "AUTH_LOGIN_INVALID_CREDENTIALS";
+                case ACCOUNT_LOCKED -> "AUTH_LOGIN_ACCOUNT_LOCKED";
+                case ACCOUNT_DISABLED -> "AUTH_LOGIN_ACCOUNT_DISABLED";
+            };
+            String message = switch (failure.reason()) {
+                case BAD_CREDENTIALS -> "Invalid username or password";
+                case ACCOUNT_LOCKED -> "Account is temporarily locked";
+                case ACCOUNT_DISABLED -> "Account is disabled";
+            };
             return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
-                .body(CommonResponse.failure("AUTH_LOGIN_INVALID_CREDENTIALS", "Invalid username or password"));
+                .body(CommonResponse.failure(code, message));
         }
-        String username = Objects.requireNonNull(loginRequest.getUsername(), "username");
-        Optional<User> user = userService.findByUsername(username);
-        return user
-            .map(u -> {
-                var access = tokenService.createAccessToken(u);
-                var refresh = tokenService.createToken(u);
-                return ResponseEntity.ok(
-                    CommonResponse.success(
-                        "AUTH_LOGIN_OK",
-                        "Login successful",
-                        AuthResponse.from(access.token(), access.expiresAt(), refresh)));
-            })
-            .orElseGet(() -> ResponseEntity.status(HttpStatus.UNAUTHORIZED)
-                .body(CommonResponse.failure("AUTH_LOGIN_INVALID_CREDENTIALS", "Invalid username or password")));
+        User u = ((LoginResult.Success) result).user();
+        var access = tokenService.createAccessToken(u);
+        var refresh = tokenService.createToken(u);
+        return ResponseEntity.ok(
+            CommonResponse.success(
+                "AUTH_LOGIN_OK",
+                "Login successful",
+                AuthResponse.from(access.token(), access.expiresAt(), refresh)));
     }
 
     @PostMapping("/register")

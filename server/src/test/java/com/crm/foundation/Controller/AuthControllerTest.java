@@ -4,6 +4,7 @@ import com.crm.foundation.DTO.AuthResponse;
 import com.crm.foundation.DTO.CommonResponse;
 import com.crm.foundation.DTO.IssuedAccessToken;
 import com.crm.foundation.DTO.LoginRequest;
+import com.crm.foundation.DTO.LoginResult;
 import com.crm.foundation.DTO.LogoutResponse;
 import com.crm.foundation.DTO.LogoutStatus;
 import com.crm.foundation.DTO.RefreshRequest;
@@ -18,10 +19,8 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
-import org.springframework.test.util.ReflectionTestUtils;
 
 import java.time.Instant;
-import java.util.Optional;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -42,9 +41,7 @@ class AuthControllerTest {
 
     @Test
     void login_returnsAccessAndRefreshTokensWithBearerType() {
-        LoginRequest request = new LoginRequest();
-        ReflectionTestUtils.setField(request, "username", "alice");
-        ReflectionTestUtils.setField(request, "password", "secret");
+        LoginRequest request = new LoginRequest("alice", "secret");
 
         User user = new User();
         user.setId(UUID.fromString("00000000-0000-0000-0000-000000000011"));
@@ -59,8 +56,7 @@ class AuthControllerTest {
                         user,
                         Instant.parse("2030-01-08T00:00:00Z"));
 
-        when(userService.checkUserByUsernamePassword(request)).thenReturn(true);
-        when(userService.findByUsername("alice")).thenReturn(Optional.of(user));
+        when(userService.attemptLogin(request)).thenReturn(new LoginResult.Success(user));
         when(tokenService.createAccessToken(user)).thenReturn(accessToken);
         when(tokenService.createToken(user)).thenReturn(refreshToken);
 
