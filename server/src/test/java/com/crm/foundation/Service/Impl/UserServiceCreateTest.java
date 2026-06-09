@@ -3,6 +3,7 @@ package com.crm.foundation.Service.Impl;
 import com.crm.foundation.DTO.CreateUserRequest;
 import com.crm.foundation.Domain.User;
 import com.crm.foundation.Repository.UserRepository;
+import com.crm.foundation.Service.ChangeEventService;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
@@ -18,6 +19,9 @@ class UserServiceCreateTest {
 
     @Mock
     UserRepository userRepository;
+
+    @Mock
+    ChangeEventService changeEventService;
 
     @InjectMocks
     UserServiceImpl userService;

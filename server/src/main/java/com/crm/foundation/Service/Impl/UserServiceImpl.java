@@ -5,6 +5,7 @@ import com.crm.foundation.DTO.LoginRequest;
 import com.crm.foundation.DTO.LoginResult;
 import com.crm.foundation.Domain.User;
 import com.crm.foundation.Repository.UserRepository;
+import com.crm.foundation.Service.ChangeEventService;
 import com.crm.foundation.Service.UserService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.lang.NonNull;
@@ -23,6 +24,7 @@ import java.util.UUID;
 public class UserServiceImpl implements UserService {
 
     private final UserRepository userRepository;
+    private final ChangeEventService changeEventService;
 
     @Override
     public Optional<User> findById(@NonNull UUID id) {
@@ -86,6 +88,7 @@ public class UserServiceImpl implements UserService {
     }
 
     @Override
+    @Transactional
     public User createUser(CreateUserRequest request) {
         User newUser = new User();
         newUser.setUsername(Objects.requireNonNull(request.username(), "username"));
@@ -96,6 +99,8 @@ public class UserServiceImpl implements UserService {
         newUser.setFailedLogin(0);
         newUser.setCreatedAt(Instant.now());
         newUser.setUpdatedAt(Instant.now());
-        return userRepository.save(newUser);
+        User created = userRepository.save(newUser);
+        changeEventService.record("core", "User", created.getId(), 1L, "CREATE", Instant.now());
+        return created;
     }
 }

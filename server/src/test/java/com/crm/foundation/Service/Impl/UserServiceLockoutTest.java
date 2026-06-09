@@ -4,6 +4,7 @@ import com.crm.foundation.DTO.LoginRequest;
 import com.crm.foundation.DTO.LoginResult;
 import com.crm.foundation.Domain.User;
 import com.crm.foundation.Repository.UserRepository;
+import com.crm.foundation.Service.ChangeEventService;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
@@ -26,6 +27,9 @@ class UserServiceLockoutTest {
 
     @Mock
     UserRepository userRepository;
+
+    @Mock
+    ChangeEventService changeEventService;
 
     @InjectMocks
     UserServiceImpl userService;
