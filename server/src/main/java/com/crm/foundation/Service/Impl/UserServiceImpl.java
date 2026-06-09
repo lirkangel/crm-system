@@ -1,10 +1,12 @@
 package com.crm.foundation.Service.Impl;
 
+import com.crm.foundation.Audit.AuditPayload;
 import com.crm.foundation.DTO.CreateUserRequest;
 import com.crm.foundation.DTO.LoginRequest;
 import com.crm.foundation.DTO.LoginResult;
 import com.crm.foundation.Domain.User;
 import com.crm.foundation.Repository.UserRepository;
+import com.crm.foundation.Service.AuditService;
 import com.crm.foundation.Service.ChangeEventService;
 import com.crm.foundation.Service.UserService;
 import lombok.RequiredArgsConstructor;
@@ -25,6 +27,7 @@ public class UserServiceImpl implements UserService {
 
     private final UserRepository userRepository;
     private final ChangeEventService changeEventService;
+    private final AuditService auditService;
 
     @Override
     public Optional<User> findById(@NonNull UUID id) {
@@ -89,7 +92,7 @@ public class UserServiceImpl implements UserService {
 
     @Override
     @Transactional
-    public User createUser(CreateUserRequest request) {
+    public User createUser(CreateUserRequest request, UUID actorId, String sourceIp) {
         User newUser = new User();
         newUser.setUsername(Objects.requireNonNull(request.username(), "username"));
         newUser.setEmail(Objects.requireNonNull(request.email(), "email"));
@@ -101,6 +104,9 @@ public class UserServiceImpl implements UserService {
         newUser.setUpdatedAt(Instant.now());
         User created = userRepository.save(newUser);
         changeEventService.record("core", "User", created.getId(), 1L, "CREATE", Instant.now());
+        auditService.record(new AuditPayload(
+            Instant.now(), actorId, sourceIp,
+            null, "User", created.getId(), "USER_CREATE", null, null, "INFO"));
         return created;
     }
 }

@@ -3,32 +3,36 @@ package com.crm.foundation.Controller;
 import com.crm.foundation.Audit.AuditPayload;
 import com.crm.foundation.DTO.CreateUserRequest;
 import com.crm.foundation.Domain.User;
+import com.crm.foundation.Repository.UserRepository;
 import com.crm.foundation.Service.AuditService;
-import com.crm.foundation.Service.UserService;
-import jakarta.servlet.http.HttpServletRequest;
+import com.crm.foundation.Service.ChangeEventService;
+import com.crm.foundation.Service.Impl.UserServiceImpl;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
-import org.springframework.security.core.Authentication;
 
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.Mockito.*;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
 
+/**
+ * Verifies that createUser audit events are recorded by UserServiceImpl
+ * (audit responsibility moved from controller to service layer).
+ */
 @ExtendWith(MockitoExtension.class)
 class UserControllerAuditTest {
 
-    @Mock UserService userService;
+    @Mock UserRepository userRepository;
+    @Mock ChangeEventService changeEventService;
     @Mock AuditService auditService;
-    @Mock HttpServletRequest httpRequest;
-    @Mock Authentication authentication;
 
-    @InjectMocks UserController userController;
+    @InjectMocks UserServiceImpl userService;
 
     @Test
     void createUser_recordsAuditEventWithActorAndCreatedUserId() {
@@ -40,15 +44,12 @@ class UserControllerAuditTest {
         created.setUsername("bob");
         created.setEmail("bob@hotel.local");
         created.setEnabled(true);
+        when(userRepository.save(any(User.class))).thenReturn(created);
 
-        when(authentication.getName()).thenReturn(adminId.toString());
-        when(httpRequest.getRemoteAddr()).thenReturn("192.168.1.5");
-        when(userService.createUser(any(CreateUserRequest.class))).thenReturn(created);
-
-        userController.createUser(
+        userService.createUser(
             new CreateUserRequest("bob", "bob@hotel.local", "secret"),
-            authentication,
-            httpRequest);
+            adminId,
+            "192.168.1.5");
 
         ArgumentCaptor<AuditPayload> captor = ArgumentCaptor.forClass(AuditPayload.class);
         verify(auditService).record(captor.capture());

@@ -1,13 +1,7 @@
 package com.crm.foundation.Controller;
 
-import com.crm.foundation.Audit.AuditPayload;
 import com.crm.foundation.DTO.*;
-import com.crm.foundation.Domain.RefreshToken;
-import com.crm.foundation.Domain.User;
-import com.crm.foundation.Service.AuditService;
-import com.crm.foundation.Service.RoleService;
-import com.crm.foundation.Service.TokenService;
-import com.crm.foundation.Service.UserService;
+import com.crm.foundation.Service.AuthService;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -16,8 +10,6 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
 
-import java.time.Instant;
-import java.util.Set;
 import java.util.UUID;
 
 @RestController
@@ -25,45 +17,18 @@ import java.util.UUID;
 @RequiredArgsConstructor
 public class AuthController {
 
-    private final TokenService tokenService;
-    private final UserService userService;
-    private final RoleService roleService;
-    private final AuditService auditService;
+    private final AuthService authService;
 
     @PostMapping("/login")
     public ResponseEntity<CommonResponse<AuthResponse>> login(
             @Valid @RequestBody LoginRequest loginRequest,
             HttpServletRequest httpRequest) {
-        LoginResult result = userService.attemptLogin(loginRequest);
-        if (result instanceof LoginResult.Failure failure) {
-            auditService.record(new AuditPayload(
-                Instant.now(), null, httpRequest.getRemoteAddr(),
-                null, null, null, "AUTH_LOGIN_FAILURE", null, null, "WARN"));
-            String code = switch (failure.reason()) {
-                case BAD_CREDENTIALS -> "AUTH_LOGIN_INVALID_CREDENTIALS";
-                case ACCOUNT_LOCKED -> "AUTH_LOGIN_ACCOUNT_LOCKED";
-                case ACCOUNT_DISABLED -> "AUTH_LOGIN_ACCOUNT_DISABLED";
-            };
-            String message = switch (failure.reason()) {
-                case BAD_CREDENTIALS -> "Invalid username or password";
-                case ACCOUNT_LOCKED -> "Account is temporarily locked";
-                case ACCOUNT_DISABLED -> "Account is disabled";
-            };
-            return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
-                .body(CommonResponse.failure(code, message));
-        }
-        User u = ((LoginResult.Success) result).user();
-        auditService.record(new AuditPayload(
-            Instant.now(), u.getId(), httpRequest.getRemoteAddr(),
-            null, "User", u.getId(), "AUTH_LOGIN_SUCCESS", null, null, "INFO"));
-        Set<String> perms = roleService.permissionKeysForUser(u.getId());
-        var access = tokenService.createAccessToken(u, perms);
-        var refresh = tokenService.createToken(u);
-        return ResponseEntity.ok(
-            CommonResponse.success(
-                "AUTH_LOGIN_OK",
-                "Login successful",
-                AuthResponse.from(access.token(), access.expiresAt(), refresh)));
+        return switch (authService.login(loginRequest, httpRequest.getRemoteAddr())) {
+            case LoginOutcome.Ok ok -> ResponseEntity.ok(
+                CommonResponse.success("AUTH_LOGIN_OK", "Login successful", ok.response()));
+            case LoginOutcome.Fail fail -> ResponseEntity.status(HttpStatus.UNAUTHORIZED)
+                .body(CommonResponse.failure(fail.code(), fail.message()));
+        };
     }
 
     @GetMapping("/me")
@@ -73,59 +38,44 @@ public class AuthController {
                 .body(CommonResponse.failure("AUTH_UNAUTHENTICATED", "Not authenticated"));
         }
         UUID userId = UUID.fromString(authentication.getName());
-        User user = userService.findById(userId)
-            .orElseThrow(() -> new IllegalStateException("Authenticated user not found: " + userId));
-        Set<String> permissions = roleService.permissionKeysForUser(userId);
         return ResponseEntity.ok(
-            CommonResponse.success("AUTH_ME_OK", "Current user", MeResponse.from(user, permissions)));
+            CommonResponse.success("AUTH_ME_OK", "Current user", authService.me(userId)));
+    }
+
+    @PostMapping("/refresh")
+    public ResponseEntity<CommonResponse<AuthResponse>> refresh(
+            @Valid @RequestBody RefreshRequest request) {
+        return authService.refresh(request.refreshToken())
+            .map(r -> ResponseEntity.ok(
+                CommonResponse.success("AUTH_REFRESH_OK", "Refresh successful", r)))
+            .orElseGet(() -> ResponseEntity.status(HttpStatus.UNAUTHORIZED)
+                .body(CommonResponse.failure(
+                    "AUTH_REFRESH_INVALID", "Refresh token is invalid or expired")));
     }
 
     @DeleteMapping("/revoke/{jti}")
     public ResponseEntity<CommonResponse<LogoutResponse>> revoke(@PathVariable UUID jti) {
-        return toLogoutResponse(tokenService.revokeToken(jti));
-    }
-
-    @PostMapping("/refresh")
-    public ResponseEntity<CommonResponse<AuthResponse>> refresh(@Valid @RequestBody RefreshRequest
-                                                                    request) {
-        RefreshToken refresh = tokenService.refreshToken(request.refreshToken());
-        if (refresh == null) {
-            return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
-                .body(CommonResponse.failure("AUTH_REFRESH_INVALID", "Refresh token is invalid or expired"));
-        }
-
-        User user = refresh.getUser();
-        Set<String> perms = roleService.permissionKeysForUser(user.getId());
-        var access = tokenService.createAccessToken(user, perms);
-
-        return ResponseEntity.ok(
-            CommonResponse.success(
-                "AUTH_REFRESH_OK",
-                "Refresh successful",
-                AuthResponse.from(access.token(), access.expiresAt(), refresh)
-            )
-        );
+        return toLogoutResponse(authService.revoke(jti));
     }
 
     @PostMapping("/logout")
-    public ResponseEntity<CommonResponse<LogoutResponse>> logout(@Valid @RequestBody RefreshRequest request) {
-        return toLogoutResponse(tokenService.revokeToken(request.refreshToken()));
+    public ResponseEntity<CommonResponse<LogoutResponse>> logout(
+            @Valid @RequestBody RefreshRequest request) {
+        return toLogoutResponse(authService.revoke(request.refreshToken()));
     }
 
     private ResponseEntity<CommonResponse<LogoutResponse>> toLogoutResponse(LogoutStatus status) {
         LogoutResponse response = switch (status) {
-            case REVOKED -> new LogoutResponse(status, "Token revoked");
-            case NOT_FOUND -> new LogoutResponse(status, "Refresh token not found");
-            case EXPIRED -> new LogoutResponse(status, "Refresh token expired");
-            case ALREADY_USED -> new LogoutResponse(status, "Refresh token already used");
+            case REVOKED         -> new LogoutResponse(status, "Token revoked");
+            case NOT_FOUND       -> new LogoutResponse(status, "Refresh token not found");
+            case EXPIRED         -> new LogoutResponse(status, "Refresh token expired");
+            case ALREADY_USED    -> new LogoutResponse(status, "Refresh token already used");
             case ALREADY_REVOKED -> new LogoutResponse(status, "Refresh token already revoked");
         };
-
         HttpStatus httpStatus = status == LogoutStatus.REVOKED ? HttpStatus.OK : HttpStatus.UNAUTHORIZED;
         return ResponseEntity.status(httpStatus).body(
             status == LogoutStatus.REVOKED
                 ? CommonResponse.success("AUTH_LOGOUT_REVOKED", response.message(), response)
-                : CommonResponse.failure("AUTH_LOGOUT_" + status.name(), response.message(), response)
-        );
+                : CommonResponse.failure("AUTH_LOGOUT_" + status.name(), response.message(), response));
     }
 }

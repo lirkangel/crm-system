@@ -3,6 +3,7 @@ package com.crm.foundation.Service.Impl;
 import com.crm.foundation.DTO.CreateUserRequest;
 import com.crm.foundation.Domain.User;
 import com.crm.foundation.Repository.UserRepository;
+import com.crm.foundation.Service.AuditService;
 import com.crm.foundation.Service.ChangeEventService;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -21,11 +22,9 @@ import static org.mockito.Mockito.when;
 @ExtendWith(MockitoExtension.class)
 class UserServiceCreateChangeEventTest {
 
-    @Mock
-    private UserRepository userRepository;
-
-    @Mock
-    private ChangeEventService changeEventService;
+    @Mock private UserRepository userRepository;
+    @Mock private ChangeEventService changeEventService;
+    @Mock private AuditService auditService;
 
     @InjectMocks
     private UserServiceImpl userService;
@@ -41,7 +40,7 @@ class UserServiceCreateChangeEventTest {
         saved.setFailedLogin(0);
         when(userRepository.save(any(User.class))).thenReturn(saved);
 
-        userService.createUser(new CreateUserRequest("dave", "dave@hotel.local", "secret"));
+        userService.createUser(new CreateUserRequest("dave", "dave@hotel.local", "secret"), null, null);
 
         ArgumentCaptor<String> opCaptor = ArgumentCaptor.forClass(String.class);
         ArgumentCaptor<UUID> idCaptor = ArgumentCaptor.forClass(UUID.class);

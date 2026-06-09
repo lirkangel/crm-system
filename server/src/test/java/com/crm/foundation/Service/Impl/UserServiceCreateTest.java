@@ -3,6 +3,7 @@ package com.crm.foundation.Service.Impl;
 import com.crm.foundation.DTO.CreateUserRequest;
 import com.crm.foundation.Domain.User;
 import com.crm.foundation.Repository.UserRepository;
+import com.crm.foundation.Service.AuditService;
 import com.crm.foundation.Service.ChangeEventService;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -17,11 +18,9 @@ import static org.mockito.Mockito.*;
 @ExtendWith(MockitoExtension.class)
 class UserServiceCreateTest {
 
-    @Mock
-    UserRepository userRepository;
-
-    @Mock
-    ChangeEventService changeEventService;
+    @Mock UserRepository userRepository;
+    @Mock ChangeEventService changeEventService;
+    @Mock AuditService auditService;
 
     @InjectMocks
     UserServiceImpl userService;
@@ -30,7 +29,7 @@ class UserServiceCreateTest {
     void createUser_storesPasswordAsBcryptHash() {
         when(userRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
 
-        userService.createUser(new CreateUserRequest("alice", "alice@example.com", "plaintext"));
+        userService.createUser(new CreateUserRequest("alice", "alice@example.com", "plaintext"), null, null);
 
         ArgumentCaptor<User> captor = ArgumentCaptor.forClass(User.class);
         verify(userRepository).save(captor.capture());
@@ -43,7 +42,7 @@ class UserServiceCreateTest {
     void createUser_persistsAllSuppliedFields() {
         when(userRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
 
-        userService.createUser(new CreateUserRequest("bob", "bob@hotel.local", "pw"));
+        userService.createUser(new CreateUserRequest("bob", "bob@hotel.local", "pw"), null, null);
 
         ArgumentCaptor<User> captor = ArgumentCaptor.forClass(User.class);
         verify(userRepository).save(captor.capture());

@@ -4,7 +4,6 @@ import com.crm.foundation.Component.JwtTokenProvider;
 import com.crm.foundation.Config.WebSecurityConfig;
 import com.crm.foundation.Domain.User;
 import com.crm.foundation.Security.CorePermissions;
-import com.crm.foundation.Service.RoleService;
 import com.crm.foundation.Service.UserService;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -28,20 +27,10 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 @Import(WebSecurityConfig.class)
 class UserControllerSecurityTest {
 
-    @Autowired
-    MockMvc mvc;
+    @Autowired MockMvc mvc;
 
-    @MockitoBean
-    com.crm.foundation.Service.AuditService auditService;
-
-    @MockitoBean
-    UserService userService;
-
-    @MockitoBean
-    RoleService roleService;
-
-    @MockitoBean
-    JwtTokenProvider jwtTokenProvider;
+    @MockitoBean UserService userService;
+    @MockitoBean JwtTokenProvider jwtTokenProvider;
 
     @Test
     @WithMockUser(authorities = CorePermissions.USERS_READ)
@@ -55,15 +44,14 @@ class UserControllerSecurityTest {
         when(userService.findById(id)).thenReturn(Optional.of(user));
 
         mvc.perform(get("/api/v1/users/{id}", id))
-                .andExpect(status().isOk());
+            .andExpect(status().isOk());
     }
 
     @Test
     @WithMockUser
     void getUserById_withoutUsersReadAuthority_returns403() throws Exception {
         UUID id = UUID.fromString("00000000-0000-0000-0000-000000000099");
-
         mvc.perform(get("/api/v1/users/{id}", id))
-                .andExpect(status().isForbidden());
+            .andExpect(status().isForbidden());
     }
 }

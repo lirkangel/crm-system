@@ -10,7 +10,7 @@ import com.crm.foundation.Service.AuditService;
 import com.crm.foundation.Service.RoleService;
 import com.crm.foundation.Service.TokenService;
 import com.crm.foundation.Service.UserService;
-import jakarta.servlet.http.HttpServletRequest;
+import com.crm.foundation.Service.Impl.AuthServiceImpl;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
@@ -28,16 +28,19 @@ import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+/**
+ * Verifies that login audit events are recorded by AuthServiceImpl
+ * (audit responsibility moved from controller to service layer).
+ */
 @ExtendWith(MockitoExtension.class)
 class AuthControllerAuditTest {
 
-    @Mock TokenService tokenService;
     @Mock UserService userService;
+    @Mock TokenService tokenService;
     @Mock RoleService roleService;
     @Mock AuditService auditService;
-    @Mock HttpServletRequest httpRequest;
 
-    @InjectMocks AuthController authController;
+    @InjectMocks AuthServiceImpl authService;
 
     @Test
     void login_success_recordsAuditEventWithUserAndIp() {
@@ -47,7 +50,6 @@ class AuthControllerAuditTest {
         user.setUsername("alice");
         user.setEmail("alice@example.com");
 
-        when(httpRequest.getRemoteAddr()).thenReturn("10.0.0.1");
         when(userService.attemptLogin(any())).thenReturn(new LoginResult.Success(user));
         when(roleService.permissionKeysForUser(userId)).thenReturn(Set.of());
         when(tokenService.createAccessToken(eq(user), any()))
@@ -55,7 +57,7 @@ class AuthControllerAuditTest {
         when(tokenService.createToken(user))
             .thenReturn(RefreshToken.issueFor(user, Instant.now().plusSeconds(86400)));
 
-        authController.login(new LoginRequest("alice", "pw"), httpRequest);
+        authService.login(new LoginRequest("alice", "pw"), "10.0.0.1");
 
         ArgumentCaptor<AuditPayload> captor = ArgumentCaptor.forClass(AuditPayload.class);
         verify(auditService).record(captor.capture());
@@ -70,11 +72,10 @@ class AuthControllerAuditTest {
 
     @Test
     void login_failure_recordsAuditEventWithWarnSeverityAndNullUser() {
-        when(httpRequest.getRemoteAddr()).thenReturn("10.0.0.2");
         when(userService.attemptLogin(any()))
             .thenReturn(new LoginResult.Failure(LoginResult.FailureReason.BAD_CREDENTIALS));
 
-        authController.login(new LoginRequest("nobody", "bad"), httpRequest);
+        authService.login(new LoginRequest("nobody", "bad"), "10.0.0.2");
 
         ArgumentCaptor<AuditPayload> captor = ArgumentCaptor.forClass(AuditPayload.class);
         verify(auditService).record(captor.capture());

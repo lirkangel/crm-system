@@ -6,7 +6,6 @@ import com.crm.foundation.DTO.CreateUserRequest;
 import com.crm.foundation.DTO.UserResponse;
 import com.crm.foundation.Domain.User;
 import com.crm.foundation.Security.CorePermissions;
-import com.crm.foundation.Service.RoleService;
 import com.crm.foundation.Service.UserService;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.Test;
@@ -29,23 +28,11 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 @Import(WebSecurityConfig.class)
 class UserControllerCreateTest {
 
-    @Autowired
-    MockMvc mvc;
+    @Autowired MockMvc mvc;
+    @Autowired ObjectMapper objectMapper;
 
-    @Autowired
-    ObjectMapper objectMapper;
-
-    @MockitoBean
-    com.crm.foundation.Service.AuditService auditService;
-
-    @MockitoBean
-    UserService userService;
-
-    @MockitoBean
-    RoleService roleService;
-
-    @MockitoBean
-    JwtTokenProvider jwtTokenProvider;
+    @MockitoBean UserService userService;
+    @MockitoBean JwtTokenProvider jwtTokenProvider;
 
     @Test
     @WithMockUser(username = "00000000-0000-0000-0000-000000000001", authorities = CorePermissions.USERS_WRITE)
@@ -56,7 +43,7 @@ class UserControllerCreateTest {
         created.setEmail("charlie@hotel.local");
         created.setEnabled(true);
 
-        when(userService.createUser(any(CreateUserRequest.class))).thenReturn(created);
+        when(userService.createUser(any(CreateUserRequest.class), any(), any())).thenReturn(created);
 
         mvc.perform(post("/api/v1/users")
                 .contentType(MediaType.APPLICATION_JSON)

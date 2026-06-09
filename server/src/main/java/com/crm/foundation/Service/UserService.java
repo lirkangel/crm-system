@@ -22,5 +22,5 @@ public interface UserService {
 
     LoginResult attemptLogin(@NotNull LoginRequest loginRequest);
 
-    User createUser(@NotNull CreateUserRequest request);
+    User createUser(@NotNull CreateUserRequest request, UUID actorId, String sourceIp);
 }

@@ -2,9 +2,8 @@ package com.crm.foundation.Controller;
 
 import com.crm.foundation.Component.JwtTokenProvider;
 import com.crm.foundation.Config.WebSecurityConfig;
-import com.crm.foundation.Domain.User;
-import com.crm.foundation.Service.RoleService;
-import com.crm.foundation.Service.TokenService;
+import com.crm.foundation.DTO.MeResponse;
+import com.crm.foundation.Service.AuthService;
 import com.crm.foundation.Service.UserService;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -14,7 +13,6 @@ import org.springframework.security.test.context.support.WithMockUser;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 
-import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 
@@ -26,38 +24,20 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 @Import(WebSecurityConfig.class)
 class AuthControllerMeTest {
 
-    @Autowired
-    MockMvc mvc;
+    @Autowired MockMvc mvc;
 
-    @MockitoBean
-    com.crm.foundation.Service.AuditService auditService;
-
-    @MockitoBean
-    TokenService tokenService;
-
-    @MockitoBean
-    UserService userService;
-
-    @MockitoBean
-    RoleService roleService;
-
-    @MockitoBean
-    JwtTokenProvider jwtTokenProvider;
+    @MockitoBean AuthService authService;
+    @MockitoBean UserService userService;       // needed by JwtAuthenticationFilter
+    @MockitoBean JwtTokenProvider jwtTokenProvider;
 
     static final UUID ALICE_ID = UUID.fromString("00000000-0000-0000-0000-000000000001");
 
     @Test
     @WithMockUser(username = "00000000-0000-0000-0000-000000000001")
     void me_whenAuthenticated_returnsUserDetails() throws Exception {
-        User alice = new User();
-        alice.setId(ALICE_ID);
-        alice.setUsername("alice");
-        alice.setEmail("alice@example.com");
-        alice.setEnabled(true);
-
-        when(userService.findById(ALICE_ID)).thenReturn(Optional.of(alice));
-        when(roleService.permissionKeysForUser(ALICE_ID))
-            .thenReturn(Set.of("core.users.read", "core.roles.read"));
+        MeResponse me = new MeResponse(ALICE_ID, "alice", "alice@example.com",
+            Set.of("core.users.read", "core.roles.read"));
+        when(authService.me(ALICE_ID)).thenReturn(me);
 
         mvc.perform(get("/api/v1/auth/me"))
             .andExpect(status().isOk())
