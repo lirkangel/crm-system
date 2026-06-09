@@ -4,7 +4,11 @@ import { I18nextProvider } from "react-i18next";
 import { MemoryRouter, Route, Routes } from "react-router";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
+vi.mock("@/auth/useCurrentUser", () => ({ useCurrentUser: vi.fn() }));
+
+import { useCurrentUser } from "@/auth/useCurrentUser";
 import { AuthContext, type AuthContextValue } from "@/auth/AuthContext";
+import type { CurrentUser } from "@/auth/types";
 import i18n from "@/i18n";
 import { AppShell } from "./AppShell";
 
@@ -34,9 +38,25 @@ function renderShell(value: AuthContextValue = baseValue) {
   );
 }
 
+const adminUser: CurrentUser = {
+  id: "u1",
+  username: "admin",
+  roles: ["admin"],
+  permissions: ["core.users.read", "core.roles.read"],
+};
+
+const viewerUser: CurrentUser = {
+  id: "u2",
+  username: "viewer",
+  roles: ["viewer"],
+  permissions: [],
+};
+
 describe("AppShell", () => {
   beforeEach(async () => {
     await i18n.changeLanguage("vi");
+    // Default: no current user (no permissions)
+    vi.mocked(useCurrentUser).mockReturnValue({ currentUser: null, loading: false });
   });
 
   it("renders the brand and nav alongside the routed page content", () => {
@@ -61,5 +81,27 @@ describe("AppShell", () => {
     await userEvent.click(screen.getByRole("button", { name: "Đăng xuất" }));
 
     expect(logout).toHaveBeenCalledTimes(1);
+  });
+
+  it("always shows nav items that require no permission", () => {
+    renderShell();
+
+    expect(screen.getByRole("link", { name: "Bảng điều khiển" })).toBeInTheDocument();
+  });
+
+  it("shows admin nav items when the user holds the required permissions", () => {
+    vi.mocked(useCurrentUser).mockReturnValue({ currentUser: adminUser, loading: false });
+    renderShell();
+
+    expect(screen.getByRole("link", { name: "Người dùng" })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Vai trò" })).toBeInTheDocument();
+  });
+
+  it("hides admin nav items when the user lacks the required permissions", () => {
+    vi.mocked(useCurrentUser).mockReturnValue({ currentUser: viewerUser, loading: false });
+    renderShell();
+
+    expect(screen.queryByRole("link", { name: "Người dùng" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: "Vai trò" })).not.toBeInTheDocument();
   });
 });

@@ -16,3 +16,11 @@ export interface AuthStatus {
   pendingLogoutRevoke: string | null;
   isAuthenticated: boolean;
 }
+
+/** Shape returned by GET /api/v1/auth/me — mirrors the server DTO. */
+export interface CurrentUser {
+  id: string;
+  username: string;
+  roles: string[];
+  permissions: string[];
+}

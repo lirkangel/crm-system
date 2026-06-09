@@ -11,7 +11,11 @@
     "logout": "Sign out"
   },
   "nav": {
-    "dashboard": "Dashboard"
+    "dashboard": "Dashboard",
+    "admin": {
+      "users": "Users",
+      "roles": "Roles"
+    }
   },
   "sync": {
     "synced": "Synced"

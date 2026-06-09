@@ -11,7 +11,11 @@
     "logout": "Đăng xuất"
   },
   "nav": {
-    "dashboard": "Bảng điều khiển"
+    "dashboard": "Bảng điều khiển",
+    "admin": {
+      "users": "Người dùng",
+      "roles": "Vai trò"
+    }
   },
   "sync": {
     "synced": "Đã đồng bộ"

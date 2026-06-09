@@ -3,17 +3,35 @@ import { useTranslation } from "react-i18next";
 import { NavLink, Outlet } from "react-router";
 
 import { useAuth } from "@/auth/AuthContext";
+import { hasPermission } from "@/auth/permissions";
+import { useCurrentUser } from "@/auth/useCurrentUser";
 import { LanguageToggle } from "@/components/LanguageToggle";
 import { SyncStatusPill } from "@/components/layout/SyncStatusPill";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 
-const navItems = [{ to: "/", labelKey: "nav.dashboard" }] as const;
+interface NavItem {
+  to: string;
+  labelKey: string;
+  end?: boolean;
+  permission?: string;
+}
+
+const navItems: NavItem[] = [
+  { to: "/", labelKey: "nav.dashboard", end: true },
+  { to: "/admin/users", labelKey: "nav.admin.users", permission: "core.users.read" },
+  { to: "/admin/roles", labelKey: "nav.admin.roles", permission: "core.roles.read" },
+];
 
 /** Persistent authenticated shell: header (brand, nav, sync pill, user menu) wrapping routed pages. */
 export function AppShell() {
   const { t } = useTranslation();
   const { logout } = useAuth();
+  const { currentUser } = useCurrentUser();
+
+  const visibleNavItems = navItems.filter(
+    (item) => !item.permission || hasPermission(currentUser, item.permission),
+  );
 
   return (
     <div className="bg-background text-foreground flex min-h-screen flex-col">
@@ -21,11 +39,11 @@ export function AppShell() {
         <div className="flex h-14 items-center gap-6 px-6">
           <span className="font-semibold tracking-tight">{t("app.title")}</span>
           <nav className="flex items-center gap-4 text-sm">
-            {navItems.map(({ to, labelKey }) => (
+            {visibleNavItems.map(({ to, labelKey, end }) => (
               <NavLink
                 key={to}
                 to={to}
-                end
+                end={end}
                 className={({ isActive }) =>
                   cn(
                     "text-muted-foreground hover:text-foreground transition-colors",
