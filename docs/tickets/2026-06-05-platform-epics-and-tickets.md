@@ -73,9 +73,10 @@ F-EPIC-1 (scaffold) ─► F-EPIC-2 (auth UI) ─► F-EPIC-3 (data) ─► F-EP
 **Acceptance:** constants referenced by `@PreAuthorize`; seeded permissions exist in DB; admin role maps to all.
 **Done:** `CorePermissions` (`Security/`) holds the 7 built-in permission key constants (incl. `core.users.delete`, already seeded) + `all()`. `V3__seed_admin_role_permissions.sql` maps the `admin` role to every built-in permission. `CorePermissionsTest` (unit) + `AdminRolePermissionSeedIntegrationTest` (Testcontainers, tagged `integration`) cover it; migration verified directly against a throwaway Postgres container (admin → all 7 perms). `@PreAuthorize` wiring itself lands with **T006** once method security is enabled by **T005**. Verified 2026-06-09.
 
-### T007 — Account lockout + enabled checks · `TODO` · P0
+### T007 — Account lockout + enabled checks · `DONE` · P0
 **Expected:** increment `failed_logins` on bad credentials; lock after 5 fails within 15 min via `locked_until`; block disabled users; reset count on success.
 **Acceptance:** 5 bad attempts lock the account; locked/disabled users cannot log in until lock expires; covered by tests.
+**Done:** `LoginResult` sealed interface (`Success(User)` / `Failure(FailureReason)`) with `BAD_CREDENTIALS`, `ACCOUNT_LOCKED`, `ACCOUNT_DISABLED` reasons. `UserService.attemptLogin()` — transactional, checks `enabled` then active `locked_until`, then BCrypt; increments `failed_logins` on failure and sets `locked_until = now + 15 min` at the 5th; resets both fields on success. `AuthController.login` now uses `attemptLogin` exclusively, returning distinct 401 codes per failure reason. No migration needed (`failed_logins`, `locked_until`, `enabled` already in V1). `LoginRequest` gained `@AllArgsConstructor`. 9 new unit tests in `UserServiceLockoutTest`; 74/74 green. Verified 2026-06-09 (commit 1020870).
 
 ### T008 — Admin-managed user creation (remove public register) · `TODO` · P1 · (needs T006)
 **Expected:** remove/disable public `/register`; add admin-only user creation; separate login DTOs from user-create DTOs.
