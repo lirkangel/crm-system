@@ -42,6 +42,18 @@
     },
     "logoutFailedLocal": "Không thể kết nối máy chủ — đã đăng xuất cục bộ"
   },
+  "admin": {
+    "users": {
+      "title": "Quản lý người dùng",
+      "username": "Tên đăng nhập",
+      "email": "Email",
+      "status": "Trạng thái",
+      "active": "Hoạt động",
+      "inactive": "Vô hiệu",
+      "empty": "Chưa có người dùng nào",
+      "loadError": "Không thể tải danh sách người dùng"
+    }
+  },
   "errors": {
     "boundary": {
       "title": "Đã xảy ra lỗi",

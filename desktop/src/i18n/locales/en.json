@@ -42,6 +42,18 @@
     },
     "logoutFailedLocal": "Couldn't reach the server — signed out locally"
   },
+  "admin": {
+    "users": {
+      "title": "User Management",
+      "username": "Username",
+      "email": "Email",
+      "status": "Status",
+      "active": "Active",
+      "inactive": "Inactive",
+      "empty": "No users found",
+      "loadError": "Failed to load users"
+    }
+  },
   "errors": {
     "boundary": {
       "title": "Something went wrong",
