@@ -225,7 +225,7 @@ class JwtAuthenticationFilterTest {
         }
 
         @Override
-        public User register(LoginRequest loginRequest) {
+        public User createUser(com.crm.foundation.DTO.CreateUserRequest request) {
             throw new UnsupportedOperationException();
         }
     }

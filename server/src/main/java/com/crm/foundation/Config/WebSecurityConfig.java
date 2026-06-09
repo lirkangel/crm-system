@@ -28,10 +28,16 @@ public class WebSecurityConfig {
             .sessionManagement(
                 session ->
                     session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
+            .exceptionHandling(ex -> ex
+                .authenticationEntryPoint(
+                    (req, res, e) -> res.sendError(401, "Unauthorized")))
             .authorizeHttpRequests(
                 auth ->
                     auth.requestMatchers(
-                            "/api/v1/auth/**",
+                            "/api/v1/auth/login",
+                            "/api/v1/auth/refresh",
+                            "/api/v1/auth/logout",
+                            "/api/v1/auth/revoke/**",
                             "/actuator/health/**",
                             "/v3/api-docs/**",
                             "/swagger-ui/**",

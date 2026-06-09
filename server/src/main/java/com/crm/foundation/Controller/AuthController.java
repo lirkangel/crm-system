@@ -3,14 +3,17 @@ package com.crm.foundation.Controller;
 import com.crm.foundation.DTO.*;
 import com.crm.foundation.Domain.RefreshToken;
 import com.crm.foundation.Domain.User;
+import com.crm.foundation.Service.RoleService;
 import com.crm.foundation.Service.TokenService;
 import com.crm.foundation.Service.UserService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
 
+import java.util.Set;
 import java.util.UUID;
 
 @RestController
@@ -20,6 +23,7 @@ public class AuthController {
 
     private final TokenService tokenService;
     private final UserService userService;
+    private final RoleService roleService;
 
     @PostMapping("/login")
     public ResponseEntity<CommonResponse<AuthResponse>> login(@Valid @RequestBody LoginRequest loginRequest) {
@@ -48,23 +52,18 @@ public class AuthController {
                 AuthResponse.from(access.token(), access.expiresAt(), refresh)));
     }
 
-    @PostMapping("/register")
-    public ResponseEntity<CommonResponse<UserResponse>> register(@Valid @RequestBody LoginRequest loginRequest) {
-        String username = Objects.requireNonNull(loginRequest.getUsername(), "username");
-        Optional<User> existing = userService.findByUsername(username);
-        if (existing.isPresent()) {
-            return ResponseEntity.badRequest()
-                .body(CommonResponse.failure(
-                    "AUTH_REGISTER_USERNAME_TAKEN",
-                    "Username already taken",
-                    UserResponse.from(existing.get())));
+    @GetMapping("/me")
+    public ResponseEntity<CommonResponse<MeResponse>> me(Authentication authentication) {
+        if (authentication == null || !authentication.isAuthenticated()) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
+                .body(CommonResponse.failure("AUTH_UNAUTHENTICATED", "Not authenticated"));
         }
-        User saved = userService.register(loginRequest);
+        UUID userId = UUID.fromString(authentication.getName());
+        User user = userService.findById(userId)
+            .orElseThrow(() -> new IllegalStateException("Authenticated user not found: " + userId));
+        Set<String> permissions = roleService.permissionKeysForUser(userId);
         return ResponseEntity.ok(
-            CommonResponse.success(
-                "AUTH_REGISTER_OK",
-                "User registered",
-                UserResponse.from(saved)));
+            CommonResponse.success("AUTH_ME_OK", "Current user", MeResponse.from(user, permissions)));
     }
 
     @DeleteMapping("/revoke/{jti}")

@@ -10,6 +10,7 @@ import com.crm.foundation.DTO.LogoutStatus;
 import com.crm.foundation.DTO.RefreshRequest;
 import com.crm.foundation.Domain.RefreshToken;
 import com.crm.foundation.Domain.User;
+import com.crm.foundation.Service.RoleService;
 import com.crm.foundation.Service.TokenService;
 import com.crm.foundation.Service.UserService;
 import org.junit.jupiter.api.Test;
@@ -35,6 +36,9 @@ class AuthControllerTest {
 
     @Mock
     private UserService userService;
+
+    @Mock
+    private RoleService roleService;
 
     @InjectMocks
     private AuthController authController;

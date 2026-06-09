@@ -1,5 +1,6 @@
 package com.crm.foundation.Service;
 
+import com.crm.foundation.DTO.CreateUserRequest;
 import com.crm.foundation.DTO.LoginRequest;
 import com.crm.foundation.DTO.LoginResult;
 import com.crm.foundation.Domain.User;
@@ -21,5 +22,5 @@ public interface UserService {
 
     LoginResult attemptLogin(@NotNull LoginRequest loginRequest);
 
-    User register(@NotNull LoginRequest loginRequest);
+    User createUser(@NotNull CreateUserRequest request);
 }

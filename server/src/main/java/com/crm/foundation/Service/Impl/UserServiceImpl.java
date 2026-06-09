@@ -1,9 +1,9 @@
 package com.crm.foundation.Service.Impl;
 
+import com.crm.foundation.DTO.CreateUserRequest;
 import com.crm.foundation.DTO.LoginRequest;
 import com.crm.foundation.DTO.LoginResult;
 import com.crm.foundation.Domain.User;
-import com.crm.foundation.Exception.BadRequestException;
 import com.crm.foundation.Repository.UserRepository;
 import com.crm.foundation.Service.UserService;
 import lombok.RequiredArgsConstructor;
@@ -86,17 +86,14 @@ public class UserServiceImpl implements UserService {
     }
 
     @Override
-    public User register(LoginRequest loginRequest) {
-        if (checkUserByUsernamePassword(loginRequest)) {
-            throw new BadRequestException("User already exists");
-        }
-        String username = Objects.requireNonNull(loginRequest.getUsername(), "username");
-        String password = Objects.requireNonNull(loginRequest.getPassword(), "password");
+    public User createUser(CreateUserRequest request) {
         User newUser = new User();
-        newUser.setUsername(username);
-        newUser.setEmail(username + "@users.local");
-        newUser.setPassword(BCrypt.hashpw(password, BCrypt.gensalt()));
+        newUser.setUsername(Objects.requireNonNull(request.username(), "username"));
+        newUser.setEmail(Objects.requireNonNull(request.email(), "email"));
+        newUser.setPassword(BCrypt.hashpw(
+            Objects.requireNonNull(request.password(), "password"), BCrypt.gensalt()));
         newUser.setEnabled(true);
+        newUser.setFailedLogin(0);
         newUser.setCreatedAt(Instant.now());
         newUser.setUpdatedAt(Instant.now());
         return userRepository.save(newUser);
