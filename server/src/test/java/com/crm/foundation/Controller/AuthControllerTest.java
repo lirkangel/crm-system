@@ -25,6 +25,8 @@ import java.time.Instant;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -61,7 +63,8 @@ class AuthControllerTest {
                         Instant.parse("2030-01-08T00:00:00Z"));
 
         when(userService.attemptLogin(request)).thenReturn(new LoginResult.Success(user));
-        when(tokenService.createAccessToken(user)).thenReturn(accessToken);
+        when(roleService.permissionKeysForUser(user.getId())).thenReturn(java.util.Set.of());
+        when(tokenService.createAccessToken(eq(user), any())).thenReturn(accessToken);
         when(tokenService.createToken(user)).thenReturn(refreshToken);
 
         ResponseEntity<CommonResponse<AuthResponse>> response = authController.login(request);
@@ -77,7 +80,7 @@ class AuthControllerTest {
         assertThat(response.getBody().data().refreshToken()).isEqualTo(refreshToken.getJti().toString());
         assertThat(response.getBody().data().refreshTokenExpiresAt()).isEqualTo(refreshToken.getExpiresAt());
         assertThat(response.getBody().data().tokenType()).isEqualTo("Bearer");
-        verify(tokenService).createAccessToken(user);
+        verify(tokenService).createAccessToken(eq(user), any());
         verify(tokenService).createToken(user);
     }
 
@@ -100,7 +103,8 @@ class AuthControllerTest {
                 Instant.parse("2030-01-08T00:00:00Z"));
 
         when(tokenService.refreshToken(refreshJti)).thenReturn(refreshToken);
-        when(tokenService.createAccessToken(user)).thenReturn(accessToken);
+        when(roleService.permissionKeysForUser(user.getId())).thenReturn(java.util.Set.of());
+        when(tokenService.createAccessToken(eq(user), any())).thenReturn(accessToken);
 
         ResponseEntity<CommonResponse<AuthResponse>> response = authController.refresh(request);
 
@@ -116,7 +120,7 @@ class AuthControllerTest {
         assertThat(response.getBody().data().refreshTokenExpiresAt()).isEqualTo(refreshToken.getExpiresAt());
         assertThat(response.getBody().data().tokenType()).isEqualTo("Bearer");
         verify(tokenService).refreshToken(refreshJti);
-        verify(tokenService).createAccessToken(user);
+        verify(tokenService).createAccessToken(eq(user), any());
     }
 
     @Test

@@ -10,7 +10,10 @@ import org.springframework.stereotype.Component;
 
 import javax.crypto.SecretKey;
 import java.nio.charset.StandardCharsets;
+import java.util.Collection;
 import java.util.Date;
+import java.util.List;
+import java.util.Set;
 import java.util.UUID;
 
 @Component
@@ -33,18 +36,33 @@ public class JwtTokenProvider {
         this.jwtExpirationMillis = Math.multiplyExact(accessTtlSeconds, 1000L);
     }
 
-    /** Issues an access JWT and the {@code exp} instant used for that token (single clock basis). */
-    public IssuedAccessToken issueAccessToken(User user) {
+    /** Issues an access JWT with embedded permission claims. */
+    public IssuedAccessToken issueAccessToken(User user, Set<String> permissions) {
         Date now = new Date();
         Date expiryDate = new Date(now.getTime() + jwtExpirationMillis);
         String compact =
                 Jwts.builder()
                         .subject(user.getId().toString())
+                        .claim("perms", List.copyOf(permissions))
                         .issuedAt(now)
                         .expiration(expiryDate)
                         .signWith(signingKey)
                         .compact();
         return new IssuedAccessToken(compact, expiryDate.toInstant());
+    }
+
+    @SuppressWarnings("unchecked")
+    public Set<String> getPermissionsFromJWT(String token) {
+        Claims claims = Jwts.parser()
+                .verifyWith(signingKey)
+                .build()
+                .parseSignedClaims(token)
+                .getPayload();
+        Object perms = claims.get("perms");
+        if (perms instanceof Collection<?> col) {
+            return Set.copyOf((Collection<String>) col);
+        }
+        return Set.of();
     }
 
     public UUID getUserIdFromJWT(String token) {

@@ -2,7 +2,6 @@ package com.crm.foundation.Middleware;
 
 import com.crm.foundation.Component.JwtTokenProvider;
 import com.crm.foundation.Domain.User;
-import com.crm.foundation.Service.RoleService;
 import com.crm.foundation.Service.UserService;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
@@ -28,15 +27,11 @@ import java.util.UUID;
 public class JwtAuthenticationFilter extends OncePerRequestFilter {
 
     private final JwtTokenProvider jwtTokenProvider;
-
     private final UserService userService;
 
-    private final RoleService roleService;
-
-    public JwtAuthenticationFilter(JwtTokenProvider jwtTokenProvider, UserService userService, RoleService roleService) {
+    public JwtAuthenticationFilter(JwtTokenProvider jwtTokenProvider, UserService userService) {
         this.jwtTokenProvider = jwtTokenProvider;
         this.userService = userService;
-        this.roleService = roleService;
     }
 
     @Override
@@ -56,7 +51,7 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
                 Optional<User> existingUser = userService.findById(userID);
                 if (existingUser.isPresent()) {
                     List<GrantedAuthority> authorities =
-                            roleService.permissionKeysForUser(userID).stream()
+                            jwtTokenProvider.getPermissionsFromJWT(jwtRequest).stream()
                                     .map(SimpleGrantedAuthority::new)
                                     .map(GrantedAuthority.class::cast)
                                     .toList();

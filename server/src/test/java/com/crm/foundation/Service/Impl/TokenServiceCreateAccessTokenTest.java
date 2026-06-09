@@ -40,7 +40,7 @@ class TokenServiceCreateAccessTokenTest {
         user.setUsername("alice");
         user.setEmail("alice@example.com");
 
-        IssuedAccessToken issued = tokenService.createAccessToken(user);
+        IssuedAccessToken issued = tokenService.createAccessToken(user, java.util.Set.of());
 
         assertThat(issued.token()).isNotBlank();
         assertThat(issued.expiresAt()).isNotNull();

@@ -5,6 +5,7 @@ import com.crm.foundation.DTO.IssuedAccessToken;
 import com.crm.foundation.Domain.RefreshToken;
 import com.crm.foundation.Domain.User;
 
+import java.util.Set;
 import java.util.UUID;
 
 public interface TokenService {
@@ -15,5 +16,5 @@ public interface TokenService {
 
     LogoutStatus revokeToken(UUID jti);
 
-    IssuedAccessToken createAccessToken(User user);
+    IssuedAccessToken createAccessToken(User user, Set<String> permissions);
 }

@@ -12,6 +12,7 @@ import org.springframework.stereotype.Service;
 
 import java.time.Instant;
 import java.util.Objects;
+import java.util.Set;
 import java.util.UUID;
 
 @Service
@@ -64,10 +65,11 @@ public class TokenServiceImpl implements TokenService {
     }
 
     @Override
-    public IssuedAccessToken createAccessToken(User user) {
+    public IssuedAccessToken createAccessToken(User user, Set<String> permissions) {
         Objects.requireNonNull(user, "user");
         Objects.requireNonNull(user.getId(), "user id");
-        return jwtTokenProvider.issueAccessToken(user);
+        Objects.requireNonNull(permissions, "permissions");
+        return jwtTokenProvider.issueAccessToken(user, permissions);
     }
 
     @Override

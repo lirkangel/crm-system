@@ -43,7 +43,8 @@ public class AuthController {
                 .body(CommonResponse.failure(code, message));
         }
         User u = ((LoginResult.Success) result).user();
-        var access = tokenService.createAccessToken(u);
+        Set<String> perms = roleService.permissionKeysForUser(u.getId());
+        var access = tokenService.createAccessToken(u, perms);
         var refresh = tokenService.createToken(u);
         return ResponseEntity.ok(
             CommonResponse.success(
@@ -81,7 +82,8 @@ public class AuthController {
         }
 
         User user = refresh.getUser();
-        var access = tokenService.createAccessToken(user);
+        Set<String> perms = roleService.permissionKeysForUser(user.getId());
+        var access = tokenService.createAccessToken(user, perms);
 
         return ResponseEntity.ok(
             CommonResponse.success(

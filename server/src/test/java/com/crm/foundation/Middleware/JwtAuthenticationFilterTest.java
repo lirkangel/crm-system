@@ -3,7 +3,6 @@ package com.crm.foundation.Middleware;
 import com.crm.foundation.Component.JwtTokenProvider;
 import com.crm.foundation.DTO.LoginRequest;
 import com.crm.foundation.Domain.User;
-import com.crm.foundation.Service.RoleService;
 import com.crm.foundation.Service.UserService;
 import jakarta.servlet.ServletException;
 import org.junit.jupiter.api.AfterEach;
@@ -38,11 +37,7 @@ class JwtAuthenticationFilterTest {
     void setUp() {
         SecurityContextHolder.clearContext();
         jwtTokenProvider = new JwtTokenProvider("abcdefghijklmnopqrstuvwxyz123456", 3600L);
-        filter =
-                new JwtAuthenticationFilter(
-                        jwtTokenProvider,
-                        new InMemoryUserService(Map.of()),
-                        new NoopRoleService());
+        filter = new JwtAuthenticationFilter(jwtTokenProvider, new InMemoryUserService(Map.of()));
     }
 
     @AfterEach
@@ -101,7 +96,7 @@ class JwtAuthenticationFilterTest {
         user.setUsername("u");
         user.setEmail("u@example.com");
 
-        String jwt = jwtTokenProvider.issueAccessToken(user).token();
+        String jwt = jwtTokenProvider.issueAccessToken(user, Set.of()).token();
 
         MockHttpServletRequest req = new MockHttpServletRequest();
         req.addHeader("Authorization", "Bearer " + jwt);
@@ -120,13 +115,10 @@ class JwtAuthenticationFilterTest {
         user.setUsername("alice");
         user.setEmail("alice@example.com");
 
-        String jwt = jwtTokenProvider.issueAccessToken(user).token();
+        String jwt = jwtTokenProvider.issueAccessToken(user, Set.of()).token();
 
-        filter =
-                new JwtAuthenticationFilter(
-                        jwtTokenProvider,
-                        new InMemoryUserService(Map.of(userId, user)),
-                        new NoopRoleService());
+        filter = new JwtAuthenticationFilter(
+                jwtTokenProvider, new InMemoryUserService(Map.of(userId, user)));
 
         MockHttpServletRequest req = new MockHttpServletRequest();
         req.setRemoteAddr("127.0.0.1");
@@ -145,20 +137,19 @@ class JwtAuthenticationFilterTest {
     }
 
     @Test
-    void validToken_userFound_authoritiesReflectResolvedPermissions() throws ServletException, IOException {
+    void validToken_userFound_authoritiesReadFromJwtClaims() throws ServletException, IOException {
         UUID userId = UUID.fromString("00000000-0000-0000-0000-000000000012");
         User user = new User();
         user.setId(userId);
         user.setUsername("bob");
         user.setEmail("bob@example.com");
 
-        String jwt = jwtTokenProvider.issueAccessToken(user).token();
+        // Permissions are embedded in the JWT — no RoleService needed
+        String jwt = jwtTokenProvider.issueAccessToken(
+                user, Set.of("core.users.read", "core.roles.read")).token();
 
-        filter =
-                new JwtAuthenticationFilter(
-                        jwtTokenProvider,
-                        new InMemoryUserService(Map.of(userId, user)),
-                        new StubRoleService(Map.of(userId, Set.of("core.users.read", "core.roles.read"))));
+        filter = new JwtAuthenticationFilter(
+                jwtTokenProvider, new InMemoryUserService(Map.of(userId, user)));
 
         MockHttpServletRequest req = new MockHttpServletRequest();
         req.setRemoteAddr("127.0.0.1");
@@ -230,47 +221,4 @@ class JwtAuthenticationFilterTest {
         }
     }
 
-    private static final class NoopRoleService implements RoleService {
-        @Override
-        public Optional<com.crm.foundation.Domain.Role> findById(@NonNull UUID id) {
-            return Optional.empty();
-        }
-
-        @Override
-        public java.util.List<com.crm.foundation.Domain.Role> findByName(String name) {
-            return java.util.List.of();
-        }
-
-        @Override
-        public java.util.List<com.crm.foundation.Domain.Role> findAll() {
-            return java.util.List.of();
-        }
-
-        @Override
-        public Set<String> permissionKeysForUser(@NonNull UUID userId) {
-            return Set.of();
-        }
-    }
-
-    private record StubRoleService(Map<UUID, Set<String>> permissionKeysByUserId) implements RoleService {
-        @Override
-        public Optional<com.crm.foundation.Domain.Role> findById(@NonNull UUID id) {
-            return Optional.empty();
-        }
-
-        @Override
-        public java.util.List<com.crm.foundation.Domain.Role> findByName(String name) {
-            return java.util.List.of();
-        }
-
-        @Override
-        public java.util.List<com.crm.foundation.Domain.Role> findAll() {
-            return java.util.List.of();
-        }
-
-        @Override
-        public Set<String> permissionKeysForUser(@NonNull UUID userId) {
-            return permissionKeysByUserId.getOrDefault(userId, Set.of());
-        }
-    }
 }
