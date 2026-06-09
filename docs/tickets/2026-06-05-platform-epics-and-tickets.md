@@ -63,9 +63,10 @@ F-EPIC-1 (scaffold) ─► F-EPIC-2 (auth UI) ─► F-EPIC-3 (data) ─► F-EP
 **Expected:** access JWT carries permission claims so the filter doesn't hit the DB on every request.
 **Acceptance:** a request authorizes from JWT claims alone; no per-request user/role query in the hot path.
 
-### T006 — Method-level authorization · `TODO` · P0 · (needs T005)
+### T006 — Method-level authorization · `DONE` · P0 · (needs T005)
 **Expected:** enable method security; add `@PreAuthorize` to User/Role controller endpoints using core permissions.
 **Acceptance:** a user with `core.users.read` reaches the guarded user endpoint; a user without it gets 403 (not just 401).
+**Done:** `@EnableMethodSecurity(prePostEnabled = true)` added to `WebSecurityConfig`; `UserController.getUserById` gated with `@PreAuthorize("hasAuthority('core.users.read')")` using `CorePermissions` constant. Added `spring-security-test` dep + `-Dnet.bytebuddy.experimental=true` Surefire arg (Byte Buddy 1.15.x + JDK 26 support). `UserControllerSecurityTest` (`@WebMvcTest` + `@WithMockUser`) confirms 200 with authority, 403 without. `RoleController` is currently empty; `@PreAuthorize` will be added once endpoints exist in T008/T009. 65/65 unit tests green. Verified 2026-06-09 (commit 33ec4d7).
 
 ### T006a — Core permission constants · `DONE` · P0
 **Expected:** define `core.users.read/write`, `core.roles.read/write`, `core.audit.read`, `core.plugins.manage` as constants and seed them.
