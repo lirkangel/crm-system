@@ -59,9 +59,10 @@ F-EPIC-1 (scaffold) ─► F-EPIC-2 (auth UI) ─► F-EPIC-3 (data) ─► F-EP
 **Acceptance:** an authenticated user's authorities reflect their permissions (verified in `JwtAuthenticationFilterTest`); no more empty authority list.
 **Done:** `RoleRepository.findPermissionKeysForUser` (native join `roles ⋈ role_permissions ⋈ permissions ⋈ user_roles`) backs `RoleService.permissionKeysForUser`; `JwtAuthenticationFilter` maps the resolved keys to `SimpleGrantedAuthority` and grants them on the `Authentication`, replacing the hard-coded `Collections.emptyList()`. Covered by `RoleServiceImplTest#permissionKeysForUser_delegatesToRepository` and `JwtAuthenticationFilterTest#validToken_userFound_authoritiesReflectResolvedPermissions`. Verified 2026-06-09 (commit cc91afc).
 
-### T005a — Embed permission claims in the access JWT · `TODO` · P1 · (needs T005)
+### T005a — Embed permission claims in the access JWT · `DONE` · P1 · (needs T005)
 **Expected:** access JWT carries permission claims so the filter doesn't hit the DB on every request.
 **Acceptance:** a request authorizes from JWT claims alone; no per-request user/role query in the hot path.
+**Done:** `JwtTokenProvider.issueAccessToken(User, Set<String>)` stores a `"perms"` claim (list of permission keys); `getPermissionsFromJWT(String)` extracts it, returning empty set for legacy tokens without the claim. `TokenService.createAccessToken(User, Set<String>)` passes through. `AuthController.login` and `.refresh` call `roleService.permissionKeysForUser` once at issuance time and embed the result. `JwtAuthenticationFilter` now reads authorities from JWT claims — `RoleService` dependency removed from the filter, eliminating the per-request DB join. `JwtPermissionsClaimTest` covers round-trip + empty + legacy-token cases. 83/83 green. Verified 2026-06-09 (commit 8895a51).
 
 ### T006 — Method-level authorization · `DONE` · P0 · (needs T005)
 **Expected:** enable method security; add `@PreAuthorize` to User/Role controller endpoints using core permissions.
