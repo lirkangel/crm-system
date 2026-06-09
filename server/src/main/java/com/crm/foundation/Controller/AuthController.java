@@ -1,11 +1,14 @@
 package com.crm.foundation.Controller;
 
+import com.crm.foundation.Audit.AuditPayload;
 import com.crm.foundation.DTO.*;
 import com.crm.foundation.Domain.RefreshToken;
 import com.crm.foundation.Domain.User;
+import com.crm.foundation.Service.AuditService;
 import com.crm.foundation.Service.RoleService;
 import com.crm.foundation.Service.TokenService;
 import com.crm.foundation.Service.UserService;
+import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
@@ -13,6 +16,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
 
+import java.time.Instant;
 import java.util.Set;
 import java.util.UUID;
 
@@ -24,11 +28,17 @@ public class AuthController {
     private final TokenService tokenService;
     private final UserService userService;
     private final RoleService roleService;
+    private final AuditService auditService;
 
     @PostMapping("/login")
-    public ResponseEntity<CommonResponse<AuthResponse>> login(@Valid @RequestBody LoginRequest loginRequest) {
+    public ResponseEntity<CommonResponse<AuthResponse>> login(
+            @Valid @RequestBody LoginRequest loginRequest,
+            HttpServletRequest httpRequest) {
         LoginResult result = userService.attemptLogin(loginRequest);
         if (result instanceof LoginResult.Failure failure) {
+            auditService.record(new AuditPayload(
+                Instant.now(), null, httpRequest.getRemoteAddr(),
+                null, null, null, "AUTH_LOGIN_FAILURE", null, null, "WARN"));
             String code = switch (failure.reason()) {
                 case BAD_CREDENTIALS -> "AUTH_LOGIN_INVALID_CREDENTIALS";
                 case ACCOUNT_LOCKED -> "AUTH_LOGIN_ACCOUNT_LOCKED";
@@ -43,6 +53,9 @@ public class AuthController {
                 .body(CommonResponse.failure(code, message));
         }
         User u = ((LoginResult.Success) result).user();
+        auditService.record(new AuditPayload(
+            Instant.now(), u.getId(), httpRequest.getRemoteAddr(),
+            null, "User", u.getId(), "AUTH_LOGIN_SUCCESS", null, null, "INFO"));
         Set<String> perms = roleService.permissionKeysForUser(u.getId());
         var access = tokenService.createAccessToken(u, perms);
         var refresh = tokenService.createToken(u);

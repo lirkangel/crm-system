@@ -3,7 +3,9 @@ package com.crm.foundation.Controller;
 import com.crm.foundation.DTO.CommonResponse;
 import com.crm.foundation.DTO.UserResponse;
 import com.crm.foundation.Domain.User;
+import com.crm.foundation.Service.AuditService;
 import com.crm.foundation.Service.UserService;
+import jakarta.servlet.http.HttpServletRequest;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
@@ -11,6 +13,7 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.core.Authentication;
 
 import java.util.Objects;
 import java.util.Optional;
@@ -23,8 +26,10 @@ import static org.mockito.Mockito.when;
 @ExtendWith(MockitoExtension.class)
 class UserControllerTest {
 
-    @Mock
-    private UserService userService;
+    @Mock private UserService userService;
+    @Mock private AuditService auditService;
+    @Mock private Authentication authentication;
+    @Mock private HttpServletRequest httpRequest;
 
     @InjectMocks
     private UserController userController;

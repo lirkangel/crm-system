@@ -30,6 +30,9 @@ class AuthControllerMeTest {
     MockMvc mvc;
 
     @MockitoBean
+    com.crm.foundation.Service.AuditService auditService;
+
+    @MockitoBean
     TokenService tokenService;
 
     @MockitoBean

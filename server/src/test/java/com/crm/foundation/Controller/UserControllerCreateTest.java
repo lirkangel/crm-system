@@ -36,6 +36,9 @@ class UserControllerCreateTest {
     ObjectMapper objectMapper;
 
     @MockitoBean
+    com.crm.foundation.Service.AuditService auditService;
+
+    @MockitoBean
     UserService userService;
 
     @MockitoBean
@@ -45,7 +48,7 @@ class UserControllerCreateTest {
     JwtTokenProvider jwtTokenProvider;
 
     @Test
-    @WithMockUser(authorities = CorePermissions.USERS_WRITE)
+    @WithMockUser(username = "00000000-0000-0000-0000-000000000001", authorities = CorePermissions.USERS_WRITE)
     void createUser_withUsersWriteAuthority_returns201() throws Exception {
         User created = new User();
         created.setId(UUID.fromString("00000000-0000-0000-0000-000000000077"));

@@ -32,6 +32,9 @@ class UserControllerSecurityTest {
     MockMvc mvc;
 
     @MockitoBean
+    com.crm.foundation.Service.AuditService auditService;
+
+    @MockitoBean
     UserService userService;
 
     @MockitoBean

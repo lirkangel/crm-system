@@ -33,14 +33,11 @@ import static org.mockito.Mockito.when;
 @ExtendWith(MockitoExtension.class)
 class AuthControllerTest {
 
-    @Mock
-    private TokenService tokenService;
-
-    @Mock
-    private UserService userService;
-
-    @Mock
-    private RoleService roleService;
+    @Mock private TokenService tokenService;
+    @Mock private UserService userService;
+    @Mock private RoleService roleService;
+    @Mock private com.crm.foundation.Service.AuditService auditService;
+    @Mock private jakarta.servlet.http.HttpServletRequest httpRequest;
 
     @InjectMocks
     private AuthController authController;
@@ -67,7 +64,7 @@ class AuthControllerTest {
         when(tokenService.createAccessToken(eq(user), any())).thenReturn(accessToken);
         when(tokenService.createToken(user)).thenReturn(refreshToken);
 
-        ResponseEntity<CommonResponse<AuthResponse>> response = authController.login(request);
+        ResponseEntity<CommonResponse<AuthResponse>> response = authController.login(request, httpRequest);
 
         assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
         assertThat(response.getBody()).isNotNull();
