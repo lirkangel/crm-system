@@ -54,6 +54,8 @@ Each plugin is a ZIP package that:
 - Maven 3.9+
 - PostgreSQL 15+ (running locally or via Docker)
 - Docker (for integration tests via Testcontainers)
+- Node 20+ + pnpm (for the desktop client)
+- Rust 1.75+ + Tauri CLI (for the Tauri shell)
 
 ### Run the server
 
@@ -64,7 +66,25 @@ cp src/main/resources/application.yml src/main/resources/application-local.yml
 mvn spring-boot:run -Dspring-boot.run.profiles=local
 ```
 
-### Run integration tests
+### Run the desktop client (dev mode)
+
+```bash
+cd desktop
+pnpm install
+pnpm dev          # React UI on http://localhost:1420
+# or:
+pnpm tauri dev    # full Tauri window (requires Rust toolchain)
+```
+
+### Run desktop tests
+
+```bash
+cd desktop
+pnpm test         # Vitest + React Testing Library (86 tests)
+pnpm lint         # ESLint
+```
+
+### Run server integration tests
 
 ```bash
 cd server
@@ -77,7 +97,19 @@ The platform is Vietnamese-first (`vi-VN`): DD/MM/YYYY dates, VND currency (dot-
 
 ## Status
 
-> **Active development** — Foundation skeleton initialized. Hotel PMS Tier 1 in progress.
+> **Active development** — Foundation platform complete. Hotel PMS Tier 1 in progress.
+
+### What's working
+
+| Area | Status |
+|---|---|
+| Backend auth | JWT (15 min access + 7 day rotating refresh), BCrypt, Spring Security |
+| RBAC | Role/permission model, `@PreAuthorize` on endpoints, Flyway-seeded defaults |
+| Audit log | Hash-chained event log (SHA-256, tamper-detectable) |
+| Desktop shell | Tauri 2, login UI, auth context + route guards, token refresh interceptor |
+| Admin UI | Permission-aware nav, Users list page (requires `core.users.read`) |
+| i18n | Vietnamese default, English toggle (VI/EN string bundles) |
+| Tests | 86 frontend (Vitest + RTL); backend via Testcontainers |
 
 ## License
 

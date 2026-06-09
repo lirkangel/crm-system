@@ -289,9 +289,11 @@ F-EPIC-1 (scaffold) ─► F-EPIC-2 (auth UI) ─► F-EPIC-3 (data) ─► F-EP
 
 ## F-EPIC-6 — Admin UI
 
-### F601 — User CRUD · `TODO` · P1 · (needs T008)
+### F601 — User CRUD · `PARTIAL` · P1 · (needs T008)
 **Expected:** admin-only create/edit/disable users.
 **Acceptance:** admin manages users; non-admins can't see the screen.
+**Done (read list):** `useUsers` hook fetches `GET /api/v1/users`, returns `{ users, loading, error }` with graceful error handling. `UsersPage` renders a table (username/email/status columns) with loading spinner, error alert, and empty state. Route protected by `PermissionRoute permission="core.users.read"` and nav item gated by `hasPermission`. 8 new tests (86 total). Verified 2026-06-09.
+**Remaining:** `GET /api/v1/users` backend list endpoint (T008b, list not yet exposed); create/edit/disable actions (F601b, depends on full user CRUD API).
 
 ### F602 — Role composer · `TODO` · P1 · (needs B-EPIC-2)
 **Expected:** compose roles by checking permissions from the built-in + plugin union.
