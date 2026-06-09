@@ -150,6 +150,11 @@
             <scope>test</scope>
         </dependency>
         <dependency>
+            <groupId>org.springframework.security</groupId>
+            <artifactId>spring-security-test</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-testcontainers</artifactId>
             <scope>test</scope>
@@ -209,9 +214,11 @@
                 <artifactId>maven-surefire-plugin</artifactId>
                 <configuration>
                     <!-- Mockito inline mocks on JDK 21+ (see Mockito javadoc §0.3); avoids self-attach / dynamic agent warnings -->
+                    <!-- net.bytebuddy.experimental: Byte Buddy 1.15.x officially supports up to JDK 24; required on JDK 25+ -->
                     <argLine>
                         -javaagent:${settings.localRepository}/org/mockito/mockito-core/${mockito.version}/mockito-core-${mockito.version}.jar
                         -Xshare:off
+                        -Dnet.bytebuddy.experimental=true
                     </argLine>
                     <excludedGroups>integration</excludedGroups>
                 </configuration>
