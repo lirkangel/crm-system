@@ -9,6 +9,7 @@ import org.junit.jupiter.api.condition.EnabledIf;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.context.annotation.Import;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Instant;
 import java.util.List;
@@ -18,6 +19,10 @@ import static org.assertj.core.api.Assertions.assertThat;
 /**
  * Verifies {@code AuditEvent} persists and loads with its hash-chain bytes intact (T2.1),
  * and that ordering for chain-link lookups is well-defined.
+ * <p>
+ * {@code @Transactional} rolls each test back — these write synthetic, non-chained
+ * hash bytes directly via the repository, which would otherwise corrupt the real
+ * chain that {@link AuditServiceIT} and {@code ChainVerifierIT} depend on.
  */
 @Tag("integration")
 @EnabledIf(
@@ -25,6 +30,7 @@ import static org.assertj.core.api.Assertions.assertThat;
     disabledReason = "Docker not available for Testcontainers")
 @SpringBootTest
 @Import(TestContainersConfig.class)
+@Transactional
 class AuditEventRepositoryIT {
 
     @Autowired
