@@ -23,20 +23,12 @@ public class AuthController {
     public ResponseEntity<CommonResponse<AuthResponse>> login(
             @Valid @RequestBody LoginRequest loginRequest,
             HttpServletRequest httpRequest) {
-        return switch (authService.login(loginRequest, httpRequest.getRemoteAddr())) {
-            case LoginOutcome.Ok ok -> ResponseEntity.ok(
-                CommonResponse.success("AUTH_LOGIN_OK", "Login successful", ok.response()));
-            case LoginOutcome.Fail fail -> ResponseEntity.status(HttpStatus.UNAUTHORIZED)
-                .body(CommonResponse.failure(fail.code(), fail.message()));
-        };
+        AuthResponse response = authService.login(loginRequest, httpRequest.getRemoteAddr());
+        return ResponseEntity.ok(CommonResponse.success("AUTH_LOGIN_OK", "Login successful", response));
     }
 
     @GetMapping("/me")
     public ResponseEntity<CommonResponse<MeResponse>> me(Authentication authentication) {
-        if (authentication == null || !authentication.isAuthenticated()) {
-            return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
-                .body(CommonResponse.failure("AUTH_UNAUTHENTICATED", "Not authenticated"));
-        }
         UUID userId = UUID.fromString(authentication.getName());
         return ResponseEntity.ok(
             CommonResponse.success("AUTH_ME_OK", "Current user", authService.me(userId)));
@@ -45,12 +37,9 @@ public class AuthController {
     @PostMapping("/refresh")
     public ResponseEntity<CommonResponse<AuthResponse>> refresh(
             @Valid @RequestBody RefreshRequest request) {
-        return authService.refresh(request.refreshToken())
-            .map(r -> ResponseEntity.ok(
-                CommonResponse.success("AUTH_REFRESH_OK", "Refresh successful", r)))
-            .orElseGet(() -> ResponseEntity.status(HttpStatus.UNAUTHORIZED)
-                .body(CommonResponse.failure(
-                    "AUTH_REFRESH_INVALID", "Refresh token is invalid or expired")));
+        AuthResponse response = authService.refresh(request.refreshToken());
+        return ResponseEntity.ok(
+            CommonResponse.success("AUTH_REFRESH_OK", "Refresh successful", response));
     }
 
     @DeleteMapping("/revoke/{jti}")

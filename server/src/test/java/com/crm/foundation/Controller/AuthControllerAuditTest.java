@@ -6,6 +6,7 @@ import com.crm.foundation.DTO.LoginRequest;
 import com.crm.foundation.DTO.LoginResult;
 import com.crm.foundation.Domain.RefreshToken;
 import com.crm.foundation.Domain.User;
+import com.crm.foundation.Exception.AuthException;
 import com.crm.foundation.Service.AuditService;
 import com.crm.foundation.Service.RoleService;
 import com.crm.foundation.Service.TokenService;
@@ -23,6 +24,7 @@ import java.util.Set;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.verify;
@@ -30,7 +32,7 @@ import static org.mockito.Mockito.when;
 
 /**
  * Verifies that login audit events are recorded by AuthServiceImpl
- * (audit responsibility moved from controller to service layer).
+ * (audit responsibility lives in the service layer, not the controller).
  */
 @ExtendWith(MockitoExtension.class)
 class AuthControllerAuditTest {
@@ -71,11 +73,12 @@ class AuthControllerAuditTest {
     }
 
     @Test
-    void login_failure_recordsAuditEventWithWarnSeverityAndNullUser() {
+    void login_failure_recordsAuditEventBeforeThrowing() {
         when(userService.attemptLogin(any()))
             .thenReturn(new LoginResult.Failure(LoginResult.FailureReason.BAD_CREDENTIALS));
 
-        authService.login(new LoginRequest("nobody", "bad"), "10.0.0.2");
+        assertThatThrownBy(() -> authService.login(new LoginRequest("nobody", "bad"), "10.0.0.2"))
+            .isInstanceOf(AuthException.class);
 
         ArgumentCaptor<AuditPayload> captor = ArgumentCaptor.forClass(AuditPayload.class);
         verify(auditService).record(captor.capture());

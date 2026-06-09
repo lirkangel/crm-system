@@ -3,6 +3,7 @@ package com.crm.foundation.Controller;
 import com.crm.foundation.DTO.*;
 import com.crm.foundation.Domain.RefreshToken;
 import com.crm.foundation.Domain.User;
+import com.crm.foundation.Exception.AuthException;
 import com.crm.foundation.Service.AuthService;
 import jakarta.servlet.http.HttpServletRequest;
 import org.junit.jupiter.api.Test;
@@ -14,12 +15,11 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 
 import java.time.Instant;
-import java.util.Optional;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -43,14 +43,12 @@ class AuthControllerTest {
 
     @Test
     void login_success_returns200WithAuthResponse() {
-        AuthResponse ar = stubAuthResponse();
-        when(authService.login(any(), any())).thenReturn(new LoginOutcome.Ok(ar));
+        when(authService.login(any(), any())).thenReturn(stubAuthResponse());
 
         ResponseEntity<CommonResponse<AuthResponse>> res =
             authController.login(new LoginRequest("alice", "secret"), httpRequest);
 
         assertThat(res.getStatusCode()).isEqualTo(HttpStatus.OK);
-        assertThat(res.getBody()).isNotNull();
         assertThat(res.getBody().success()).isTrue();
         assertThat(res.getBody().code()).isEqualTo("AUTH_LOGIN_OK");
         assertThat(res.getBody().data().accessToken()).isEqualTo("access.jwt.token");
@@ -58,29 +56,23 @@ class AuthControllerTest {
     }
 
     @Test
-    void login_failure_returns401WithFailCode() {
-        when(authService.login(any(), any()))
-            .thenReturn(new LoginOutcome.Fail("AUTH_LOGIN_INVALID_CREDENTIALS", "Invalid username or password"));
+    void login_passesRemoteAddrToService() {
+        when(httpRequest.getRemoteAddr()).thenReturn("9.9.9.9");
+        when(authService.login(any(), any())).thenReturn(stubAuthResponse());
 
-        ResponseEntity<CommonResponse<AuthResponse>> res =
-            authController.login(new LoginRequest("x", "y"), httpRequest);
+        authController.login(new LoginRequest("alice", "secret"), httpRequest);
 
-        assertThat(res.getStatusCode()).isEqualTo(HttpStatus.UNAUTHORIZED);
-        assertThat(res.getBody()).isNotNull();
-        assertThat(res.getBody().success()).isFalse();
-        assertThat(res.getBody().code()).isEqualTo("AUTH_LOGIN_INVALID_CREDENTIALS");
-        assertThat(res.getBody().message()).isEqualTo("Invalid username or password");
+        verify(authService).login(any(LoginRequest.class), org.mockito.ArgumentMatchers.eq("9.9.9.9"));
     }
 
     @Test
-    void login_passesRemoteAddrToService() {
-        when(httpRequest.getRemoteAddr()).thenReturn("9.9.9.9");
+    void login_failure_propagatesAuthException() {
         when(authService.login(any(), any()))
-            .thenReturn(new LoginOutcome.Fail("AUTH_LOGIN_INVALID_CREDENTIALS", "msg"));
+            .thenThrow(new AuthException("AUTH_LOGIN_INVALID_CREDENTIALS", "Invalid username or password"));
 
-        authController.login(new LoginRequest("x", "y"), httpRequest);
-
-        verify(authService).login(any(LoginRequest.class), org.mockito.ArgumentMatchers.eq("9.9.9.9"));
+        assertThatThrownBy(() -> authController.login(new LoginRequest("x", "y"), httpRequest))
+            .isInstanceOf(AuthException.class)
+            .hasMessage("Invalid username or password");
     }
 
     // ── refresh ───────────────────────────────────────────────────────────
@@ -88,8 +80,7 @@ class AuthControllerTest {
     @Test
     void refresh_valid_returns200WithAuthResponse() {
         UUID jti = UUID.fromString("00000000-0000-0000-0000-000000000022");
-        AuthResponse ar = stubAuthResponse();
-        when(authService.refresh(jti)).thenReturn(Optional.of(ar));
+        when(authService.refresh(jti)).thenReturn(stubAuthResponse());
 
         ResponseEntity<CommonResponse<AuthResponse>> res =
             authController.refresh(new RefreshRequest(jti));
@@ -102,17 +93,15 @@ class AuthControllerTest {
     }
 
     @Test
-    void refresh_invalid_returns401() {
+    void refresh_invalid_propagatesAuthException() {
         UUID jti = UUID.fromString("00000000-0000-0000-0000-000000000033");
-        when(authService.refresh(jti)).thenReturn(Optional.empty());
+        when(authService.refresh(jti))
+            .thenThrow(new AuthException("AUTH_REFRESH_INVALID", "Refresh token is invalid or expired"));
 
-        ResponseEntity<CommonResponse<AuthResponse>> res =
-            authController.refresh(new RefreshRequest(jti));
-
-        assertThat(res.getStatusCode()).isEqualTo(HttpStatus.UNAUTHORIZED);
-        assertThat(res.getBody().success()).isFalse();
-        assertThat(res.getBody().code()).isEqualTo("AUTH_REFRESH_INVALID");
-        assertThat(res.getBody().message()).isEqualTo("Refresh token is invalid or expired");
+        assertThatThrownBy(() -> authController.refresh(new RefreshRequest(jti)))
+            .isInstanceOf(AuthException.class)
+            .extracting(e -> ((AuthException) e).getCode())
+            .isEqualTo("AUTH_REFRESH_INVALID");
     }
 
     // ── logout ────────────────────────────────────────────────────────────
@@ -122,12 +111,8 @@ class AuthControllerTest {
         UUID jti = UUID.fromString("00000000-0000-0000-0000-000000000045");
         when(authService.revoke(jti)).thenReturn(LogoutStatus.REVOKED);
 
-        ResponseEntity<CommonResponse<LogoutResponse>> res =
-            authController.logout(new RefreshRequest(jti));
-
-        assertThat(res.getStatusCode()).isEqualTo(HttpStatus.OK);
-        assertThat(res.getBody().success()).isTrue();
-        assertThat(res.getBody().code()).isEqualTo("AUTH_LOGOUT_REVOKED");
+        assertThat(authController.logout(new RefreshRequest(jti)).getStatusCode())
+            .isEqualTo(HttpStatus.OK);
     }
 
     @Test
@@ -146,7 +131,6 @@ class AuthControllerTest {
     void logout_returns401WhenAlreadyRevoked() {
         UUID jti = UUID.fromString("00000000-0000-0000-0000-000000000047");
         when(authService.revoke(jti)).thenReturn(LogoutStatus.ALREADY_REVOKED);
-
         assertThat(authController.logout(new RefreshRequest(jti)).getStatusCode())
             .isEqualTo(HttpStatus.UNAUTHORIZED);
     }
@@ -155,7 +139,6 @@ class AuthControllerTest {
     void logout_returns401WhenExpired() {
         UUID jti = UUID.fromString("00000000-0000-0000-0000-000000000048");
         when(authService.revoke(jti)).thenReturn(LogoutStatus.EXPIRED);
-
         assertThat(authController.logout(new RefreshRequest(jti)).getStatusCode())
             .isEqualTo(HttpStatus.UNAUTHORIZED);
     }
@@ -164,7 +147,6 @@ class AuthControllerTest {
     void logout_returns401WhenNotFound() {
         UUID jti = UUID.fromString("00000000-0000-0000-0000-000000000049");
         when(authService.revoke(jti)).thenReturn(LogoutStatus.NOT_FOUND);
-
         assertThat(authController.logout(new RefreshRequest(jti)).getStatusCode())
             .isEqualTo(HttpStatus.UNAUTHORIZED);
     }

@@ -1,6 +1,6 @@
 package com.crm.foundation.DTO;
 
-import jakarta.validation.constraints.NotNull;
+import jakarta.validation.constraints.NotBlank;
 import lombok.AllArgsConstructor;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
@@ -9,9 +9,8 @@ import lombok.NoArgsConstructor;
 @AllArgsConstructor
 @NoArgsConstructor
 public class LoginRequest {
-    @NotNull
+    @NotBlank
     String username;
-    @NotNull
+    @NotBlank
     String password;
-
 }
