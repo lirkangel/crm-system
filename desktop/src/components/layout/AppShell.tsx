@@ -58,6 +58,14 @@ export function AppShell() {
           <div className="ml-auto flex items-center gap-3">
             <SyncStatusPill />
             <LanguageToggle />
+            {currentUser && (
+              <span
+                data-testid="user-display"
+                className="text-muted-foreground text-sm"
+              >
+                {currentUser.username}
+              </span>
+            )}
             <Button variant="outline" size="sm" onClick={() => void logout()}>
               <LogOut />
               {t("common.logout")}

@@ -89,6 +89,20 @@ describe("AppShell", () => {
     expect(screen.getByRole("link", { name: "Bảng điều khiển" })).toBeInTheDocument();
   });
 
+  it("shows the logged-in username when the current user is known", () => {
+    vi.mocked(useCurrentUser).mockReturnValue({ currentUser: adminUser, loading: false });
+    renderShell();
+
+    expect(screen.getByText("admin")).toBeInTheDocument();
+  });
+
+  it("does not render a username element when current user is null", () => {
+    renderShell();
+
+    // There's no username text visible when the user profile hasn't loaded
+    expect(screen.queryByTestId("user-display")).not.toBeInTheDocument();
+  });
+
   it("shows admin nav items when the user holds the required permissions", () => {
     vi.mocked(useCurrentUser).mockReturnValue({ currentUser: adminUser, loading: false });
     renderShell();
