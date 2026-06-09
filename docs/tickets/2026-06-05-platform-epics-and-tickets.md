@@ -129,13 +129,15 @@ F-EPIC-1 (scaffold) ─► F-EPIC-2 (auth UI) ─► F-EPIC-3 (data) ─► F-EP
 ## B-EPIC-4 — Sync / Change Feed (server side)
 *Goal: clients can pull deltas.*
 
-### T011 — Emit `change_event` on mutating writes · `TODO` · P1
+### T011 — Emit `change_event` on mutating writes · `DONE` · P1
 **Expected:** after a successful write, emit a change event (plugin id, entity type/id, version, op, occurred_at).
 **Acceptance:** user/role/permission changes create `change_event` rows; events only appear after successful persistence.
+**Done:** `ChangeEventService` interface + `ChangeEventServiceImpl` (saves to `change_event` via `ChangeEventRepository`). Wired into `UserServiceImpl.createUser` — emits op=CREATE, pluginId=core, entityType=User, version=1. `ChangeEventServiceTest` + `UserServiceCreateChangeEventTest` verify fields via `ArgumentCaptor`. 88/88 green. Verified 2026-06-09 (commit 5efa7eb).
 
-### T011a — Same-transaction change events · `TODO` · P1 · (needs T011)
+### T011a — Same-transaction change events · `DONE` · P1 · (needs T011)
 **Expected:** write the change_event inside the same transaction as the data write.
 **Acceptance:** a rolled-back data write produces no change_event (verified in a test).
+**Done:** `ChangeEventServiceImpl.record` uses `@Transactional(REQUIRED)`, so it joins the caller's transaction. `ChangeEventSameTransactionIT` uses `TransactionTemplate` to verify: rolled-back write produces no rows; committed write produces exactly one row. Verified 2026-06-09 (commit 5efa7eb).
 
 ### T012 — Delta feed endpoint · `TODO` · P1 · (needs T011)
 **Expected:** `GET /api/v1/sync/changes?since=...` returns ordered change events; secured + permissioned; explicit response DTO.
