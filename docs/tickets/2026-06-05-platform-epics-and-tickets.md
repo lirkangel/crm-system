@@ -315,9 +315,11 @@ F-EPIC-1 (scaffold) ─► F-EPIC-2 (auth UI) ─► F-EPIC-3 (data) ─► F-EP
 **Acceptance:** a thrown render error is contained to its route; transient errors toast.
 **Done:** `RouteErrorBoundary` (class component + localized `RouteErrorFallback`) wraps every routed page in `routes.tsx` — a render error shows a "Something went wrong / Try again" fallback for that page only, leaving `AppShell` (and `/login`) intact; retry resets and re-renders. `sonner`'s `<Toaster/>` mounted app-wide in `App`; `AuthContext.logout` now toasts `auth.logoutFailedLocal` when the server-side revoke fails (session still clears locally, but the user is told why). TDD: `RouteErrorBoundary.test.tsx` covers pass-through, fallback, and recovery-on-retry. Verified 2026-06-09 (commit 79673e3).
 
-### F703 — Permission-aware nav · `TODO` · P1 · (needs F204, B-EPIC-2)
+### F703 — Permission-aware nav · `DONE` · P1 · (needs F204, B-EPIC-2)
 **Expected:** hide nav items the user lacks permission for.
 **Acceptance:** nav reflects the user's permissions from `/auth/me`.
+**Done:** `CurrentUser` type (mirrors `/auth/me` DTO); `hasPermission(user, perm)` pure utility; `useCurrentUser` hook fetches `/api/v1/auth/me`, returns null gracefully when unauthenticated or on network error. `AppShell` nav items carry an optional `permission` field and are filtered at render time — admin Users (`core.users.read`) and Roles (`core.roles.read`) items are hidden from users without those permissions; Dashboard shows always. 10 new tests (4 permission util + 3 hook + 3 AppShell). i18n keys added for admin nav items (VI + EN). Verified 2026-06-09 (commit 2cc6c75).
+**Note:** uses fail-closed model (items hidden while loading/null). Wires to the real `/auth/me` endpoint once T008a ships.
 
 ---
 
