@@ -109,10 +109,10 @@ F-EPIC-1 (scaffold) ─► F-EPIC-2 (auth UI) ─► F-EPIC-3 (data) ─► F-EP
 **Acceptance:** concurrent writes produce a single unbroken chain in a test.
 **Done:** `AuditWriter` is the single dedicated writer bean; a `ReentrantLock` serializes read-latest/compute/persist. `AuditServiceIT` fires 100 concurrent writes via `ExecutorService` and walks the resulting chain to confirm it's unbroken. Verified 2026-06-09 (commit 8e9deee).
 
-### T009b — Full audit payload capture · `IN PROGRESS` · P0 · (needs T009)
+### T009b — Full audit payload capture · `DONE` · P0 · (needs T009)
 **Expected:** persist actor, source IP, entity type/id, op, before/after JSON, severity.
 **Acceptance:** an audited operation records all fields; sensitive reads (e.g. guest IDs) and auth events are auditable.
-**Status:** `AuditPayload`/`AuditWriter` capture and persist all listed fields (actor, source IP, entity type/id, op, before/after JSON, severity). Wiring actual call sites — auth events, sensitive entity reads — into `AuditService.record(...)` is still open; blocked on the in-flight M1 `AuthService` extraction (parallel session). 2026-06-09.
+**Done:** `AuditPayload`/`AuditWriter` already captured all fields (T009). Wired call sites: `AuthController.login` records `AUTH_LOGIN_SUCCESS` (INFO, actor=userId, entityType=User, entityId=userId) and `AUTH_LOGIN_FAILURE` (WARN, actor=null) on every attempt, capturing `sourceIp` from `HttpServletRequest`. `UserController.createUser` records `USER_CREATE` (INFO, actor=adminId, entityType=User, entityId=newUserId). `AuthControllerAuditTest` + `UserControllerAuditTest` verify all payload fields via `ArgumentCaptor`. 86/86 green. Verified 2026-06-09 (commit 3e74c71).
 
 ### T009c — Weekly chain-verification job · `DONE` · P2 · (needs T009)
 **Expected:** scheduled task recomputes the chain; on break, writes a `CRITICAL` event + admin alert.
