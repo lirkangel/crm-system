@@ -153,9 +153,10 @@ F-EPIC-1 (scaffold) ─► F-EPIC-2 (auth UI) ─► F-EPIC-3 (data) ─► F-EP
 ## B-EPIC-5 — Plugin Host
 *Goal: the platform's core differentiator — isolated plugin loading.*
 
-### T013 — Plugin manifest model + registry service · `TODO` · P0
+### T013 — Plugin manifest model + registry service · `DONE` · P0
 **Expected:** manifest DTO/model + `PluginRegistryService` with register / activate / disable / mark-load-failed / mark-uninstall-pending.
 **Acceptance:** plugin state transitions are explicit and test-covered; state persists in `plugin_registry`.
+**Done:** `Plugin.PluginManifest` record models the parsed `plugin.yaml` (id, version, display-name, depends-on, permissions-declared, foundation-services-used, schema, entry — per spec); `Plugin.PluginState` enum documents the lifecycle (REGISTERED → ACTIVE ⇄ DISABLED, any → LOAD_FAILED with reason, any → UNINSTALL_PENDING terminal). `PluginRegistryServiceImpl` enforces transitions: duplicate register → 400, activate/disable on UNINSTALL_PENDING → 400, unknown plugin → 404; activate stamps `lastLoadedAt` and clears `errorMessage`; manifest persisted to `manifest_json` via Jackson. 11 transition tests in `PluginRegistryServiceTest`; 117/117 green. Verified 2026-06-10 (commit f860caf).
 
 ### T014 — ZIP discovery + validation · `TODO` · P0 · (needs T013)
 **Expected:** scan the plugin dir on startup; validate ZIP contents are traversal-safe; parse `plugin.yaml`; validate required fields before load.
