@@ -139,9 +139,10 @@ F-EPIC-1 (scaffold) ─► F-EPIC-2 (auth UI) ─► F-EPIC-3 (data) ─► F-EP
 **Acceptance:** a rolled-back data write produces no change_event (verified in a test).
 **Done:** `ChangeEventServiceImpl.record` uses `@Transactional(REQUIRED)`, so it joins the caller's transaction. `ChangeEventSameTransactionIT` uses `TransactionTemplate` to verify: rolled-back write produces no rows; committed write produces exactly one row. Verified 2026-06-09 (commit 5efa7eb).
 
-### T012 — Delta feed endpoint · `TODO` · P1 · (needs T011)
+### T012 — Delta feed endpoint · `DONE` · P1 · (needs T011)
 **Expected:** `GET /api/v1/sync/changes?since=...` returns ordered change events; secured + permissioned; explicit response DTO.
 **Acceptance:** client pulls changes incrementally by timestamp/cursor; unauthorized access is rejected.
+**Done:** `SyncController` exposes `GET /api/v1/sync/changes?since=<ISO instant>`, gated by new `core.sync.read` permission (`@PreAuthorize`); V4 migration seeds the permission and grants it to admin. `ChangeEventService.changesSince` → `findByOccurredAtAfterOrderByOccurredAtAsc` returns events oldest-first; explicit `ChangeEventResponse` DTO decouples the wire shape from the entity. `SyncControllerTest` covers 200+ordering+payload, 400 missing `since`, 403 without permission, 401 unauthenticated. 106/106 green. Verified 2026-06-10 (commit 2a1c668).
 
 ### T012a — WebSocket change push · `TODO` · P2 · (needs T012)
 **Expected:** push change notifications over WebSocket as a real-time complement to polling.
