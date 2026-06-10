@@ -12,6 +12,7 @@ public final class CorePermissions {
     public static final String ROLES_WRITE = "core.roles.write";
     public static final String AUDIT_READ = "core.audit.read";
     public static final String PLUGINS_MANAGE = "core.plugins.manage";
+    public static final String SYNC_READ = "core.sync.read";
 
     private CorePermissions() {
     }
@@ -24,6 +25,7 @@ public final class CorePermissions {
             ROLES_READ,
             ROLES_WRITE,
             AUDIT_READ,
-            PLUGINS_MANAGE);
+            PLUGINS_MANAGE,
+            SYNC_READ);
     }
 }

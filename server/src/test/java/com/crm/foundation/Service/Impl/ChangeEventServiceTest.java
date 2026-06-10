@@ -26,6 +26,21 @@ class ChangeEventServiceTest {
     private ChangeEventServiceImpl changeEventService;
 
     @Test
+    void changesSince_delegatesToRepositoryOrderedByOccurredAt() {
+        Instant since = Instant.parse("2026-06-09T09:00:00Z");
+        ChangeEvent e = new ChangeEvent();
+        e.setOccurredAt(Instant.parse("2026-06-09T10:00:00Z"));
+        org.mockito.Mockito.when(
+                changeEventRepository.findByOccurredAtAfterOrderByOccurredAtAsc(since))
+            .thenReturn(java.util.List.of(e));
+
+        java.util.List<ChangeEvent> result = changeEventService.changesSince(since);
+
+        assertThat(result).containsExactly(e);
+        verify(changeEventRepository).findByOccurredAtAfterOrderByOccurredAtAsc(since);
+    }
+
+    @Test
     void record_persistsChangeEventWithAllFields() {
         UUID entityId = UUID.fromString("00000000-0000-0000-0000-000000000042");
         Instant now = Instant.parse("2026-06-09T10:00:00Z");

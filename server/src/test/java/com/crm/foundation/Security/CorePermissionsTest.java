@@ -15,6 +15,7 @@ class CorePermissionsTest {
         assertThat(CorePermissions.ROLES_WRITE).isEqualTo("core.roles.write");
         assertThat(CorePermissions.AUDIT_READ).isEqualTo("core.audit.read");
         assertThat(CorePermissions.PLUGINS_MANAGE).isEqualTo("core.plugins.manage");
+        assertThat(CorePermissions.SYNC_READ).isEqualTo("core.sync.read");
     }
 
     @Test
@@ -26,6 +27,7 @@ class CorePermissionsTest {
             CorePermissions.ROLES_READ,
             CorePermissions.ROLES_WRITE,
             CorePermissions.AUDIT_READ,
-            CorePermissions.PLUGINS_MANAGE);
+            CorePermissions.PLUGINS_MANAGE,
+            CorePermissions.SYNC_READ);
     }
 }

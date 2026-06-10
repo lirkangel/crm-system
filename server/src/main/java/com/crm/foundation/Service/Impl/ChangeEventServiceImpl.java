@@ -8,6 +8,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Instant;
+import java.util.List;
 import java.util.UUID;
 
 @Service
@@ -27,5 +28,11 @@ public class ChangeEventServiceImpl implements ChangeEventService {
         event.setOp(op);
         event.setOccurredAt(occurredAt);
         changeEventRepository.save(event);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public List<ChangeEvent> changesSince(Instant since) {
+        return changeEventRepository.findByOccurredAtAfterOrderByOccurredAtAsc(since);
     }
 }
