@@ -5,6 +5,7 @@ pub mod backoff;
 pub mod drain;
 pub mod error;
 pub mod machine;
+pub mod pull;
 
 pub use backoff::Backoff;
 pub use drain::{ChangePusher, DrainOutcome, HttpChangePusher, drain};

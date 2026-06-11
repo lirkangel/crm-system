@@ -405,9 +405,10 @@ F-EPIC-1 (scaffold) ─► F-EPIC-2 (auth UI) ─► F-EPIC-3 (data) ─► F-EP
 **Acceptance:** errors route to the right UX path; retry only on transient categories.
 **Done (TDD):** `sync::SyncErrorCategory` with `from_status` mapping (401 AuthExpired, 409 Conflict, 404/410 PluginUnknown, other 4xx Malformed, 5xx ServerError; transport errors are Network at the call site) and `is_transient()` true only for Network/ServerError. Verified 2026-06-11.
 
-### D305 — Pull deltas · `TODO` · P1 · (needs D302, T012)
+### D305 — Pull deltas · `DONE (fetch layer)` · P1 · (needs D302, T012)
 **Expected:** pull `/sync/changes` on reconnect, on WS notify, and on a 30s safety poll.
 **Acceptance:** client converges to server state after reconnect.
+**Done (TDD):** `sync::pull::pull_changes` — GET `/api/v1/sync/changes?since=<RFC3339>` with bearer, parses the `CommonResponse<ChangeEventResponse[]>` feed into `PulledChange` (caller refetches + writes through / evicts per op); errors map to `SyncErrorCategory` (401→AuthExpired, transport→Network). mockito tests: ordered pull, 401, unreachable server. The reconnect/WS-notify/30s-poll **scheduling** lands with the app-loop wiring (D402). cargo 50/50 green. Verified 2026-06-11.
 
 ### D306 — State-machine + backoff tests · `DONE` · P0 · (needs D301)
 **Expected:** `tokio-test` + `mockito` tests for queue ordering, conflict, retry/backoff.
