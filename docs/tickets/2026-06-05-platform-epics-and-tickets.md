@@ -173,9 +173,10 @@ F-EPIC-1 (scaffold) ─► F-EPIC-2 (auth UI) ─► F-EPIC-3 (data) ─► F-EP
 **Acceptance:** plugin classes load isolated; entrypoint `onLoad` is invoked.
 **Done (TDD):** `Plugin.PluginActivator` is the entrypoint contract (`onLoad()`); `Plugin.ParentLastClassLoader` (child-first `URLClassLoader`, parallel-capable) delegates `java./javax./jdk./com.crm.foundation.` to the parent so API types stay castable while plugin jars win otherwise; `Plugin.PluginLoader` extracts `lib/*.jar` to a temp work dir, builds the loader, and instantiates the declared entry (clear rejections: missing class / not an activator / no no-arg ctor / no jars). `PluginHost.loadPlugin` now loads the entrypoint and invokes `onLoad()` before `activate`; load failure → `LOAD_FAILED`. `PluginLoaderTest` compiles a real plugin jar at test runtime (javax.tools) and proves isolation (plugin class in its own loader, castable to parent-loaded `PluginActivator`, `onLoad` observed); 4 loader + 8 host tests; 149/149 green. Verified 2026-06-11.
 
-### T015a — Flyway-per-plugin-schema · `TODO` · P0 · (needs T015)
+### T015a — Flyway-per-plugin-schema · `DONE` · P0 · (needs T015)
 **Expected:** run the plugin's Flyway migrations against its own Postgres schema.
 **Acceptance:** plugin tables are created in the plugin schema, not `public`.
+**Done (TDD):** `Plugin.PluginMigrator` extracts `db/*.sql` from the validated package and runs Flyway with the manifest's `schema` as `defaultSchema`+`schemas` (`createSchemas`), so plugin tables and `flyway_schema_history` land in the plugin schema, never `public`; packages without `db/` skip cleanly. `PluginHost` migrates between register and entrypoint load; migration failure → `LOAD_FAILED`. `PluginMigratorTest` (3, DB-free extraction/skip) + `PluginMigratorIT` (Testcontainers: `demo_thing` + history in `plugin_demo`, absent from `public`) + host wiring test; 153/153 unit green (IT Docker-gated). Verified 2026-06-11.
 
 ### T015b — Minimal demo plugin loads end-to-end · `TODO` · P0 · (needs T015a)
 **Expected:** a minimal demo plugin is discovered, registered, and migrated into its own schema.
