@@ -1,5 +1,6 @@
 mod auth;
 mod auth_client;
+pub mod cache;
 mod commands;
 pub mod config;
 pub mod error;
