@@ -163,9 +163,10 @@ F-EPIC-1 (scaffold) ─► F-EPIC-2 (auth UI) ─► F-EPIC-3 (data) ─► F-EP
 **Acceptance:** invalid/malicious packages are rejected with a clear reason; a valid manifest parses.
 **Done (TDD):** `Plugin.PluginZipValidator` rejects Zip-Slip entries (absolute paths, `..` segments incl. backslash variants) and packages without a root-level `plugin.yaml`; `Plugin.PluginManifestParser` (SnakeYAML `SafeConstructor` — no arbitrary type instantiation from untrusted manifests) parses kebab-case keys into `PluginManifest` and requires `id`/`version`/`schema`/`entry`; `Plugin.PluginDiscovery` scans `foundation.plugins.directory` for `*.zip` and returns per-package `PluginDiscoveryResult` (parsed manifest or rejection reason) so one bad package never aborts the scan — the seam T014a builds on. Startup wiring (registry register/mark-load-failed) lands with **T014a**. 20 tests across `PluginZipValidatorTest`/`PluginManifestParserTest`/`PluginDiscoveryTest`; 137/137 green. Verified 2026-06-11.
 
-### T014a — Broken plugin does not crash startup · `TODO` · P0 · (needs T014)
+### T014a — Broken plugin does not crash startup · `DONE` · P0 · (needs T014)
 **Expected:** a plugin failing validation/migration is marked `load_failed` with reason; other plugins still load.
 **Acceptance:** with one broken and one valid plugin, the app starts and the valid one loads.
+**Done (TDD):** `Plugin.PluginHost` (`ApplicationRunner`) orchestrates startup: scans via `PluginDiscovery`, registers new plugins, activates loadable ones, marks per-plugin failures `LOAD_FAILED` with reason — each plugin isolated in its own try/catch so neither a rejected package, a throwing load, nor even a failing `markLoadFailed` aborts the host or the app. `DISABLED`/`UNINSTALL_PENDING` are skipped; already-registered plugins re-activate. Classloading (T015) and per-schema migration (T015a) slot into `loadPlugin`. 7 tests in `PluginHostTest` (incl. broken+valid side-by-side); 144/144 green. Verified 2026-06-11.
 
 ### T015 — Classloader + entrypoint resolution · `TODO` · P0 · (needs T014)
 **Expected:** `URLClassLoader`-per-plugin (parent-last); resolve and instantiate the declared entrypoint.
