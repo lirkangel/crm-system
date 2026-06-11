@@ -1,6 +1,8 @@
 //! Local SQLite cache (D-EPIC-2): offline reads come from here, offline
 //! writes queue in `pending_changes` until the sync engine drains them.
 
+pub mod entities;
+
 use rusqlite::Connection;
 use std::path::Path;
 
