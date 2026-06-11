@@ -158,9 +158,10 @@ F-EPIC-1 (scaffold) ─► F-EPIC-2 (auth UI) ─► F-EPIC-3 (data) ─► F-EP
 **Acceptance:** plugin state transitions are explicit and test-covered; state persists in `plugin_registry`.
 **Done:** `Plugin.PluginManifest` record models the parsed `plugin.yaml` (id, version, display-name, depends-on, permissions-declared, foundation-services-used, schema, entry — per spec); `Plugin.PluginState` enum documents the lifecycle (REGISTERED → ACTIVE ⇄ DISABLED, any → LOAD_FAILED with reason, any → UNINSTALL_PENDING terminal). `PluginRegistryServiceImpl` enforces transitions: duplicate register → 400, activate/disable on UNINSTALL_PENDING → 400, unknown plugin → 404; activate stamps `lastLoadedAt` and clears `errorMessage`; manifest persisted to `manifest_json` via Jackson. 11 transition tests in `PluginRegistryServiceTest`; 117/117 green. Verified 2026-06-10 (commit f860caf).
 
-### T014 — ZIP discovery + validation · `TODO` · P0 · (needs T013)
+### T014 — ZIP discovery + validation · `DONE` · P0 · (needs T013)
 **Expected:** scan the plugin dir on startup; validate ZIP contents are traversal-safe; parse `plugin.yaml`; validate required fields before load.
 **Acceptance:** invalid/malicious packages are rejected with a clear reason; a valid manifest parses.
+**Done (TDD):** `Plugin.PluginZipValidator` rejects Zip-Slip entries (absolute paths, `..` segments incl. backslash variants) and packages without a root-level `plugin.yaml`; `Plugin.PluginManifestParser` (SnakeYAML `SafeConstructor` — no arbitrary type instantiation from untrusted manifests) parses kebab-case keys into `PluginManifest` and requires `id`/`version`/`schema`/`entry`; `Plugin.PluginDiscovery` scans `foundation.plugins.directory` for `*.zip` and returns per-package `PluginDiscoveryResult` (parsed manifest or rejection reason) so one bad package never aborts the scan — the seam T014a builds on. Startup wiring (registry register/mark-load-failed) lands with **T014a**. 20 tests across `PluginZipValidatorTest`/`PluginManifestParserTest`/`PluginDiscoveryTest`; 137/137 green. Verified 2026-06-11.
 
 ### T014a — Broken plugin does not crash startup · `TODO` · P0 · (needs T014)
 **Expected:** a plugin failing validation/migration is marked `load_failed` with reason; other plugins still load.
