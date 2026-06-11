@@ -390,25 +390,29 @@ F-EPIC-1 (scaffold) ─► F-EPIC-2 (auth UI) ─► F-EPIC-3 (data) ─► F-EP
 **Acceptance:** transitions are deterministic and unit-tested.
 **Done (TDD):** `sync::machine` — `SyncState` (Offline/Online/Syncing/Conflict) × `SyncEvent` (connectivity up/down, drain started/completed, conflict detected/resolved, transient failure) with a total, deterministic `next()`: connectivity loss wins from every state; conflicts pause sync until resolved; transient failures return Online (backoff schedule is D303); unexpected events are no-ops. 6 tests incl. full-matrix determinism sweep; cargo 37/37 green. Verified 2026-06-11.
 
-### D302 — Drain queue with optimistic lock · `TODO` · P0 · (needs D301, B-EPIC-4)
+### D302 — Drain queue with optimistic lock · `DONE` · P0 · (needs D301, B-EPIC-4)
 **Expected:** PUT/POST each pending change with `If-Match: <base_version>`.
 **Acceptance:** queued changes flush in order when online.
+**Done (TDD):** `sync::drain` — pushes queued changes oldest-first via the `ChangePusher` trait; each accepted change is dequeued before the next is sent. `HttpChangePusher` PUTs `{base}/api/v1/entities/{type}/{id}` with `If-Match: <base_version>` + bearer (mockito-verified headers/body/URL). Note: the generic entity-write endpoint is a forward contract — server side lands with the first plugin entity API. cargo 47/47 green. Verified 2026-06-11.
 
-### D303 — Response handling · `TODO` · P0 · (needs D302)
+### D303 — Response handling · `DONE` · P0 · (needs D302)
 **Expected:** 200 → mark synced; 409 → mark conflict; 5xx/timeout → exponential backoff (1→60s).
 **Acceptance:** each response class drives the correct state, proven in tests.
+**Done (TDD):** `DrainOutcome` — 2xx dequeues + continues; 409 stops with `Conflict` (change stays queued for the resolution dialog); 5xx/transport stops with `Retry`; other 4xx stops with `Fatal` (never retried). `sync::Backoff` doubles 1→2→4→…→60s cap, `reset()` on success. Tests cover every class incl. mid-queue failure leaving the remainder queued. Verified 2026-06-11.
 
-### D304 — Typed error categories · `TODO` · P1 · (needs D303)
+### D304 — Typed error categories · `DONE` · P1 · (needs D303)
 **Expected:** `Network / Conflict / ServerError / AuthExpired / PluginUnknown / Malformed`.
 **Acceptance:** errors route to the right UX path; retry only on transient categories.
+**Done (TDD):** `sync::SyncErrorCategory` with `from_status` mapping (401 AuthExpired, 409 Conflict, 404/410 PluginUnknown, other 4xx Malformed, 5xx ServerError; transport errors are Network at the call site) and `is_transient()` true only for Network/ServerError. Verified 2026-06-11.
 
 ### D305 — Pull deltas · `TODO` · P1 · (needs D302, T012)
 **Expected:** pull `/sync/changes` on reconnect, on WS notify, and on a 30s safety poll.
 **Acceptance:** client converges to server state after reconnect.
 
-### D306 — State-machine + backoff tests · `TODO` · P0 · (needs D301)
+### D306 — State-machine + backoff tests · `DONE` · P0 · (needs D301)
 **Expected:** `tokio-test` + `mockito` tests for queue ordering, conflict, retry/backoff.
 **Acceptance:** the state machine is proven under simulated network conditions.
+**Done:** landed with D301–D304's TDD suites — `#[tokio::test]` drain tests with a scripted pusher (queue ordering, conflict stop, mid-queue 503, transport failure) + mockito HTTP-level test; full-matrix determinism sweep on the state machine; backoff schedule tests. cargo 47/47 green. Verified 2026-06-11.
 
 ## D-EPIC-4 — IPC bridge
 
