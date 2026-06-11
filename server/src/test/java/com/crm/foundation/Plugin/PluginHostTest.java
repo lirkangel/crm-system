@@ -36,7 +36,10 @@ class PluginHostTest {
         return row;
     }
 
-    /** Subclass double — Mockito's inline mock-maker can't instrument concrete classes on this JDK. */
+    /** Subclass doubles — Mockito's inline mock-maker can't instrument concrete classes on this JDK. */
+    private final List<String> loadedEntrypoints = new java.util.ArrayList<>();
+    private final List<String> failEntrypointFor = new java.util.ArrayList<>();
+
     private PluginHost hostScanning(PluginDiscoveryResult... results) {
         PluginDiscovery discovery = new PluginDiscovery("unused", new PluginZipValidator(), new PluginManifestParser()) {
             @Override
@@ -44,7 +47,16 @@ class PluginHostTest {
                 return List.of(results);
             }
         };
-        return new PluginHost(discovery, registryService);
+        PluginLoader loader = new PluginLoader() {
+            @Override
+            public PluginActivator loadEntrypoint(java.nio.file.Path zip, PluginManifest manifest) {
+                if (failEntrypointFor.contains(manifest.id())) {
+                    throw new InvalidPluginPackageException("entry class missing for " + manifest.id());
+                }
+                return () -> loadedEntrypoints.add(manifest.id());
+            }
+        };
+        return new PluginHost(discovery, registryService, loader);
     }
 
     @Test
@@ -57,6 +69,20 @@ class PluginHostTest {
 
         verify(registryService).register(manifest);
         verify(registryService).activate("com.crm.demo");
+        org.assertj.core.api.Assertions.assertThat(loadedEntrypoints).containsExactly("com.crm.demo");
+    }
+
+    @Test
+    void should_mark_load_failed_when_entrypoint_loading_fails() {
+        PluginManifest manifest = manifest("com.crm.broken");
+        failEntrypointFor.add("com.crm.broken");
+        PluginHost host = hostScanning(PluginDiscoveryResult.valid("/plugins/broken.zip", manifest));
+        when(registryService.findByPluginId("com.crm.broken")).thenReturn(Optional.empty());
+
+        host.startPlugins();
+
+        verify(registryService).markLoadFailed(eq("com.crm.broken"), contains("entry class missing"));
+        verify(registryService, never()).activate("com.crm.broken");
     }
 
     @Test

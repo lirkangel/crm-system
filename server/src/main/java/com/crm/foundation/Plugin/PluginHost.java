@@ -8,6 +8,7 @@ import org.springframework.boot.ApplicationArguments;
 import org.springframework.boot.ApplicationRunner;
 import org.springframework.stereotype.Component;
 
+import java.nio.file.Path;
 import java.util.Optional;
 
 /**
@@ -27,10 +28,12 @@ public class PluginHost implements ApplicationRunner {
 
     private final PluginDiscovery discovery;
     private final PluginRegistryService registryService;
+    private final PluginLoader pluginLoader;
 
-    public PluginHost(PluginDiscovery discovery, PluginRegistryService registryService) {
+    public PluginHost(PluginDiscovery discovery, PluginRegistryService registryService, PluginLoader pluginLoader) {
         this.discovery = discovery;
         this.registryService = registryService;
+        this.pluginLoader = pluginLoader;
     }
 
     @Override
@@ -41,7 +44,7 @@ public class PluginHost implements ApplicationRunner {
     public void startPlugins() {
         for (PluginDiscoveryResult result : discovery.scan()) {
             if (result.isValid()) {
-                loadIsolated(result.manifest());
+                loadIsolated(result);
             } else {
                 // No parseable manifest — no plugin id to record against; discovery already logged the reason
                 log.warn("Skipping rejected plugin package {}: {}", result.packagePath(), result.rejectionReason());
@@ -49,16 +52,18 @@ public class PluginHost implements ApplicationRunner {
         }
     }
 
-    private void loadIsolated(PluginManifest manifest) {
+    private void loadIsolated(PluginDiscoveryResult result) {
+        PluginManifest manifest = result.manifest();
         try {
-            loadPlugin(manifest);
+            loadPlugin(result);
         } catch (Exception e) {
             log.error("Plugin {} failed to load: {}", manifest.id(), e.getMessage(), e);
             markLoadFailedQuietly(manifest.id(), e.getMessage());
         }
     }
 
-    private void loadPlugin(PluginManifest manifest) {
+    private void loadPlugin(PluginDiscoveryResult result) {
+        PluginManifest manifest = result.manifest();
         Optional<PluginRegistry> existing = registryService.findByPluginId(manifest.id());
         if (existing.isPresent() && isSkipped(existing.get())) {
             log.info("Skipping plugin {} (state {})", manifest.id(), existing.get().getState());
@@ -67,6 +72,8 @@ public class PluginHost implements ApplicationRunner {
         if (existing.isEmpty()) {
             registryService.register(manifest);
         }
+        PluginActivator activator = pluginLoader.loadEntrypoint(Path.of(result.packagePath()), manifest);
+        activator.onLoad();
         registryService.activate(manifest.id());
         log.info("Plugin {} v{} active", manifest.id(), manifest.version());
     }
