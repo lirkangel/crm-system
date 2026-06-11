@@ -38,6 +38,8 @@ public class WebSecurityConfig {
                             "/api/v1/auth/refresh",
                             "/api/v1/auth/logout",
                             "/api/v1/auth/revoke/**",
+                            // WS upgrade: token validated by SyncHandshakeInterceptor (browsers can't set headers here)
+                            "/ws/sync",
                             "/actuator/health/**",
                             "/v3/api-docs/**",
                             "/swagger-ui/**",

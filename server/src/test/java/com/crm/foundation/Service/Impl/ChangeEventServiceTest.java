@@ -22,6 +22,9 @@ class ChangeEventServiceTest {
     @Mock
     private ChangeEventRepository changeEventRepository;
 
+    @Mock
+    private org.springframework.context.ApplicationEventPublisher eventPublisher;
+
     @InjectMocks
     private ChangeEventServiceImpl changeEventService;
 
@@ -56,5 +59,18 @@ class ChangeEventServiceTest {
         assertThat(saved.getVersion()).isEqualTo(1L);
         assertThat(saved.getOp()).isEqualTo("CREATE");
         assertThat(saved.getOccurredAt()).isEqualTo(now);
+    }
+
+    @Test
+    void record_publishesChangeEventRecordedForAfterCommitPush() {
+        UUID entityId = UUID.fromString("00000000-0000-0000-0000-000000000043");
+
+        changeEventService.record("core", "User", entityId, 1L, "UPDATE", Instant.parse("2026-06-11T10:00:00Z"));
+
+        ArgumentCaptor<com.crm.foundation.Sync.ChangeEventRecorded> captor =
+            ArgumentCaptor.forClass(com.crm.foundation.Sync.ChangeEventRecorded.class);
+        verify(eventPublisher).publishEvent(captor.capture());
+        assertThat(captor.getValue().event().getEntityId()).isEqualTo(entityId);
+        assertThat(captor.getValue().event().getOp()).isEqualTo("UPDATE");
     }
 }
