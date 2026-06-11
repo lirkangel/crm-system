@@ -417,9 +417,10 @@ F-EPIC-1 (scaffold) ─► F-EPIC-2 (auth UI) ─► F-EPIC-3 (data) ─► F-EP
 
 ## D-EPIC-4 — IPC bridge
 
-### D401 — Cache IPC commands · `PARTIAL` · P0 · (needs D202)
+### D401 — Cache IPC commands · `DONE` · P0 · (needs D202)
 **Expected:** Tauri commands exposing cache reads/writes to React (`commands.rs`).
 **Acceptance:** React reads/writes entities through IPC.
+**Done (TDD):** `ipc::CacheState` (Mutex-wrapped `CacheDb`, opened in the app-data dir at setup) + commands `cache_get_entity` / `cache_list_entities` / `cache_put_entity` / `cache_enqueue_change` / `cache_pending_changes`, registered in `lib.rs`. Pure logic functions unit-tested (round-trip, missing→None, offline queue); thin `#[tauri::command]` wrappers per the codebase pattern. cargo 53/53 green. Verified 2026-06-11.
 
 ### D402 — Sync events to frontend · `TODO` · P1 · (needs D301)
 **Expected:** push sync status + conflict events to the webview.
