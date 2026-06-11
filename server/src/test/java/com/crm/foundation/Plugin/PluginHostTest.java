@@ -39,6 +39,8 @@ class PluginHostTest {
     /** Subclass doubles — Mockito's inline mock-maker can't instrument concrete classes on this JDK. */
     private final List<String> loadedEntrypoints = new java.util.ArrayList<>();
     private final List<String> failEntrypointFor = new java.util.ArrayList<>();
+    private final List<String> migratedPlugins = new java.util.ArrayList<>();
+    private final List<String> failMigrationFor = new java.util.ArrayList<>();
 
     private PluginHost hostScanning(PluginDiscoveryResult... results) {
         PluginDiscovery discovery = new PluginDiscovery("unused", new PluginZipValidator(), new PluginManifestParser()) {
@@ -56,7 +58,16 @@ class PluginHostTest {
                 return () -> loadedEntrypoints.add(manifest.id());
             }
         };
-        return new PluginHost(discovery, registryService, loader);
+        PluginMigrator migrator = new PluginMigrator(null) {
+            @Override
+            public void migrate(java.nio.file.Path zip, PluginManifest manifest) {
+                if (failMigrationFor.contains(manifest.id())) {
+                    throw new IllegalStateException("migration failed for " + manifest.id());
+                }
+                migratedPlugins.add(manifest.id());
+            }
+        };
+        return new PluginHost(discovery, registryService, loader, migrator);
     }
 
     @Test
@@ -70,6 +81,21 @@ class PluginHostTest {
         verify(registryService).register(manifest);
         verify(registryService).activate("com.crm.demo");
         org.assertj.core.api.Assertions.assertThat(loadedEntrypoints).containsExactly("com.crm.demo");
+        org.assertj.core.api.Assertions.assertThat(migratedPlugins).containsExactly("com.crm.demo");
+    }
+
+    @Test
+    void should_mark_load_failed_when_migration_fails() {
+        PluginManifest manifest = manifest("com.crm.badmigration");
+        failMigrationFor.add("com.crm.badmigration");
+        PluginHost host = hostScanning(PluginDiscoveryResult.valid("/plugins/badmigration.zip", manifest));
+        when(registryService.findByPluginId("com.crm.badmigration")).thenReturn(Optional.empty());
+
+        host.startPlugins();
+
+        verify(registryService).markLoadFailed(eq("com.crm.badmigration"), contains("migration failed"));
+        verify(registryService, never()).activate("com.crm.badmigration");
+        org.assertj.core.api.Assertions.assertThat(loadedEntrypoints).isEmpty();
     }
 
     @Test

@@ -29,11 +29,17 @@ public class PluginHost implements ApplicationRunner {
     private final PluginDiscovery discovery;
     private final PluginRegistryService registryService;
     private final PluginLoader pluginLoader;
+    private final PluginMigrator pluginMigrator;
 
-    public PluginHost(PluginDiscovery discovery, PluginRegistryService registryService, PluginLoader pluginLoader) {
+    public PluginHost(
+            PluginDiscovery discovery,
+            PluginRegistryService registryService,
+            PluginLoader pluginLoader,
+            PluginMigrator pluginMigrator) {
         this.discovery = discovery;
         this.registryService = registryService;
         this.pluginLoader = pluginLoader;
+        this.pluginMigrator = pluginMigrator;
     }
 
     @Override
@@ -72,6 +78,7 @@ public class PluginHost implements ApplicationRunner {
         if (existing.isEmpty()) {
             registryService.register(manifest);
         }
+        pluginMigrator.migrate(Path.of(result.packagePath()), manifest);
         PluginActivator activator = pluginLoader.loadEntrypoint(Path.of(result.packagePath()), manifest);
         activator.onLoad();
         registryService.activate(manifest.id());
