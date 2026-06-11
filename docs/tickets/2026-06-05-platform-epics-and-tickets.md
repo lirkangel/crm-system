@@ -178,9 +178,10 @@ F-EPIC-1 (scaffold) ─► F-EPIC-2 (auth UI) ─► F-EPIC-3 (data) ─► F-EP
 **Acceptance:** plugin tables are created in the plugin schema, not `public`.
 **Done (TDD):** `Plugin.PluginMigrator` extracts `db/*.sql` from the validated package and runs Flyway with the manifest's `schema` as `defaultSchema`+`schemas` (`createSchemas`), so plugin tables and `flyway_schema_history` land in the plugin schema, never `public`; packages without `db/` skip cleanly. `PluginHost` migrates between register and entrypoint load; migration failure → `LOAD_FAILED`. `PluginMigratorTest` (3, DB-free extraction/skip) + `PluginMigratorIT` (Testcontainers: `demo_thing` + history in `plugin_demo`, absent from `public`) + host wiring test; 153/153 unit green (IT Docker-gated). Verified 2026-06-11.
 
-### T015b — Minimal demo plugin loads end-to-end · `TODO` · P0 · (needs T015a)
+### T015b — Minimal demo plugin loads end-to-end · `DONE (IT pending Docker run)` · P0 · (needs T015a)
 **Expected:** a minimal demo plugin is discovered, registered, and migrated into its own schema.
 **Acceptance:** after startup the demo plugin is `active` in `plugin_registry` with its schema present.
+**Done:** `DemoPluginEndToEndIT` builds a complete demo package at test runtime (manifest + runtime-compiled entrypoint jar + `db/V1__init.sql`), drops it into a temp plugin dir via `@DynamicPropertySource`, boots the full Spring context, and asserts: registry row `ACTIVE` with `lastLoadedAt`, `demo_e2e_item` table present in `plugin_demo_e2e` schema, `onLoad()` observed. All pipeline stages individually unit-proven (T014–T015a); **run `mvn test -Pintegration` on a Docker-capable machine to confirm e2e** — this sandbox's Docker API is filtered so the IT skips. 2026-06-11.
 
 ---
 
