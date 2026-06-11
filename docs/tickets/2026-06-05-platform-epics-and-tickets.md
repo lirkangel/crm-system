@@ -144,9 +144,10 @@ F-EPIC-1 (scaffold) ─► F-EPIC-2 (auth UI) ─► F-EPIC-3 (data) ─► F-EP
 **Acceptance:** client pulls changes incrementally by timestamp/cursor; unauthorized access is rejected.
 **Done:** `SyncController` exposes `GET /api/v1/sync/changes?since=<ISO instant>`, gated by new `core.sync.read` permission (`@PreAuthorize`); V4 migration seeds the permission and grants it to admin. `ChangeEventService.changesSince` → `findByOccurredAtAfterOrderByOccurredAtAsc` returns events oldest-first; explicit `ChangeEventResponse` DTO decouples the wire shape from the entity. `SyncControllerTest` covers 200+ordering+payload, 400 missing `since`, 403 without permission, 401 unauthenticated. 106/106 green. Verified 2026-06-10 (commit 2a1c668).
 
-### T012a — WebSocket change push · `TODO` · P2 · (needs T012)
+### T012a — WebSocket change push · `DONE` · P2 · (needs T012)
 **Expected:** push change notifications over WebSocket as a real-time complement to polling.
 **Acceptance:** a connected client receives a notification on a write without polling.
+**Done (TDD):** `Sync.SyncWebSocketHandler` at `/ws/sync` fans out committed change events as JSON (`ChangeEventResponse` shape, same as the delta feed); per-session send isolation (one broken pipe never blocks others). `ChangeEventServiceImpl.record` publishes `ChangeEventRecorded`; `SyncChangeNotifier` listens `AFTER_COMMIT` (rolled-back writes never pushed — extends T011a's guarantee) and never propagates push failures (polling is the fallback). Handshake auth via `SyncHandshakeInterceptor` (`?token=` access JWT — browsers can't set headers on WS upgrade); `/ws/sync` permitted in `WebSecurityConfig` since the interceptor owns auth. Also fixed a latent flaky test (`validateToken_returnsFalseForTamperedToken` tampered the signature's final base64url char, which only carries 2 significant bits — now tampers mid-payload). 9 new tests; 172/172 green. Verified 2026-06-11.
 
 ---
 
