@@ -361,15 +361,17 @@ F-EPIC-1 (scaffold) ─► F-EPIC-2 (auth UI) ─► F-EPIC-3 (data) ─► F-EP
 **Expected:** `config.rs` (server URL etc.) + `state.rs` app state reviewed and stable.
 **Acceptance:** config persists; shared state is accessed safely.
 
-### D104 — Rust test harness · `TODO` · P0
+### D104 — Rust test harness · `DONE` · P0
 **Expected:** `#[test]` harness with one passing test.
 **Acceptance:** `cargo test` runs green.
+**Done:** harness landed incidentally with the auth-slice work — `#[cfg(test)]` modules in `auth.rs`, `commands.rs`, `config.rs`, `state.rs`; `cargo test` 21/21 green. Verified 2026-06-11.
 
 ## D-EPIC-2 — Local SQLite cache
 
-### D201 — SQLite setup + schema · `TODO` · P0 · (needs D101)
+### D201 — SQLite setup + schema · `DONE` · P0 · (needs D101)
 **Expected:** `rusqlite` wired; cache tables + `pending_changes` schema created on first run.
 **Acceptance:** DB file initializes; schema present.
+**Done (TDD):** `rusqlite` 0.32 (bundled) added; `cache::CacheDb::open` creates the DB file, enables WAL + foreign keys, and idempotently creates `cache_entities` (PK entity_type+entity_id, version, payload_json, cached_at) and `pending_changes` (op, entity_type, entity_id, payload_json, base_version, queued_at + drain-order index) on first run. 3 tests (first-run create, idempotent reopen, queue columns); cargo 24/24 green. Verified 2026-06-11.
 
 ### D202 — Cache read/write-through queries · `TODO` · P0 · (needs D201)
 **Expected:** functions to read cached entities and write-through on server reads.
