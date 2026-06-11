@@ -168,9 +168,10 @@ F-EPIC-1 (scaffold) ─► F-EPIC-2 (auth UI) ─► F-EPIC-3 (data) ─► F-EP
 **Acceptance:** with one broken and one valid plugin, the app starts and the valid one loads.
 **Done (TDD):** `Plugin.PluginHost` (`ApplicationRunner`) orchestrates startup: scans via `PluginDiscovery`, registers new plugins, activates loadable ones, marks per-plugin failures `LOAD_FAILED` with reason — each plugin isolated in its own try/catch so neither a rejected package, a throwing load, nor even a failing `markLoadFailed` aborts the host or the app. `DISABLED`/`UNINSTALL_PENDING` are skipped; already-registered plugins re-activate. Classloading (T015) and per-schema migration (T015a) slot into `loadPlugin`. 7 tests in `PluginHostTest` (incl. broken+valid side-by-side); 144/144 green. Verified 2026-06-11.
 
-### T015 — Classloader + entrypoint resolution · `TODO` · P0 · (needs T014)
+### T015 — Classloader + entrypoint resolution · `DONE` · P0 · (needs T014)
 **Expected:** `URLClassLoader`-per-plugin (parent-last); resolve and instantiate the declared entrypoint.
 **Acceptance:** plugin classes load isolated; entrypoint `onLoad` is invoked.
+**Done (TDD):** `Plugin.PluginActivator` is the entrypoint contract (`onLoad()`); `Plugin.ParentLastClassLoader` (child-first `URLClassLoader`, parallel-capable) delegates `java./javax./jdk./com.crm.foundation.` to the parent so API types stay castable while plugin jars win otherwise; `Plugin.PluginLoader` extracts `lib/*.jar` to a temp work dir, builds the loader, and instantiates the declared entry (clear rejections: missing class / not an activator / no no-arg ctor / no jars). `PluginHost.loadPlugin` now loads the entrypoint and invokes `onLoad()` before `activate`; load failure → `LOAD_FAILED`. `PluginLoaderTest` compiles a real plugin jar at test runtime (javax.tools) and proves isolation (plugin class in its own loader, castable to parent-loaded `PluginActivator`, `onLoad` observed); 4 loader + 8 host tests; 149/149 green. Verified 2026-06-11.
 
 ### T015a — Flyway-per-plugin-schema · `TODO` · P0 · (needs T015)
 **Expected:** run the plugin's Flyway migrations against its own Postgres schema.
