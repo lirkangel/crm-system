@@ -385,9 +385,10 @@ F-EPIC-1 (scaffold) ─► F-EPIC-2 (auth UI) ─► F-EPIC-3 (data) ─► F-EP
 
 ## D-EPIC-3 — Sync engine
 
-### D301 — Sync state machine · `TODO` · P0 · (needs D203)
+### D301 — Sync state machine · `DONE` · P0 · (needs D203)
 **Expected:** states for online/offline/syncing/conflict.
 **Acceptance:** transitions are deterministic and unit-tested.
+**Done (TDD):** `sync::machine` — `SyncState` (Offline/Online/Syncing/Conflict) × `SyncEvent` (connectivity up/down, drain started/completed, conflict detected/resolved, transient failure) with a total, deterministic `next()`: connectivity loss wins from every state; conflicts pause sync until resolved; transient failures return Online (backoff schedule is D303); unexpected events are no-ops. 6 tests incl. full-matrix determinism sweep; cargo 37/37 green. Verified 2026-06-11.
 
 ### D302 — Drain queue with optimistic lock · `TODO` · P0 · (needs D301, B-EPIC-4)
 **Expected:** PUT/POST each pending change with `If-Match: <base_version>`.

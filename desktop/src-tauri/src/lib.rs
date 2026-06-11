@@ -5,6 +5,7 @@ mod commands;
 pub mod config;
 pub mod error;
 pub mod state;
+pub mod sync;
 
 use auth_client::AuthApiClient;
 use config::BackendConfig;
