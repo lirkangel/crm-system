@@ -95,7 +95,13 @@ class JwtTokenProviderTest {
         user.setUsername("carol");
         user.setEmail("carol@example.com");
         String jwt = provider.issueAccessToken(user, java.util.Set.of()).token();
-        String tampered = jwt.substring(0, jwt.length() - 1) + (jwt.endsWith("a") ? "b" : "a");
+        // Tamper mid-payload: the final base64url char of the signature only carries
+        // 2 significant bits, so flipping it can decode to the same bytes (flaky)
+        int payloadMiddle = jwt.indexOf('.') + (jwt.indexOf('.', jwt.indexOf('.') + 1) - jwt.indexOf('.')) / 2;
+        char original = jwt.charAt(payloadMiddle);
+        String tampered = jwt.substring(0, payloadMiddle)
+            + (original == 'a' ? 'b' : 'a')
+            + jwt.substring(payloadMiddle + 1);
 
         assertThat(provider.validateToken(tampered)).isFalse();
     }
