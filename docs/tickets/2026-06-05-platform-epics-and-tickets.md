@@ -188,9 +188,10 @@ F-EPIC-1 (scaffold) ─► F-EPIC-2 (auth UI) ─► F-EPIC-3 (data) ─► F-EP
 ## B-EPIC-6 — API Quality & Testing
 *Goal: consistent error contract + proven runtime paths.*
 
-### T016 — RFC 7807 ProblemDetail responses · `TODO` · P1
+### T016 — RFC 7807 ProblemDetail responses · `DONE` · P1
 **Expected:** structured `application/problem+json` for validation / auth / forbidden / not-found / conflict / plugin-load, each with a stable `type` and a `trace_id`.
 **Acceptance:** clients receive consistent machine-readable error payloads; validation errors include field details.
+**Done (TDD):** `ErrorHandler` rewritten on Spring's `ProblemDetail`: stable `urn:problem-type:*` types for validation (400, per-field `errors` list), unauthorized (401, keeps `AuthException` code), forbidden (403, `AccessDeniedException`), not-found (404), bad-request (400), conflict (409, `OptimisticLockingFailureException`), plugin-load (422, `InvalidPluginPackageException`). Every problem carries a unique `trace_id` (logged for correlation) and a `code` extension so the existing FE client's `codeOf()` keeps working (FE reads status + optional `code`; `detail` replaces `message` — fallback to statusText is graceful). 9 tests in `ErrorHandlerTest`; 162/162 green. Verified 2026-06-11.
 
 ### T017 — Integration tests (Testcontainers) · `TODO` · P1 · (needs epics 2–4)
 **Expected:** Postgres-backed tests for login, refresh rotation, protected access, 403 denial, audit write, change-event write.
