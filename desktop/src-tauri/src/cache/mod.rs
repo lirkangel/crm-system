@@ -2,6 +2,7 @@
 //! writes queue in `pending_changes` until the sync engine drains them.
 
 pub mod entities;
+pub mod queue;
 
 use rusqlite::Connection;
 use std::path::Path;

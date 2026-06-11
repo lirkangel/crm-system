@@ -373,13 +373,15 @@ F-EPIC-1 (scaffold) ─► F-EPIC-2 (auth UI) ─► F-EPIC-3 (data) ─► F-EP
 **Acceptance:** DB file initializes; schema present.
 **Done (TDD):** `rusqlite` 0.32 (bundled) added; `cache::CacheDb::open` creates the DB file, enables WAL + foreign keys, and idempotently creates `cache_entities` (PK entity_type+entity_id, version, payload_json, cached_at) and `pending_changes` (op, entity_type, entity_id, payload_json, base_version, queued_at + drain-order index) on first run. 3 tests (first-run create, idempotent reopen, queue columns); cargo 24/24 green. Verified 2026-06-11.
 
-### D202 — Cache read/write-through queries · `TODO` · P0 · (needs D201)
+### D202 — Cache read/write-through queries · `DONE` · P0 · (needs D201)
 **Expected:** functions to read cached entities and write-through on server reads.
 **Acceptance:** a cached entity round-trips through SQLite.
+**Done (TDD):** `cache::entities` — `put_entity` (upsert, freshest server read wins), `get_entity` (`Option`), `list_entities` (per type, ordered). 4 tests incl. round-trip and stale-copy replacement; cargo 28/28 green. Verified 2026-06-11.
 
-### D203 — Pending-changes queue · `TODO` · P0 · (needs D201)
+### D203 — Pending-changes queue · `DONE` · P0 · (needs D201)
 **Expected:** `pending_changes(op, entity_type, entity_id, payload_json, base_version, queued_at)`.
 **Acceptance:** an offline write persists in the queue and survives restart.
+**Done (TDD):** `cache::queue` — `enqueue_change` (returns queue id), `pending_changes` (drain order: queued_at then id; carries `base_version` for D302's `If-Match`), `remove_change` (post-sync dequeue). 3 tests incl. restart survival against a real DB file; cargo 31/31 green. Verified 2026-06-11.
 
 ## D-EPIC-3 — Sync engine
 
