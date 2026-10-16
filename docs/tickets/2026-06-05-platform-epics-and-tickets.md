@@ -345,7 +345,7 @@ F-EPIC-1 (scaffold) ─► F-EPIC-2 (auth UI) ─► F-EPIC-3 (data) ─► F-EP
 
 # DESKTOP (Tauri Rust — `desktop/src-tauri/`)
 
-> **State:** shell scaffolded — `auth.rs`, `auth_client.rs`, `commands.rs`, `config.rs`, `error.rs`, `state.rs`, `lib.rs`, `main.rs` (~627 lines). No SQLite cache, no sync engine, no tests.
+> **State (2026-10-17):** shell, SQLite cache (D201–D203), sync engine (D301–D306) and cache IPC (D401) are done; `cargo test` 53/53 green. Remaining: auth/config close-out (D102, D103), sync events to the webview + pull scheduling (D402), OS-keychain refresh token (D501), first-run config (D502), packaging (D601, D602).
 
 ## D-EPIC-1 — Shell scaffold
 
@@ -449,11 +449,14 @@ F-EPIC-1 (scaffold) ─► F-EPIC-2 (auth UI) ─► F-EPIC-3 (data) ─► F-EP
 ---
 
 ## Recommended next 5 tickets (in order)
-1. ~~**T004** — tidy JWT/refresh boundaries (unblocks RBAC).~~ `DONE`
-2. ~~**T006a + T005** — permission constants, then map authorities.~~ `DONE`
-3. **T006** — `@PreAuthorize` enforcement. ← next
-4. **T007** — account lockout.
-5. **F101–F103** — stand up the React app. `DONE`
+_Updated 2026-10-17. The backend epics (B-EPIC-1 to B-EPIC-6) are done, so the critical path now runs through desktop auth and the frontend data layer._
+1. **D501** — refresh token in the OS keychain (unblocks F202). ← next
+2. **F202** — frontend token storage on top of D501.
+3. **D102 + D103** — finish the auth client and config/state so login/refresh/logout round-trips cleanly.
+4. **F301** — `useEntity` / `useList` hooks over the D401 cache IPC.
+5. **F401** — render forms from plugin JSON metadata.
+
+Also outstanding: run the Testcontainers ITs for **T015b** and **T017** on a Docker-capable machine to remove their "IT pending" marks.
 
 ## Notes
 - Hotel plugin work stays out until Backend EPIC-1 + EPIC-2 are green.

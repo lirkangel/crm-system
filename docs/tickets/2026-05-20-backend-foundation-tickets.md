@@ -1,5 +1,7 @@
 # Backend Foundation Tickets
 
+> **⚠️ SUPERSEDED** by [`2026-06-05-platform-epics-and-tickets.md`](./2026-06-05-platform-epics-and-tickets.md), which keeps the same T-IDs. The statuses below are frozen and stale (for example, T005–T012 say `TODO` but all are `DONE`). Track status in the platform file only.
+
 Scope: current Spring Boot backend in `/Users/lirkangel/ProjectsStuff/OwnProjects/crm-system/server`
 
 Purpose: convert the current scaffold into a real Foundation v0 backend, in the order that unblocks the rest of the platform.
