@@ -51,21 +51,63 @@ fn reconcile_after_revoke(
     }
 }
 
-/// Reconciles shell state with the outcome of an access-token refresh attempt.
+#[derive(Debug)]
+struct RefreshReconciled {
+    status: AuthStatus,
+    /// Refresh token of a rotated session that arrived after a login/logout
+    /// had already replaced the state; the caller revokes it server-side.
+    discarded_refresh_token: Option<String>,
+}
+
+/// Reconciles shell state with the outcome of a refresh that started at
+/// `epoch` (see `ShellState::session_epoch`).
 ///
-/// - success → store the rotated session (new access *and* refresh token);
+/// - success → store the rotated session (new access *and* refresh token),
+///   unless a login/logout happened in flight: then discard it for revoke;
 /// - the refresh token was rejected → drop the session so the UI returns to
-///   login (the token is already dead server-side, so no revoke is queued);
+///   login (the token is already dead server-side, so no revoke is queued),
+///   again only if that session is still the current one;
 /// - any other failure → keep the session and surface the error for retry.
 fn reconcile_after_refresh(
     state: &ShellState,
+    epoch: u64,
     result: Result<AuthSession, ShellError>,
-) -> Result<AuthStatus, String> {
+) -> Result<RefreshReconciled, String> {
     match result {
-        Ok(session) => Ok(state.set_auth_session(session)),
-        Err(ShellError::Unauthorized(_)) => Ok(state.clear_session()),
+        Ok(session) => Ok(match state.apply_refreshed_session(epoch, session) {
+            Ok(status) => RefreshReconciled {
+                status,
+                discarded_refresh_token: None,
+            },
+            Err(stale) => RefreshReconciled {
+                status: get_auth_status(state),
+                discarded_refresh_token: Some(stale.refresh_token),
+            },
+        }),
+        Err(ShellError::Unauthorized(_)) => Ok(RefreshReconciled {
+            status: state.clear_session_if_current(epoch),
+            discarded_refresh_token: None,
+        }),
         Err(error) => Err(error.to_string()),
     }
+}
+
+/// Runs a refresh started at `epoch` to completion: reconciles state and
+/// best-effort revokes a rotated token that was discarded as stale.
+async fn finish_refresh(
+    state: &ShellState,
+    auth_api: &AuthApiClient,
+    config: &BackendConfig,
+    epoch: u64,
+    outcome: Result<AuthSession, ShellError>,
+) -> Result<AuthStatus, String> {
+    let reconciled = reconcile_after_refresh(state, epoch, outcome)?;
+    if let Some(stale_token) = reconciled.discarded_refresh_token
+        && let Err(error) = auth_api.revoke(config, &stale_token).await
+    {
+        eprintln!("could not revoke discarded refresh token: {error}");
+    }
+    Ok(reconciled.status)
 }
 
 #[tauri::command]
@@ -120,24 +162,28 @@ pub async fn refresh(
     state: State<'_, ShellState>,
     auth_api: State<'_, AuthApiClient>,
 ) -> Result<AuthStatus, String> {
+    let epoch = state.session_epoch();
     let Some(session) = state.auth_status().session else {
         return Ok(get_auth_status(&state));
     };
     let config = state.backend_config();
 
     let outcome = auth_api.refresh(&config, &session.refresh_token).await;
-    reconcile_after_refresh(&state, outcome)
+    finish_refresh(&state, &auth_api, &config, epoch, outcome).await
 }
 
 /// Startup path (D501): if a previous run left a refresh token in the OS
 /// keychain, exchange it for a fresh session so the user skips the login
 /// screen. Outcomes follow `reconcile_after_refresh`: a rejected token clears
-/// the keychain; a transient failure keeps it for the next attempt.
+/// the keychain; a transient failure keeps it for the next attempt. Call it
+/// once per launch: concurrent restores would present the same single-use
+/// refresh token twice.
 #[tauri::command]
 pub async fn restore_session(
     state: State<'_, ShellState>,
     auth_api: State<'_, AuthApiClient>,
 ) -> Result<AuthStatus, String> {
+    let epoch = state.session_epoch();
     let status = get_auth_status(&state);
     if status.is_authenticated {
         return Ok(status);
@@ -148,7 +194,7 @@ pub async fn restore_session(
     let config = state.backend_config();
 
     let outcome = auth_api.refresh(&config, &refresh_token).await;
-    reconcile_after_refresh(&state, outcome)
+    finish_refresh(&state, &auth_api, &config, epoch, outcome).await
 }
 
 #[tauri::command]
@@ -301,7 +347,7 @@ mod tests {
         apply_login(&state, sample_session());
 
         // Backend rotates the refresh token, so success carries a new session.
-        let status = reconcile_after_refresh(&state, Ok(rotated_session())).unwrap();
+        let status = reconcile_after_refresh(&state, state.session_epoch(), Ok(rotated_session())).unwrap().status;
 
         assert!(status.is_authenticated);
         let session = status.session.expect("rotated session should be stored");
@@ -318,9 +364,10 @@ mod tests {
         // session so the UI returns to login, with no pending-revoke retry.
         let status = reconcile_after_refresh(
             &state,
+            state.session_epoch(),
             Err(ShellError::Unauthorized("Refresh token is invalid or expired".to_string())),
         )
-        .expect("a rejected refresh token should resolve to logged-out, not error");
+        .expect("a rejected refresh token should resolve to logged-out, not error").status;
 
         assert!(!status.is_authenticated);
         assert_eq!(status.session, None);
@@ -335,7 +382,7 @@ mod tests {
         // A transient server failure is not proof the session is dead: keep it
         // and surface the error so the caller can retry.
         let result =
-            reconcile_after_refresh(&state, Err(ShellError::UnexpectedHttpStatus(500)));
+            reconcile_after_refresh(&state, state.session_epoch(), Err(ShellError::UnexpectedHttpStatus(500)));
 
         assert!(result.is_err());
         assert!(get_auth_status(&state).is_authenticated);
@@ -349,7 +396,7 @@ mod tests {
             .set_auth_session(sample_session());
         let state = ShellState::with_credential_store(BackendConfig::default(), store.clone());
 
-        let status = reconcile_after_refresh(&state, Ok(rotated_session())).unwrap();
+        let status = reconcile_after_refresh(&state, state.session_epoch(), Ok(rotated_session())).unwrap().status;
 
         assert!(status.is_authenticated);
         assert_eq!(
@@ -367,9 +414,10 @@ mod tests {
 
         let status = reconcile_after_refresh(
             &state,
+            state.session_epoch(),
             Err(ShellError::Unauthorized("Refresh token is invalid or expired".to_string())),
         )
-        .unwrap();
+        .unwrap().status;
 
         assert!(!status.is_authenticated);
         assert_eq!(store.load().unwrap(), None);
@@ -382,10 +430,29 @@ mod tests {
             .set_auth_session(sample_session());
         let state = ShellState::with_credential_store(BackendConfig::default(), store.clone());
 
-        let result = reconcile_after_refresh(&state, Err(ShellError::UnexpectedHttpStatus(503)));
+        let result = reconcile_after_refresh(&state, state.session_epoch(), Err(ShellError::UnexpectedHttpStatus(503)));
 
         assert!(result.is_err());
         assert_eq!(state.stored_refresh_token().as_deref(), Some("refresh-token"));
+    }
+
+    #[test]
+    fn refresh_result_arriving_after_logout_is_discarded_for_revoke() {
+        let store = Arc::new(InMemoryStore::default());
+        let state = ShellState::with_credential_store(BackendConfig::default(), store.clone());
+        apply_login(&state, sample_session());
+        let epoch = state.session_epoch();
+
+        // The user logs out while the refresh request is still in flight.
+        apply_local_logout(&state).unwrap();
+        let reconciled = reconcile_after_refresh(&state, epoch, Ok(rotated_session())).unwrap();
+
+        assert!(!reconciled.status.is_authenticated);
+        assert_eq!(
+            reconciled.discarded_refresh_token.as_deref(),
+            Some("rotated-refresh-token")
+        );
+        assert_eq!(store.load().unwrap(), None);
     }
 
     fn sample_session() -> AuthSession {
