@@ -179,10 +179,11 @@ F-EPIC-1 (scaffold) ─► F-EPIC-2 (auth UI) ─► F-EPIC-3 (data) ─► F-EP
 **Acceptance:** plugin tables are created in the plugin schema, not `public`.
 **Done (TDD):** `Plugin.PluginMigrator` extracts `db/*.sql` from the validated package and runs Flyway with the manifest's `schema` as `defaultSchema`+`schemas` (`createSchemas`), so plugin tables and `flyway_schema_history` land in the plugin schema, never `public`; packages without `db/` skip cleanly. `PluginHost` migrates between register and entrypoint load; migration failure → `LOAD_FAILED`. `PluginMigratorTest` (3, DB-free extraction/skip) + `PluginMigratorIT` (Testcontainers: `demo_thing` + history in `plugin_demo`, absent from `public`) + host wiring test; 153/153 unit green (IT Docker-gated). Verified 2026-06-11.
 
-### T015b — Minimal demo plugin loads end-to-end · `DONE (IT pending Docker run)` · P0 · (needs T015a)
+### T015b — Minimal demo plugin loads end-to-end · `DONE` · P0 · (needs T015a)
 **Expected:** a minimal demo plugin is discovered, registered, and migrated into its own schema.
 **Acceptance:** after startup the demo plugin is `active` in `plugin_registry` with its schema present.
 **Done:** `DemoPluginEndToEndIT` builds a complete demo package at test runtime (manifest + runtime-compiled entrypoint jar + `db/V1__init.sql`), drops it into a temp plugin dir via `@DynamicPropertySource`, boots the full Spring context, and asserts: registry row `ACTIVE` with `lastLoadedAt`, `demo_e2e_item` table present in `plugin_demo_e2e` schema, `onLoad()` observed. All pipeline stages individually unit-proven (T014–T015a); **run `mvn test -Pintegration` on a Docker-capable machine to confirm e2e** — this sandbox's Docker API is filtered so the IT skips. 2026-06-11.
+**Verified e2e 2026-10-17:** `mvn -Pintegration clean verify` on the homelab docker-host (Temurin 21 + Docker 29) — `DemoPluginEndToEndIT` green.
 
 ---
 
@@ -194,10 +195,15 @@ F-EPIC-1 (scaffold) ─► F-EPIC-2 (auth UI) ─► F-EPIC-3 (data) ─► F-EP
 **Acceptance:** clients receive consistent machine-readable error payloads; validation errors include field details.
 **Done (TDD):** `ErrorHandler` rewritten on Spring's `ProblemDetail`: stable `urn:problem-type:*` types for validation (400, per-field `errors` list), unauthorized (401, keeps `AuthException` code), forbidden (403, `AccessDeniedException`), not-found (404), bad-request (400), conflict (409, `OptimisticLockingFailureException`), plugin-load (422, `InvalidPluginPackageException`). Every problem carries a unique `trace_id` (logged for correlation) and a `code` extension so the existing FE client's `codeOf()` keeps working (FE reads status + optional `code`; `detail` replaces `message` — fallback to statusText is graceful). 9 tests in `ErrorHandlerTest`; 162/162 green. Verified 2026-06-11.
 
-### T017 — Integration tests (Testcontainers) · `DONE (IT pending Docker run)` · P1 · (needs epics 2–4)
+### T017 — Integration tests (Testcontainers) · `DONE` · P1 · (needs epics 2–4)
 **Expected:** Postgres-backed tests for login, refresh rotation, protected access, 403 denial, audit write, change-event write.
 **Acceptance:** core auth/security/audit/sync proven end-to-end, not only by mocks.
 **Done:** `Auth.AuthFlowIT` (RANDOM_PORT + `TestRestTemplate`, real HTTP against Testcontainers Postgres): login returns usable bearer; `/auth/me` 200 with token, 401 without; permissionless user gets **403 problem+json** on `/users/{id}` while admin gets 200; refresh rotates and the old token is single-use (replay → 401); login writes an `AUTH_LOGIN_SUCCESS` audit row. Change-event write already covered by `ChangeEventSameTransactionIT`; audit chaining by `AuditServiceIT`/`ChainVerifierIT`. **Run `mvn test -Pintegration` on a Docker-capable machine** — sandbox Docker API filtered. 2026-06-11.
+**Verified 2026-10-17 (homelab docker-host, 190/190 green, 0 skipped).** The first real run showed the ITs had never executed, and surfaced production bugs, all fixed:
+- *Harness:* surefire skipped `*IT.java`; Testcontainers 1.20.x (Docker API 1.32) was rejected by Docker 29 → 1.21.4; `src/test/resources/application.yml` shadowed the main config → moved to `config/`.
+- *Audit (prod):* `source_ip` String bound to `inet` failed every login/user-create audit insert → `CAST(? AS inet)`. Hashes were computed over values Postgres then normalized (`jsonb` formatting, `inet`, sub-µs timestamps), so the verifier would flag untouched events as tampered → `AuditWriter` now hashes the DB-normalized form. The in-JVM lock released before commit (two writers could link to the same predecessor) and chain order used a pre-lock caller timestamp → Postgres `pg_advisory_xact_lock` held to commit + strictly increasing µs `occurred_at` assigned under the lock.
+- *Auth (prod):* `/auth/me` and `POST /users` parsed `authentication.getName()` as a UUID, but the principal is the `User` entity → 400 for every real user → `@AuthenticationPrincipal User`.
+- *Tests:* AuthFlowIT used a nonexistent `PasswordEncoder` bean; admin-seed test read a lazy collection outside a session; ChainVerifierIT tampered via JDBC but verified through stale JPA cache.
 
 ---
 
@@ -458,7 +464,7 @@ _Updated 2026-10-17. The backend epics (B-EPIC-1 to B-EPIC-6) are done, so the c
 4. **F301** — `useEntity` / `useList` hooks over the D401 cache IPC.
 5. **F401** — render forms from plugin JSON metadata.
 
-Also outstanding: run the Testcontainers ITs for **T015b** and **T017** on a Docker-capable machine to remove their "IT pending" marks.
+ITs for **T015b** / **T017** verified on the homelab docker-host 2026-10-17 (190/190). Note: the live `crm-server` DB has **0 users** — there is no bootstrap admin, so nobody can log in yet; needs a first-admin seed/CLI ticket.
 
 ## Notes
 - Hotel plugin work stays out until Backend EPIC-1 + EPIC-2 are green.

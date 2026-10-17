@@ -1,13 +1,14 @@
 package com.crm.foundation.Controller;
 
 import com.crm.foundation.DTO.*;
+import com.crm.foundation.Domain.User;
 import com.crm.foundation.Service.AuthService;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
-import org.springframework.security.core.Authentication;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.UUID;
@@ -28,10 +29,10 @@ public class AuthController {
     }
 
     @GetMapping("/me")
-    public ResponseEntity<CommonResponse<MeResponse>> me(Authentication authentication) {
-        UUID userId = UUID.fromString(authentication.getName());
+    public ResponseEntity<CommonResponse<MeResponse>> me(@AuthenticationPrincipal User principal) {
+        // JwtAuthenticationFilter installs the User entity as principal; getName() is not the id
         return ResponseEntity.ok(
-            CommonResponse.success("AUTH_ME_OK", "Current user", authService.me(userId)));
+            CommonResponse.success("AUTH_ME_OK", "Current user", authService.me(principal.getId())));
     }
 
     @PostMapping("/refresh")

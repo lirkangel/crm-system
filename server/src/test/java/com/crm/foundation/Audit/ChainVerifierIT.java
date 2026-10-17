@@ -4,6 +4,8 @@ import com.crm.foundation.Domain.AuditEvent;
 import com.crm.foundation.Repository.AuditEventRepository;
 import com.crm.foundation.Service.AuditService;
 import com.crm.foundation.config.TestContainersConfig;
+import jakarta.persistence.EntityManager;
+import jakarta.persistence.PersistenceContext;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.condition.EnabledIf;
@@ -50,6 +52,9 @@ class ChainVerifierIT {
     @Autowired
     private JdbcTemplate jdbc;
 
+    @PersistenceContext
+    private EntityManager entityManager;
+
     private static AuditPayload payloadFor(String marker, int n) {
         return new AuditPayload(Instant.now(), null, null, "foundation", "TamperProbe", null,
             marker, null, "{\"seq\":" + n + "}", "INFO");
@@ -69,6 +74,8 @@ class ChainVerifierIT {
 
         UUID tamperedId = recorded.get(2).getId();
         jdbc.update("UPDATE audit_event SET after_json = '{\"x\":1}'::jsonb WHERE id = ?", tamperedId);
+        // Raw JDBC bypasses JPA: drop the cached (untampered) entities so the verifier reads the DB
+        entityManager.clear();
 
         ChainVerifier.Result result = verifier.verify();
 
@@ -90,6 +97,8 @@ class ChainVerifierIT {
             .toList();
         UUID tamperedId = recorded.get(1).getId();
         jdbc.update("UPDATE audit_event SET after_json = '{\"x\":2}'::jsonb WHERE id = ?", tamperedId);
+        // Raw JDBC bypasses JPA: drop the cached (untampered) entities so the verifier reads the DB
+        entityManager.clear();
 
         verifier.verify();
 

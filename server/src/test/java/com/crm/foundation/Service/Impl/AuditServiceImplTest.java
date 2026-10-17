@@ -4,6 +4,7 @@ import com.crm.foundation.Audit.AuditPayload;
 import com.crm.foundation.Audit.AuditWriter;
 import com.crm.foundation.Repository.AuditEventRepository;
 import com.crm.foundation.Repository.UserRepository;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.junit.jupiter.api.Test;
 
 import java.time.Instant;
@@ -32,7 +33,7 @@ class AuditServiceImplTest {
         final List<AuditPayload> recorded = new ArrayList<>();
 
         CapturingAuditWriter() {
-            super(mock(AuditEventRepository.class), mock(UserRepository.class));
+            super(mock(AuditEventRepository.class), mock(UserRepository.class), mock(JdbcTemplate.class));
         }
 
         @Override

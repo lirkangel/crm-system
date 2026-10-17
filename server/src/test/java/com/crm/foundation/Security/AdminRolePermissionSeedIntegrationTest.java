@@ -11,6 +11,7 @@ import org.junit.jupiter.api.condition.EnabledIf;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.context.annotation.Import;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.util.Set;
 import java.util.stream.Collectors;
@@ -27,6 +28,8 @@ import static org.assertj.core.api.Assertions.assertThat;
     disabledReason = "Docker not available for Testcontainers")
 @SpringBootTest
 @Import(TestContainersConfig.class)
+// Role.permissions is lazy; keep the session open for the read (rolled back, read-only)
+@Transactional
 class AdminRolePermissionSeedIntegrationTest {
 
     @Autowired

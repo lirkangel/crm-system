@@ -2,6 +2,7 @@ package com.crm.foundation.Domain;
 
 import jakarta.persistence.*;
 import jakarta.validation.constraints.NotNull;
+import org.hibernate.annotations.ColumnTransformer;
 import org.hibernate.annotations.JdbcTypeCode;
 import org.hibernate.annotations.UuidGenerator;
 import org.hibernate.type.SqlTypes;
@@ -25,6 +26,9 @@ public class AuditEvent {
     @JoinColumn(name = "user_id")
     private User user;
 
+    // The column is inet; binding a String needs an explicit cast or Postgres
+    // rejects the insert ("inet but expression is of type character varying").
+    @ColumnTransformer(write = "CAST(? AS inet)")
     @Column(name = "source_ip", columnDefinition = "inet")
     private String sourceIp;
 

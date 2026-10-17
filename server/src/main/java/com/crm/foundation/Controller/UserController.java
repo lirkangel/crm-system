@@ -4,6 +4,7 @@ import com.crm.foundation.Config.OpenApiConfig;
 import com.crm.foundation.DTO.CommonResponse;
 import com.crm.foundation.DTO.CreateUserRequest;
 import com.crm.foundation.DTO.UserResponse;
+import com.crm.foundation.Domain.User;
 import com.crm.foundation.Security.CorePermissions;
 import com.crm.foundation.Service.UserService;
 import io.swagger.v3.oas.annotations.security.SecurityRequirement;
@@ -14,7 +15,7 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.lang.NonNull;
 import org.springframework.security.access.prepost.PreAuthorize;
-import org.springframework.security.core.Authentication;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.UUID;
@@ -31,9 +32,10 @@ public class UserController {
     @PreAuthorize("hasAuthority('" + CorePermissions.USERS_WRITE + "')")
     public ResponseEntity<CommonResponse<UserResponse>> createUser(
             @Valid @RequestBody CreateUserRequest request,
-            Authentication authentication,
+            @AuthenticationPrincipal User actor,
             HttpServletRequest httpRequest) {
-        UUID actorId = authentication != null ? UUID.fromString(authentication.getName()) : null;
+        // JwtAuthenticationFilter installs the User entity as principal; getName() is not the id
+        UUID actorId = actor != null ? actor.getId() : null;
         var created = userService.createUser(request, actorId, httpRequest.getRemoteAddr());
         return ResponseEntity.status(HttpStatus.CREATED)
             .body(CommonResponse.success("USER_CREATE_OK", "User created", UserResponse.from(created)));

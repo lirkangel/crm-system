@@ -20,7 +20,7 @@ import org.springframework.http.HttpMethod;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.jdbc.core.JdbcTemplate;
-import org.springframework.security.crypto.password.PasswordEncoder;
+import org.springframework.security.crypto.bcrypt.BCrypt;
 
 import java.util.Map;
 
@@ -54,9 +54,6 @@ class AuthFlowIT {
     private RoleRepository roleRepository;
 
     @Autowired
-    private PasswordEncoder passwordEncoder;
-
-    @Autowired
     private JdbcTemplate jdbc;
 
     @Autowired
@@ -75,7 +72,8 @@ class AuthFlowIT {
         User user = new User();
         user.setUsername(username);
         user.setEmail(username + "@example.com");
-        user.setPassword(passwordEncoder.encode(PASSWORD));
+        // Same hashing as UserServiceImpl (static BCrypt; there is no PasswordEncoder bean)
+        user.setPassword(BCrypt.hashpw(PASSWORD, BCrypt.gensalt()));
         if (admin) {
             user.getRoles().add(roleRepository.findByCode("admin").orElseThrow());
         }
