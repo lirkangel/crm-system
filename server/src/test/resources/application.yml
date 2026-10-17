@@ -1,5 +1,0 @@
-# Test profile defaults — keep context startup quiet and avoid external I/O where possible
-management:
-  health:
-    mail:
-      enabled: false

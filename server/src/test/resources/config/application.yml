@@ -1,0 +1,8 @@
+# Test overrides, layered on top of src/main/resources/application.yml.
+# Lives under config/ on purpose: a test-classpath application.yml would hide
+# the main one entirely (no JWT secret, datasource or plugin settings).
+# Keep context startup quiet and avoid external I/O where possible.
+management:
+  health:
+    mail:
+      enabled: false

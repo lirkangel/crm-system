@@ -21,8 +21,8 @@
     <!-- ─────────────────────────────────── versions ─── -->
     <properties>
         <java.version>21</java.version>
-        <!-- Patch release; improves Docker socket discovery (e.g. Docker Desktop for Mac) -->
-        <testcontainers.version>1.20.6</testcontainers.version>
+        <!-- 1.21.4+: negotiates the Docker API version; 1.20.x speaks API 1.32, which Docker Engine 29 rejects -->
+        <testcontainers.version>1.21.4</testcontainers.version>
         <!-- Must match annotationProcessorPaths; Boot 3.4.1 defaults to 1.18.36, which breaks JDK 25 javac -->
         <lombok.version>1.18.46</lombok.version>
         <mapstruct.version>1.5.5.Final</mapstruct.version>
@@ -252,6 +252,12 @@
                         <configuration>
                             <!-- Run every test, including @Tag("integration") -->
                             <excludedGroups combine.self="override"></excludedGroups>
+                            <!-- Surefire's defaults skip *IT.java; without this the ITs never run -->
+                            <includes>
+                                <include>**/*Test.java</include>
+                                <include>**/*Tests.java</include>
+                                <include>**/*IT.java</include>
+                            </includes>
                             <!-- Same JVM as Maven: inherits DOCKER_HOST / socket visibility (IDE & fork issues) -->
                             <forkCount>0</forkCount>
                         </configuration>
