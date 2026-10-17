@@ -5,7 +5,7 @@ pub enum ShellError {
     #[error("shell state lock poisoned")]
     StatePoisoned,
     #[error("request failed: {0}")]
-    Request(#[from] reqwest::Error),
+    Request(reqwest::Error),
     #[error("invalid username or password")]
     Unauthorized(String),
     #[error("unexpected backend status: {0}")]
@@ -14,6 +14,14 @@ pub enum ShellError {
     RevokeRejected(String),
     #[error("no active session")]
     NoActiveSession,
+}
+
+/// Strips the URL before wrapping: auth endpoints (e.g. revoke) carry the
+/// refresh token in the path, and these messages reach stderr and the webview.
+impl From<reqwest::Error> for ShellError {
+    fn from(error: reqwest::Error) -> Self {
+        ShellError::Request(error.without_url())
+    }
 }
 
 impl ShellError {
@@ -30,5 +38,25 @@ impl ShellError {
     /// can be retried once connectivity returns.
     pub fn is_transient(&self) -> bool {
         matches!(self, ShellError::Request(_))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::ShellError;
+
+    #[tokio::test]
+    async fn transport_error_message_does_not_leak_token_from_url() {
+        // The revoke endpoint carries the refresh token in its path; a
+        // connection failure must not echo that URL into logs or the webview.
+        let error = reqwest::get("http://127.0.0.1:1/api/v1/auth/revoke/secret-refresh-token")
+            .await
+            .expect_err("nothing listens on port 1");
+
+        let shell_error = ShellError::from(error);
+
+        assert!(shell_error.is_transient());
+        assert!(!shell_error.to_string().contains("secret-refresh-token"));
+        assert!(!format!("{shell_error:?}").contains("secret-refresh-token"));
     }
 }
