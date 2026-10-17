@@ -129,6 +129,28 @@ pub async fn refresh(
     reconcile_after_refresh(&state, outcome)
 }
 
+/// Startup path (D501): if a previous run left a refresh token in the OS
+/// keychain, exchange it for a fresh session so the user skips the login
+/// screen. Outcomes follow `reconcile_after_refresh`: a rejected token clears
+/// the keychain; a transient failure keeps it for the next attempt.
+#[tauri::command]
+pub async fn restore_session(
+    state: State<'_, ShellState>,
+    auth_api: State<'_, AuthApiClient>,
+) -> Result<AuthStatus, String> {
+    let status = get_auth_status(&state);
+    if status.is_authenticated {
+        return Ok(status);
+    }
+    let Some(refresh_token) = state.stored_refresh_token() else {
+        return Ok(status);
+    };
+    let config = state.backend_config();
+
+    let outcome = auth_api.refresh(&config, &refresh_token).await;
+    reconcile_after_refresh(&state, outcome)
+}
+
 #[tauri::command]
 pub async fn sync_pending_logout_revoke(
     state: State<'_, ShellState>,
@@ -151,8 +173,10 @@ mod tests {
     };
     use crate::auth::AuthSession;
     use crate::config::BackendConfig;
+    use crate::credentials::{CredentialStore, InMemoryStore};
     use crate::error::ShellError;
     use crate::state::{ConnectionStatus, ShellState};
+    use std::sync::Arc;
 
     #[test]
     fn get_shell_status_returns_disconnected_by_default() {
@@ -315,6 +339,53 @@ mod tests {
 
         assert!(result.is_err());
         assert!(get_auth_status(&state).is_authenticated);
+    }
+
+    #[test]
+    fn restored_session_persists_rotated_refresh_token() {
+        // Restart: only the keychain holds the old refresh token.
+        let store = Arc::new(InMemoryStore::default());
+        ShellState::with_credential_store(BackendConfig::default(), store.clone())
+            .set_auth_session(sample_session());
+        let state = ShellState::with_credential_store(BackendConfig::default(), store.clone());
+
+        let status = reconcile_after_refresh(&state, Ok(rotated_session())).unwrap();
+
+        assert!(status.is_authenticated);
+        assert_eq!(
+            store.load().unwrap().unwrap().refresh_token,
+            "rotated-refresh-token"
+        );
+    }
+
+    #[test]
+    fn rejected_restore_clears_keychain_and_stays_logged_out() {
+        let store = Arc::new(InMemoryStore::default());
+        ShellState::with_credential_store(BackendConfig::default(), store.clone())
+            .set_auth_session(sample_session());
+        let state = ShellState::with_credential_store(BackendConfig::default(), store.clone());
+
+        let status = reconcile_after_refresh(
+            &state,
+            Err(ShellError::Unauthorized("Refresh token is invalid or expired".to_string())),
+        )
+        .unwrap();
+
+        assert!(!status.is_authenticated);
+        assert_eq!(store.load().unwrap(), None);
+    }
+
+    #[test]
+    fn failed_restore_keeps_keychain_token_for_retry() {
+        let store = Arc::new(InMemoryStore::default());
+        ShellState::with_credential_store(BackendConfig::default(), store.clone())
+            .set_auth_session(sample_session());
+        let state = ShellState::with_credential_store(BackendConfig::default(), store.clone());
+
+        let result = reconcile_after_refresh(&state, Err(ShellError::UnexpectedHttpStatus(503)));
+
+        assert!(result.is_err());
+        assert_eq!(state.stored_refresh_token().as_deref(), Some("refresh-token"));
     }
 
     fn sample_session() -> AuthSession {

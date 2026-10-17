@@ -345,7 +345,7 @@ F-EPIC-1 (scaffold) ─► F-EPIC-2 (auth UI) ─► F-EPIC-3 (data) ─► F-EP
 
 # DESKTOP (Tauri Rust — `desktop/src-tauri/`)
 
-> **State (2026-10-17):** shell, SQLite cache (D201–D203), sync engine (D301–D306) and cache IPC (D401) are done; `cargo test` 53/53 green. Remaining: auth/config close-out (D102, D103), sync events to the webview + pull scheduling (D402), OS-keychain refresh token (D501), first-run config (D502), packaging (D601, D602).
+> **State (2026-10-17):** shell, SQLite cache (D201–D203), sync engine (D301–D306) and cache IPC (D401) and OS-keychain refresh token (D501) are done; `cargo test` 67/67 green. Remaining: auth/config close-out (D102, D103), sync events to the webview + pull scheduling (D402), first-run config (D502), packaging (D601, D602).
 
 ## D-EPIC-1 — Shell scaffold
 
@@ -428,9 +428,11 @@ F-EPIC-1 (scaffold) ─► F-EPIC-2 (auth UI) ─► F-EPIC-3 (data) ─► F-EP
 
 ## D-EPIC-5 — Secure credential storage
 
-### D501 — Refresh token in OS keychain · `TODO` · P0 · (needs D101)
+### D501 — Refresh token in OS keychain · `DONE` · P0 · (needs D101)
 **Expected:** store the refresh token in the OS keychain, never plaintext.
 **Acceptance:** no plaintext token on disk; token survives restart and is retrievable.
+**Done (TDD):** `credentials` module — `CredentialStore` trait with `KeyringStore` (`keyring` 3: macOS Keychain / Windows Credential Manager / Secret Service, service `com.crm.desktop`, account `refresh-token`) and `InMemoryStore` (fallback + tests). `ShellState` persists `{refreshToken, refreshTokenExpiresAt}` on every `set_auth_session` (login + rotation) and clears it on `logout_locally` / `clear_session`; keychain I/O runs outside the state lock and is best-effort (a locked keychain never blocks login). New `restore_session` command exchanges the stored token via `/auth/refresh` on startup — rejected → keychain cleared, transient failure → kept for retry; a malformed entry is discarded. 14 new tests; cargo 67/67 green + the `#[ignore]` real-keychain round-trip passes on macOS. Verified 2026-10-17.
+**Follow-ups:** the pending-logout-revoke marker is still memory-only (an offline logout followed by quitting the app leaves that token un-revoked server-side until it expires); `AuthStatus` still sends the full session (incl. refresh token) to the webview — F202 should narrow that and call `restore_session` at startup.
 
 ### D502 — First-run config · `TODO` · P1 · (needs D102)
 **Expected:** prompt for server URL; validate via `/auth/login`.
@@ -450,8 +452,8 @@ F-EPIC-1 (scaffold) ─► F-EPIC-2 (auth UI) ─► F-EPIC-3 (data) ─► F-EP
 
 ## Recommended next 5 tickets (in order)
 _Updated 2026-10-17. The backend epics (B-EPIC-1 to B-EPIC-6) are done, so the critical path now runs through desktop auth and the frontend data layer._
-1. **D501** — refresh token in the OS keychain (unblocks F202). ← next
-2. **F202** — frontend token storage on top of D501.
+1. ~~**D501** — refresh token in the OS keychain (unblocks F202).~~ `DONE`
+2. **F202** — frontend token storage on top of D501: call `restore_session` at startup, stop exposing the refresh token to the webview. ← next
 3. **D102 + D103** — finish the auth client and config/state so login/refresh/logout round-trips cleanly.
 4. **F301** — `useEntity` / `useList` hooks over the D401 cache IPC.
 5. **F401** — render forms from plugin JSON metadata.

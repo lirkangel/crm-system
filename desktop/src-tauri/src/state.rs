@@ -1,7 +1,8 @@
 use crate::auth::{AuthSession, AuthStatus};
 use crate::config::BackendConfig;
+use crate::credentials::{CredentialError, CredentialStore, InMemoryStore, StoredRefreshToken};
 use serde::Serialize;
-use std::sync::Mutex;
+use std::sync::{Arc, Mutex};
 
 #[derive(Debug, Clone, Copy, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
@@ -23,10 +24,18 @@ struct ShellStateInner {
 #[derive(Debug)]
 pub struct ShellState {
     inner: Mutex<ShellStateInner>,
+    /// Persists the refresh token across restarts (OS keychain in the app).
+    /// Kept outside `inner` so keychain I/O never runs under the state lock.
+    credentials: Arc<dyn CredentialStore>,
 }
 
 impl ShellState {
+    /// State with a process-lifetime credential store (nothing survives restart).
     pub fn new(config: BackendConfig) -> Self {
+        Self::with_credential_store(config, Arc::new(InMemoryStore::default()))
+    }
+
+    pub fn with_credential_store(config: BackendConfig, credentials: Arc<dyn CredentialStore>) -> Self {
         Self {
             inner: Mutex::new(ShellStateInner {
                 connection_status: ConnectionStatus::Disconnected,
@@ -34,6 +43,43 @@ impl ShellState {
                 auth_session: None,
                 pending_logout_revoke: None,
             }),
+            credentials,
+        }
+    }
+
+    /// The refresh token persisted by a previous run, if any. A malformed entry
+    /// is cleared so the user simply logs in again; a keychain failure is
+    /// treated as "nothing stored".
+    pub fn stored_refresh_token(&self) -> Option<String> {
+        match self.credentials.load() {
+            Ok(stored) => stored.map(|token| token.refresh_token),
+            Err(CredentialError::Malformed(error)) => {
+                eprintln!("discarding malformed stored refresh token: {error}");
+                self.forget_refresh_token();
+                None
+            }
+            Err(error) => {
+                eprintln!("could not read stored refresh token: {error}");
+                None
+            }
+        }
+    }
+
+    // Persistence is best-effort: a locked or missing keychain must not block
+    // login/logout, it only means the session will not survive a restart.
+    fn persist_refresh_token(&self, session: &AuthSession) {
+        let token = StoredRefreshToken {
+            refresh_token: session.refresh_token.clone(),
+            refresh_token_expires_at: session.refresh_token_expires_at.clone(),
+        };
+        if let Err(error) = self.credentials.save(&token) {
+            eprintln!("could not persist refresh token: {error}");
+        }
+    }
+
+    fn forget_refresh_token(&self) {
+        if let Err(error) = self.credentials.clear() {
+            eprintln!("could not clear stored refresh token: {error}");
         }
     }
 
@@ -56,6 +102,7 @@ impl ShellState {
     }
 
     pub fn set_auth_session(&self, session: AuthSession) -> AuthStatus {
+        self.persist_refresh_token(&session);
         let mut inner = self.inner.lock().unwrap();
         inner.auth_session = Some(session);
 
@@ -74,18 +121,22 @@ impl ShellState {
             .ok_or(crate::error::ShellError::NoActiveSession)?;
 
         inner.pending_logout_revoke = Some(session.refresh_token);
-
-        Ok(AuthStatus {
+        let status = AuthStatus {
             session: None,
             pending_logout_revoke: inner.pending_logout_revoke.clone(),
             is_authenticated: false,
-        })
+        };
+        drop(inner);
+
+        self.forget_refresh_token();
+        Ok(status)
     }
 
     /// Drops the active session outright (e.g. the refresh token was rejected
     /// and cannot be recovered). Unlike `logout_locally`, this records no
     /// pending-revoke marker, since the backend has already invalidated it.
     pub fn clear_session(&self) -> AuthStatus {
+        self.forget_refresh_token();
         let mut inner = self.inner.lock().unwrap();
         inner.auth_session = None;
         inner.pending_logout_revoke = None;
@@ -121,6 +172,8 @@ mod tests {
     use super::{ConnectionStatus, ShellState};
     use crate::auth::AuthSession;
     use crate::config::BackendConfig;
+    use crate::credentials::{CredentialStore, InMemoryStore};
+    use std::sync::Arc;
 
     #[test]
     fn shell_state_starts_disconnected() {
@@ -178,6 +231,81 @@ mod tests {
         assert!(!status.is_authenticated);
         assert_eq!(status.session, None);
         assert_eq!(status.pending_logout_revoke, None);
+    }
+
+    #[test]
+    fn set_auth_session_persists_refresh_token_to_credential_store() {
+        let store = Arc::new(InMemoryStore::default());
+        let state = ShellState::with_credential_store(BackendConfig::default(), store.clone());
+
+        state.set_auth_session(sample_session());
+
+        let stored = store.load().unwrap().expect("refresh token should be persisted");
+        assert_eq!(stored.refresh_token, "refresh-token");
+        assert_eq!(stored.refresh_token_expires_at, "2030-01-08T00:00:00Z");
+    }
+
+    #[test]
+    fn rotated_session_replaces_persisted_refresh_token() {
+        let store = Arc::new(InMemoryStore::default());
+        let state = ShellState::with_credential_store(BackendConfig::default(), store.clone());
+        state.set_auth_session(sample_session());
+
+        let mut rotated = sample_session();
+        rotated.refresh_token = "rotated-refresh-token".to_string();
+        state.set_auth_session(rotated);
+
+        assert_eq!(
+            store.load().unwrap().unwrap().refresh_token,
+            "rotated-refresh-token"
+        );
+    }
+
+    #[test]
+    fn logout_locally_removes_persisted_refresh_token() {
+        let store = Arc::new(InMemoryStore::default());
+        let state = ShellState::with_credential_store(BackendConfig::default(), store.clone());
+        state.set_auth_session(sample_session());
+
+        state.logout_locally().unwrap();
+
+        assert_eq!(store.load().unwrap(), None);
+    }
+
+    #[test]
+    fn clear_session_removes_persisted_refresh_token() {
+        let store = Arc::new(InMemoryStore::default());
+        let state = ShellState::with_credential_store(BackendConfig::default(), store.clone());
+        state.set_auth_session(sample_session());
+
+        state.clear_session();
+
+        assert_eq!(store.load().unwrap(), None);
+    }
+
+    #[test]
+    fn stored_refresh_token_survives_a_fresh_shell_state() {
+        // Simulates an app restart: a new ShellState over the same store.
+        let store = Arc::new(InMemoryStore::default());
+        ShellState::with_credential_store(BackendConfig::default(), store.clone())
+            .set_auth_session(sample_session());
+
+        let restarted = ShellState::with_credential_store(BackendConfig::default(), store);
+
+        assert!(!restarted.auth_status().is_authenticated);
+        assert_eq!(
+            restarted.stored_refresh_token().as_deref(),
+            Some("refresh-token")
+        );
+    }
+
+    #[test]
+    fn malformed_stored_token_is_discarded() {
+        let store = Arc::new(InMemoryStore::with_raw("not-json"));
+        let state = ShellState::with_credential_store(BackendConfig::default(), store.clone());
+
+        assert_eq!(state.stored_refresh_token(), None);
+        assert!(matches!(store.load(), Ok(None)));
     }
 
     fn sample_session() -> AuthSession {
