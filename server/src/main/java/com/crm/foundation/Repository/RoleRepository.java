@@ -1,7 +1,9 @@
 package com.crm.foundation.Repository;
 
 import com.crm.foundation.Domain.Role;
+import jakarta.persistence.LockModeType;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
@@ -13,6 +15,11 @@ import java.util.UUID;
 public interface RoleRepository extends JpaRepository<Role, UUID> {
 
     Optional<Role> findByCode(String code);
+
+    /** {@code SELECT ... FOR UPDATE}; must run inside a transaction. */
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("select r from Role r where r.code = :code")
+    Optional<Role> lockByCode(@Param("code") String code);
 
     @Query(
         value = """

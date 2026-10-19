@@ -69,6 +69,13 @@ foundation:
   security:
     field-key: ${FIELD_ENC_KEY:}   # 32-byte base64 AES-GCM key; REQUIRED in production
 
+  # First-admin seed for an empty server (T008c). Used only while no user holds the
+  # admin role; remove the env vars once the admin exists.
+  bootstrap-admin:
+    username: ${BOOTSTRAP_ADMIN_USERNAME:}
+    email: ${BOOTSTRAP_ADMIN_EMAIL:}
+    password: ${BOOTSTRAP_ADMIN_PASSWORD:}
+
 springdoc:
   show-actuator: false
   swagger-ui:
