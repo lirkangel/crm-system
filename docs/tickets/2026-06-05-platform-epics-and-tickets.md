@@ -216,7 +216,7 @@ F-EPIC-1 (scaffold) ─► F-EPIC-2 (auth UI) ─► F-EPIC-3 (data) ─► F-EP
 
 ## B-EPIC-7 — Plugin runtime
 *Goal: a plugin can be a real vertical — persist through Foundation's transaction, expose endpoints, register permissions — without ever taking the server down.*
-*Spec: [`2026-10-22-hotel-booking-slice-design.md`](../superpowers/specs/2026-10-22-hotel-booking-slice-design.md) §6.1–6.4. Built on branch `claude/hotel-booking-slice`.*
+*Spec: `2026-10-22-hotel-booking-slice-design.md` §6.1–6.4 — design doc kept locally (docs/superpowers is git-ignored). Built on branch `claude/hotel-booking-slice`.*
 
 ### T018 — Two-phase plugin host · `DONE` · P0 · (needs T015b)
 **Expected:** plugin JPA entities live in Foundation's own `EntityManagerFactory` (so one transaction covers plugin data, `change_event` and audit); an early phase prepares plugins before Hibernate starts, a late phase brings them up after the context is ready; `server/` becomes a Maven reactor with a `plugin-api` module for plugin-facing types.
@@ -239,7 +239,7 @@ F-EPIC-1 (scaffold) ─► F-EPIC-2 (auth UI) ─► F-EPIC-3 (data) ─► F-EP
 
 ## H-EPIC-1 — Hotel booking slice
 *Goal: a receptionist can find free rooms for a date range and book one for a guest, and a booking can never collide with another one. Server side only; the desktop screens come with F301/F401.*
-*Spec: [`2026-10-22-hotel-booking-slice-design.md`](../superpowers/specs/2026-10-22-hotel-booking-slice-design.md). The plugin ID is `com.crm.hotel`, schema `hotel`, route `hotel`; permissions `hotel.rooms.*`, `hotel.guests.*`, `hotel.reservations.{read,create,cancel}` (admin only for now — no role management yet).*
+*Spec: `2026-10-22-hotel-booking-slice-design.md` — design doc kept locally (docs/superpowers is git-ignored). The plugin ID is `com.crm.hotel`, schema `hotel`, route `hotel`; permissions `hotel.rooms.*`, `hotel.guests.*`, `hotel.reservations.{read,create,cancel}` (admin only for now — no role management yet).*
 
 ### H101 — Room catalog · `DONE` · P0 · (needs T020)
 **Expected:** the hotel plugin module and its schema; room types (`{vi,en}` names, max guests, one gross nightly rate in whole VND) and rooms (number, type, floor, in service) with list/create/update endpoints.
