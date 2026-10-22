@@ -63,6 +63,7 @@ class PluginRuntimeIT {
     private static final String PLUGIN_ID = "com.crm.echo";
     private static final String SCHEMA = "plugin_echo";
     private static final String USERNAME = "it_echo_user";
+    private static final String OPEN_PLUGIN_ID = "com.crm.open";
 
     @Autowired
     private TestRestTemplate rest;
@@ -94,6 +95,7 @@ class PluginRuntimeIT {
         buildEchoPlugin(pluginDir.resolve("echo.zip"));
         // Same plugin id, later in discovery order (an old version left behind): must be ignored
         buildDuplicateEchoPackage(pluginDir.resolve("zz-echo-duplicate.zip"));
+        buildOpenPlugin(pluginDir.resolve("open.zip"));
         registry.add("foundation.plugins.directory", pluginDir::toString);
     }
 
@@ -283,6 +285,44 @@ class PluginRuntimeIT {
             .buildTo(zip);
     }
 
+    /** A handler method without {@code @PreAuthorize}: default-deny refuses the whole plugin. */
+    private static void buildOpenPlugin(Path zip) throws IOException {
+        PluginPackageBuilder.plugin(OPEN_PLUGIN_ID)
+            .schema("plugin_open")
+            .route("open")
+            .entry("demo.open.OpenPlugin")
+            .withClasspathOf(RestController.class, PreAuthorize.class, AliasFor.class)
+            .source("demo.open.OpenPlugin", """
+                package demo.open;
+                public class OpenPlugin implements com.crm.foundation.Plugin.PluginActivator {
+                    public void onLoad() {
+                    }
+                }
+                """)
+            .source("demo.open.OpenController", """
+                package demo.open;
+
+                import org.springframework.security.access.prepost.PreAuthorize;
+                import org.springframework.web.bind.annotation.GetMapping;
+                import org.springframework.web.bind.annotation.RestController;
+
+                @RestController
+                public class OpenController {
+                    @GetMapping("/ping")
+                    @PreAuthorize("hasAuthority('echo.ping')")
+                    public String ping() {
+                        return "pong";
+                    }
+
+                    @GetMapping("/anyone")
+                    public String anyone() {
+                        return "open to every authenticated user";
+                    }
+                }
+                """)
+            .buildTo(zip);
+    }
+
     @BeforeEach
     void seedUser() {
         user = userRepository.findByUsername(USERNAME).orElseGet(() -> {
@@ -455,6 +495,19 @@ class PluginRuntimeIT {
             "SELECT count(*) FROM change_event e WHERE e.plugin_id = ? AND NOT EXISTS "
                 + "(SELECT 1 FROM plugin_echo.note n WHERE n.id = e.entity_id)",
             Integer.class, PLUGIN_ID)).isZero();
+    }
+
+    @Test
+    void plugin_with_a_handler_lacking_method_security_is_load_failed() {
+        PluginRegistry entry = registryService.findByPluginId(OPEN_PLUGIN_ID).orElseThrow();
+
+        assertThat(entry.getState()).isEqualTo(PluginState.LOAD_FAILED.name());
+        assertThat(entry.getErrorMessage()).contains("@PreAuthorize").contains("demo.open.OpenController.anyone");
+        assertThat(get("/api/v1/plugins/open/anyone", token("something.else")).getStatusCode().value())
+            .isEqualTo(404);
+        assertThat(get("/api/v1/plugins/open/ping", token("echo.ping")).getStatusCode().value()).isEqualTo(404);
+        // the other plugin is unaffected
+        assertThat(get("/api/v1/plugins/echo/ping", token("echo.ping")).getStatusCode().value()).isEqualTo(200);
     }
 
     @Test

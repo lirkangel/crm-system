@@ -6,6 +6,7 @@ import org.junit.jupiter.api.Test;
 import org.springframework.context.annotation.AnnotationConfigApplicationContext;
 import org.springframework.context.support.GenericApplicationContext;
 import org.springframework.mock.web.MockHttpServletRequest;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.method.HandlerMethod;
@@ -20,8 +21,34 @@ class PluginRouteRegistryTest {
     @RestController
     static class PluginController {
         @GetMapping("/ping")
+        @PreAuthorize("hasAuthority('echo.ping')")
         public String ping() {
             return "pong";
+        }
+    }
+
+    /** Guarded at class level: every handler method inherits the check. */
+    @RestController
+    @PreAuthorize("hasAuthority('echo.ping')")
+    static class ClassGuardedController {
+        @GetMapping("/guarded")
+        public String guarded() {
+            return "guarded";
+        }
+    }
+
+    /** One guarded and one unguarded handler method. */
+    @RestController
+    static class PartlyOpenController {
+        @GetMapping("/closed")
+        @PreAuthorize("hasAuthority('echo.ping')")
+        public String closed() {
+            return "closed";
+        }
+
+        @GetMapping("/open")
+        public String open() {
+            return "open";
         }
     }
 
@@ -88,6 +115,47 @@ class PluginRouteRegistryTest {
             .isInstanceOf(InvalidPluginPackageException.class)
             .hasMessageContaining("echo");
         assertThat(registry.getHandlerMethods()).hasSize(1);
+    }
+
+    @Test
+    void accepts_a_class_level_pre_authorize() throws Exception {
+        AnnotationConfigApplicationContext guarded = childWith(ClassGuardedController.class);
+        try {
+            registry.register("guarded", guarded);
+
+            assertThat(handlerFor("/api/v1/plugins/guarded/guarded")).isNotNull();
+        } finally {
+            guarded.close();
+        }
+    }
+
+    @Test
+    void refuses_a_handler_method_without_method_security() throws Exception {
+        AnnotationConfigApplicationContext partlyOpen = childWith(PartlyOpenController.class);
+        try {
+            assertThatThrownBy(() -> registry.register("open", partlyOpen))
+                .isInstanceOf(InvalidPluginPackageException.class)
+                .hasMessageContaining("@PreAuthorize")
+                .hasMessageContaining(PartlyOpenController.class.getName() + ".open");
+
+            // all or nothing: the guarded method of the refused plugin is not mapped either
+            assertThat(registry.getHandlerMethods()).isEmpty();
+            assertThat(handlerFor("/api/v1/plugins/open/closed")).isNull();
+            assertThat(handlerFor("/api/v1/plugins/open/open")).isNull();
+            // and the route stays free
+            registry.register("open", pluginContext);
+            assertThat(handlerFor("/api/v1/plugins/open/ping")).isNotNull();
+        } finally {
+            partlyOpen.close();
+        }
+    }
+
+    private AnnotationConfigApplicationContext childWith(Class<?> controller) {
+        AnnotationConfigApplicationContext child = new AnnotationConfigApplicationContext();
+        child.setParent(parent);
+        child.register(controller);
+        child.refresh();
+        return child;
     }
 
     @Test
