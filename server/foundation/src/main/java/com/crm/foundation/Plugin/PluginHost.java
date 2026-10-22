@@ -22,8 +22,8 @@ import java.util.Map;
  * plugin: registers it in {@code plugin_registry} if new, records early-phase
  * failures as {@code LOAD_FAILED}, and starts every READY plugin: its Spring
  * child context ({@link PluginContextFactory}), its entry's
- * {@link PluginActivator#onLoad()}, and its routes ({@link PluginRouteRegistry})
- * — then marks it {@code ACTIVE}.
+ * {@link PluginActivator#onLoad()}, and its routes ({@link PluginRouteRegistry}) and its
+ * permissions ({@link PluginPermissionRegistrar}) — then marks it {@code ACTIVE}.
  *
  * <p>Strictly per plugin (T014a): a plugin that fails to start is torn down
  * (child context closed, routes removed) and marked {@code LOAD_FAILED}, and
@@ -39,6 +39,7 @@ public class PluginHost implements ApplicationRunner, DisposableBean {
     private final PluginLoader pluginLoader;
     private final PluginContextFactory contextFactory;
     private final PluginRouteRegistry routes;
+    private final PluginPermissionRegistrar permissions;
     private final ApplicationContext applicationContext;
 
     /** Running plugins: plugin id → child context, in start order. */
@@ -50,12 +51,14 @@ public class PluginHost implements ApplicationRunner, DisposableBean {
             PluginLoader pluginLoader,
             PluginContextFactory contextFactory,
             PluginRouteRegistry routes,
+            PluginPermissionRegistrar permissions,
             ApplicationContext applicationContext) {
         this.bootstrap = bootstrap;
         this.registryService = registryService;
         this.pluginLoader = pluginLoader;
         this.contextFactory = contextFactory;
         this.routes = routes;
+        this.permissions = permissions;
         this.applicationContext = applicationContext;
     }
 
@@ -100,7 +103,7 @@ public class PluginHost implements ApplicationRunner, DisposableBean {
             pluginLoader.instantiateEntry(plugin.classLoader(), manifest).onLoad();
             routes.register(manifest.route(), child);
             routesRegistered = true;
-            // Task 7: permissions
+            permissions.register(manifest.id(), manifest.permissionsDeclared());
             registryService.activate(manifest.id());
             running.put(manifest.id(), new RunningPlugin(manifest.route(), child));
             log.info("Plugin {} v{} active under {}{}",

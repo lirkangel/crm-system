@@ -12,6 +12,7 @@ import org.springframework.context.support.GenericApplicationContext;
 
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -43,6 +44,9 @@ class PluginHostTest {
     /** route → context, as the route registry holds them. */
     private final Map<String, ApplicationContext> registeredRoutes = new HashMap<>();
     private final List<String> unregisteredRoutes = new ArrayList<>();
+    private final List<String> failPermissionsFor = new ArrayList<>();
+    /** plugin id → keys passed to the permission registrar, in call order. */
+    private final Map<String, List<String>> registeredPermissions = new LinkedHashMap<>();
 
     private static PluginManifest manifest(String id, String route) {
         return new PluginManifest(
@@ -108,7 +112,16 @@ class PluginHostTest {
                 registeredRoutes.remove(route);
             }
         };
-        return new PluginHost(bootstrap, registryService, loader, contexts, routes, parent);
+        PluginPermissionRegistrar permissions = new PluginPermissionRegistrar(null, null) {
+            @Override
+            public void register(String pluginId, List<String> keys) {
+                if (failPermissionsFor.contains(pluginId)) {
+                    throw new IllegalStateException("permission write failed for " + pluginId);
+                }
+                registeredPermissions.put(pluginId, keys);
+            }
+        };
+        return new PluginHost(bootstrap, registryService, loader, contexts, routes, permissions, parent);
     }
 
     @Test
@@ -230,6 +243,39 @@ class PluginHostTest {
         assertThat(unregisteredRoutes).containsExactly("late");
         assertThat(registeredRoutes).isEmpty();
         assertThat(startedContexts.get("com.crm.late").isActive()).isFalse();
+    }
+
+    @Test
+    void should_register_declared_permissions_before_activating() {
+        PluginManifest manifest = new PluginManifest(
+            "com.crm.perm", "1.0.0", Map.of(), Map.of(), List.of("perm.a.read", "perm.a.manage"), List.of(),
+            "demo", "com.crm.perm.Entry", "perm");
+        PluginHost host = hostWith(ready(manifest));
+        when(registryService.findByPluginId("com.crm.perm")).thenReturn(Optional.empty());
+        when(registryService.activate("com.crm.perm")).thenAnswer(invocation -> {
+            assertThat(registeredPermissions).containsEntry("com.crm.perm", List.of("perm.a.read", "perm.a.manage"));
+            return registryRow("com.crm.perm", PluginState.ACTIVE);
+        });
+
+        host.startPlugins();
+
+        verify(registryService).activate("com.crm.perm");
+    }
+
+    @Test
+    void should_unregister_routes_close_child_and_not_activate_when_permission_registration_fails() {
+        PluginManifest manifest = manifest("com.crm.noperm");
+        failPermissionsFor.add("com.crm.noperm");
+        PluginHost host = hostWith(ready(manifest));
+        when(registryService.findByPluginId("com.crm.noperm")).thenReturn(Optional.empty());
+
+        host.startPlugins();
+
+        verify(registryService).markLoadFailed(eq("com.crm.noperm"), contains("permission write failed"));
+        verify(registryService, never()).activate(anyString());
+        assertThat(unregisteredRoutes).containsExactly("noperm");
+        assertThat(registeredRoutes).isEmpty();
+        assertThat(startedContexts.get("com.crm.noperm").isActive()).isFalse();
     }
 
     @Test

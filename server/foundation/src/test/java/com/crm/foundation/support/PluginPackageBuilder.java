@@ -19,6 +19,7 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.stream.Collectors;
 import java.util.stream.Stream;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipOutputStream;
@@ -41,6 +42,7 @@ public final class PluginPackageBuilder {
     private String schema;
     private String entry;
     private String route;
+    private final List<String> permissions = new ArrayList<>();
     private final Set<Class<?>> classpathMarkers =
         new LinkedHashSet<>(List.of(PluginActivator.class, Entity.class, CommonResponse.class));
     /** Fully-qualified class name → Java source. */
@@ -75,6 +77,12 @@ public final class PluginPackageBuilder {
     /** Manifest {@code route} (URL prefix segment); omitted from {@code plugin.yaml} when unset. */
     public PluginPackageBuilder route(String route) {
         this.route = route;
+        return this;
+    }
+
+    /** Manifest {@code permissions-declared} keys; omitted from {@code plugin.yaml} when none. */
+    public PluginPackageBuilder permissions(String... keys) {
+        permissions.addAll(List.of(keys));
         return this;
     }
 
@@ -118,7 +126,14 @@ public final class PluginPackageBuilder {
             schema: %s
             entry: %s
             """.formatted(id, version, id, schema, entry);
-        return route == null ? yaml : yaml + "route: " + route + "\n";
+        if (route != null) {
+            yaml += "route: " + route + "\n";
+        }
+        if (!permissions.isEmpty()) {
+            yaml += "permissions-declared:\n"
+                + permissions.stream().map(key -> "  - \"" + key + "\"\n").collect(Collectors.joining());
+        }
+        return yaml;
     }
 
     private Path compile(Path work) throws IOException {
