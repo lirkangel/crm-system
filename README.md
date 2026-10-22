@@ -39,7 +39,7 @@ How it behaves at runtime:
 - **URL prefix:** a plugin's controllers are served under `/api/v1/plugins/{route}/…`. `route` is an optional `plugin.yaml` field; it defaults to the last segment of the plugin id (`com.crm.hotel` → `hotel`). Routes of a plugin that is disabled or failed to load return 404.
 - **Install:** restart-required, no hot reload. Plugin ZIPs are read from the directory in `foundation.plugins.directory` (env `PLUGINS_DIR`, default `plugins`). The hotel ZIP ships inside the server image at `/app/plugins`, so a normal deploy installs it with no manual step.
 - **Permissions:** on load the plugin's `permissions-declared` keys are written to `permissions` and granted to the `admin` role when first inserted (a later removal of a grant survives restarts). Permissions reach a user through the JWT at login, so **an admin must log in again after a plugin is first installed**.
-- **Failure isolation:** a plugin with a broken package, a failing migration, or invalid, out-of-schema or clashing entity mappings is marked `LOAD_FAILED` (reason in `plugin_registry`) and the server still starts with the other plugins.
+- **Failure isolation:** a ZIP whose package or manifest is invalid (zip-slip entries, missing or malformed `plugin.yaml`) is rejected with a warning in the server log and is not registered, so there is no `plugin_registry` row for it. Once the manifest parses, a failure in the migration, entity mapping (invalid, out-of-schema or clashing entities), classloader or entry point, child context, routes or permission registration marks the plugin `LOAD_FAILED` with the reason in `plugin_registry.error_message`. Either way the server still starts with the other plugins.
 - **Upgrades:** if two ZIPs declare the same plugin id, only the first in file-name order is loaded. Remove old versions when upgrading (`hotel-0.9.0.zip` sorts before `hotel-1.0.0.zip`, so the old one would win).
 
 ## MVP — Hotel PMS
@@ -84,7 +84,6 @@ mvn spring-boot:run -Dspring-boot.run.profiles=local
 The plugin directory is relative to the working directory (`foundation/plugins` here) unless `PLUGINS_DIR` is set. The Docker image build (`server/Dockerfile`) does all of this itself and bakes the hotel ZIP into `/app/plugins`.
 
 > The old `cd server` + `mvn spring-boot:run` no longer works: the parent `pom.xml` is not an application.
-
 
 ### Run the desktop client (dev mode)
 
