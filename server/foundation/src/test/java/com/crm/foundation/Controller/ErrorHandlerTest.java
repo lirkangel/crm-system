@@ -192,9 +192,13 @@ class ErrorHandlerTest {
 
     @Test
     void illegal_argument_problem_is_400() {
-        ProblemDetail problem = handler.handleIllegalArgument(new IllegalArgumentException("nope"));
+        ProblemDetail problem = handler.handleIllegalArgument(
+            new IllegalArgumentException("Invalid UUID string: secret-internal-detail"));
 
         assertProblemBasics(problem, 400, "urn:problem-type:bad-request");
+        assertThat(problem.getProperties().get("code")).isEqualTo("BAD_REQUEST");
+        // Library/internal messages never reach the client; the log keeps them with the trace_id
+        assertThat(problem.getDetail()).isEqualTo("Invalid request");
     }
 
     @Test

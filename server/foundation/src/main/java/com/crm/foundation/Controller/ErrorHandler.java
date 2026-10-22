@@ -128,7 +128,10 @@ public class ErrorHandler {
 
     @ExceptionHandler(IllegalArgumentException.class)
     public ProblemDetail handleIllegalArgument(IllegalArgumentException ex) {
-        return problem(HttpStatus.BAD_REQUEST, TYPE_BAD_REQUEST, "BAD_REQUEST", ex.getMessage());
+        // The message comes from arbitrary (library) code: log it, never echo it to the client
+        ProblemDetail problem = problem(HttpStatus.BAD_REQUEST, TYPE_BAD_REQUEST, "BAD_REQUEST", "Invalid request");
+        log.debug("IllegalArgumentException, trace_id={}: {}", problem.getProperties().get("trace_id"), ex.getMessage());
+        return problem;
     }
 
     @ExceptionHandler(OptimisticLockingFailureException.class)
