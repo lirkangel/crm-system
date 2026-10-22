@@ -3,6 +3,7 @@ package com.crm.foundation.Plugin;
 import com.crm.foundation.Domain.PluginRegistry;
 import com.crm.foundation.Service.PluginRegistryService;
 import com.crm.foundation.config.TestContainersConfig;
+import com.crm.foundation.support.PluginPackageBuilder;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.condition.EnabledIf;
@@ -13,13 +14,9 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
 
-import javax.tools.ToolProvider;
 import java.io.IOException;
-import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.zip.ZipEntry;
-import java.util.zip.ZipOutputStream;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -55,63 +52,24 @@ class DemoPluginEndToEndIT {
     }
 
     private static void buildDemoPluginZip(Path zip) throws IOException {
-        Path work = Files.createTempDirectory("e2e-build-");
-        Path srcFile = work.resolve("DemoE2ePlugin.java");
-        Files.writeString(srcFile, """
-            package demo;
-            public class DemoE2ePlugin implements com.crm.foundation.Plugin.PluginActivator {
-                public void onLoad() {
-                    System.setProperty("demo.e2e.plugin.loaded", "yes");
+        PluginPackageBuilder.plugin(PLUGIN_ID)
+            .schema(SCHEMA)
+            .entry("demo.DemoE2ePlugin")
+            .source("demo.DemoE2ePlugin", """
+                package demo;
+                public class DemoE2ePlugin implements com.crm.foundation.Plugin.PluginActivator {
+                    public void onLoad() {
+                        System.setProperty("demo.e2e.plugin.loaded", "yes");
+                    }
                 }
-            }
-            """);
-        Path classesDir = Files.createDirectories(work.resolve("classes"));
-        String apiClasspath;
-        try {
-            apiClasspath = Path.of(
-                PluginActivator.class.getProtectionDomain().getCodeSource().getLocation().toURI()).toString();
-        } catch (Exception e) {
-            throw new IllegalStateException(e);
-        }
-        int compiled = ToolProvider.getSystemJavaCompiler().run(null, null, null,
-            "-cp", apiClasspath, "-d", classesDir.toString(), srcFile.toString());
-        if (compiled != 0) {
-            throw new IllegalStateException("demo plugin compilation failed");
-        }
-
-        Path jar = work.resolve("entry.jar");
-        try (ZipOutputStream out = new ZipOutputStream(Files.newOutputStream(jar));
-             var classFiles = Files.walk(classesDir)) {
-            for (Path file : classFiles.filter(Files::isRegularFile).toList()) {
-                out.putNextEntry(new ZipEntry(classesDir.relativize(file).toString().replace('\\', '/')));
-                out.write(Files.readAllBytes(file));
-                out.closeEntry();
-            }
-        }
-
-        try (ZipOutputStream out = new ZipOutputStream(Files.newOutputStream(zip))) {
-            out.putNextEntry(new ZipEntry("plugin.yaml"));
-            out.write("""
-                id: %s
-                version: 1.0.0
-                display-name:
-                  en: "Demo E2E"
-                schema: %s
-                entry: demo.DemoE2ePlugin
-                """.formatted(PLUGIN_ID, SCHEMA).getBytes(StandardCharsets.UTF_8));
-            out.closeEntry();
-            out.putNextEntry(new ZipEntry("lib/entry.jar"));
-            out.write(Files.readAllBytes(jar));
-            out.closeEntry();
-            out.putNextEntry(new ZipEntry("db/V1__init.sql"));
-            out.write("""
+                """)
+            .migration("V1__init.sql", """
                 CREATE TABLE demo_e2e_item (
                     id UUID PRIMARY KEY,
                     label TEXT NOT NULL
                 );
-                """.getBytes(StandardCharsets.UTF_8));
-            out.closeEntry();
-        }
+                """)
+            .buildTo(zip);
     }
 
     @Test

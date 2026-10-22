@@ -19,23 +19,29 @@ import java.util.zip.ZipFile;
 /**
  * Loads a plugin's code (T015): extracts {@code lib/*.jar} from the (already
  * validated) package into a working directory, builds a
- * {@link ParentLastClassLoader} over them, and instantiates the manifest's
- * declared {@code entry} class as a {@link PluginActivator}.
+ * {@link ParentLastClassLoader} over them ({@link #createClassLoader}), and
+ * instantiates the manifest's declared {@code entry} class as a
+ * {@link PluginActivator} ({@link #instantiateEntry}).
  */
 @Component
 public class PluginLoader {
 
     private static final Logger log = LoggerFactory.getLogger(PluginLoader.class);
 
+    /** Builds the plugin's classloader and instantiates its entry (classloader + entry in one step). */
     public PluginActivator loadEntrypoint(Path zipPath, PluginManifest manifest) {
+        return instantiateEntry(createClassLoader(zipPath, manifest), manifest);
+    }
+
+    /** Extracts {@code lib/*.jar} and builds a {@link ParentLastClassLoader} over them. */
+    public ParentLastClassLoader createClassLoader(Path zipPath, PluginManifest manifest) {
         List<URL> jarUrls = extractLibJars(zipPath, manifest.id());
         if (jarUrls.isEmpty()) {
             throw new InvalidPluginPackageException(
                 "package contains no lib/*.jar to load for plugin " + manifest.id());
         }
-        ParentLastClassLoader classLoader = new ParentLastClassLoader(
+        return new ParentLastClassLoader(
             manifest.id(), jarUrls.toArray(URL[]::new), getClass().getClassLoader());
-        return instantiateEntry(classLoader, manifest);
     }
 
     private List<URL> extractLibJars(Path zipPath, String pluginId) {
@@ -73,7 +79,8 @@ public class PluginLoader {
         }
     }
 
-    private PluginActivator instantiateEntry(ParentLastClassLoader classLoader, PluginManifest manifest) {
+    /** Loads the manifest's {@code entry} class from {@code classLoader} and instantiates it. */
+    public PluginActivator instantiateEntry(ClassLoader classLoader, PluginManifest manifest) {
         Class<?> entryClass;
         try {
             entryClass = classLoader.loadClass(manifest.entry());
