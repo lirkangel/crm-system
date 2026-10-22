@@ -1,6 +1,7 @@
 # Default: postgres only (`docker compose up`).
 # Server image build runs unit tests before packaging (see server/Dockerfile).
-# Optional: `docker compose --profile tools run --rm server-test` to run tests from bind-mounted sources.
+# Optional: `docker compose --profile tools run --rm server-test` to run unit tests from bind-mounted sources
+# (`verify`, not `test`: foundation test-depends on the hotel plugin ZIP, which exists only after `package`).
 # Stack: `docker compose --profile server up --build`
 
 services:
@@ -11,7 +12,7 @@ services:
     volumes:
       - ./server:/workspace
       - maven_repo:/root/.m2
-    command: ["mvn", "-B", "test"]
+    command: ["mvn", "-B", "verify"]
 
   server:
     profiles: ["server"]
