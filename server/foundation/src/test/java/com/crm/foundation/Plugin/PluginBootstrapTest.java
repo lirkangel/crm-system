@@ -8,6 +8,7 @@ import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.boot.autoconfigure.flyway.FlywayMigrationInitializer;
 import org.springframework.jdbc.core.JdbcTemplate;
 
+import java.io.IOException;
 import java.net.URL;
 import java.nio.file.Path;
 import java.util.ArrayList;
@@ -30,6 +31,9 @@ class PluginBootstrapTest {
     private final List<String> classLoadersBuilt = new ArrayList<>();
     private final List<String> migratedPlugins = new ArrayList<>();
     private final List<String> failMigrationFor = new ArrayList<>();
+    private final Map<String, Throwable> failValidationFor = new HashMap<>();
+    private final List<String> classLoadersClosed = new ArrayList<>();
+    private final List<String> validatedPlugins = new ArrayList<>();
     private int scans;
 
     private static PluginManifest manifest(String id) {
@@ -49,7 +53,13 @@ class PluginBootstrapTest {
             @Override
             public ParentLastClassLoader createClassLoader(Path zip, PluginManifest manifest) {
                 classLoadersBuilt.add(manifest.id());
-                return new ParentLastClassLoader(manifest.id(), new URL[0], getClass().getClassLoader());
+                return new ParentLastClassLoader(manifest.id(), new URL[0], getClass().getClassLoader()) {
+                    @Override
+                    public void close() throws IOException {
+                        classLoadersClosed.add(manifest.id());
+                        super.close();
+                    }
+                };
             }
         };
         PluginMigrator migrator = new PluginMigrator(null) {
@@ -67,6 +77,19 @@ class PluginBootstrapTest {
                 return List.of(basePackage + ".Thing");
             }
         };
+        PluginEntityValidator validator = new PluginEntityValidator(null, null, null) {
+            @Override
+            public void validate(PluginManifest manifest, ClassLoader classLoader, List<String> entityClassNames) {
+                Throwable failure = failValidationFor.get(manifest.id());
+                if (failure instanceof RuntimeException runtime) {
+                    throw runtime;
+                }
+                if (failure instanceof Error error) {
+                    throw error;
+                }
+                validatedPlugins.add(manifest.id() + ":" + entityClassNames);
+            }
+        };
         JdbcTemplate jdbc = new JdbcTemplate() {
             @Override
             @SuppressWarnings("unchecked")
@@ -75,7 +98,7 @@ class PluginBootstrapTest {
                 return (List<T>) (state == null ? List.of() : List.of(state));
             }
         };
-        return new PluginBootstrap(foundationMigrations, discovery, loader, migrator, scanner, jdbc);
+        return new PluginBootstrap(foundationMigrations, discovery, loader, migrator, scanner, validator, jdbc);
     }
 
     @Test
@@ -89,7 +112,39 @@ class PluginBootstrapTest {
         assertThat(plugin.classLoader()).isInstanceOf(ParentLastClassLoader.class);
         assertThat(plugin.entityClassNames()).containsExactly("com.crm.demo.Thing");
         assertThat(migratedPlugins).containsExactly("com.crm.demo");
+        assertThat(validatedPlugins).containsExactly("com.crm.demo:[com.crm.demo.Thing]");
         assertThat(bootstrap.report().ready()).containsExactly(plugin);
+    }
+
+    @Test
+    void entity_validation_failure_marks_failed_and_closes_classloader() {
+        failValidationFor.put("com.crm.badmap", new InvalidPluginPackageException("missing column [missing_col]"));
+        PluginBootstrap bootstrap = bootstrapScanning(
+            PluginDiscoveryResult.valid("/plugins/badmap.zip", manifest("com.crm.badmap")),
+            PluginDiscoveryResult.valid("/plugins/good.zip", manifest("com.crm.good")));
+
+        PluginBootstrapReport report = bootstrap.report();
+
+        BootstrappedPlugin badmap = report.plugins().get(0);
+        assertThat(badmap.status()).isEqualTo(BootstrappedPlugin.Status.FAILED);
+        assertThat(badmap.failureReason()).contains("missing_col");
+        assertThat(badmap.classLoader()).isNull();
+        assertThat(badmap.entityClassNames()).isEmpty();
+        assertThat(classLoadersClosed).containsExactly("com.crm.badmap");
+        assertThat(report.ready()).extracting(p -> p.manifest().id()).containsExactly("com.crm.good");
+    }
+
+    @Test
+    void linkage_error_without_message_marks_failed_with_a_reason() {
+        failValidationFor.put("com.crm.linkage", new NoClassDefFoundError());
+        PluginBootstrap bootstrap = bootstrapScanning(
+            PluginDiscoveryResult.valid("/plugins/linkage.zip", manifest("com.crm.linkage")));
+
+        BootstrappedPlugin plugin = bootstrap.report().plugins().get(0);
+
+        assertThat(plugin.status()).isEqualTo(BootstrappedPlugin.Status.FAILED);
+        assertThat(plugin.failureReason()).isEqualTo(NoClassDefFoundError.class.getName());
+        assertThat(classLoadersClosed).containsExactly("com.crm.linkage");
     }
 
     @Test

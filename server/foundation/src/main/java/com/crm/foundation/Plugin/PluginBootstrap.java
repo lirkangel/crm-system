@@ -16,9 +16,11 @@ import java.util.List;
  * Early plugin phase (design 6.1): runs while Foundation's
  * {@code EntityManagerFactory} is being built, after Foundation's own Flyway
  * migrations. For each valid plugin package it builds the plugin classloader,
- * migrates the plugin schema and finds its {@code @Entity} classes, so
- * {@link PluginJpaContributor} can add them to Foundation's persistence unit
- * — Hibernate's {@code ddl-auto: validate} then sees the plugin tables.
+ * migrates the plugin schema, finds its {@code @Entity} classes and validates
+ * them in isolation ({@link PluginEntityValidator}: own schema only, trial
+ * mapping), so {@link PluginJpaContributor} can add them to Foundation's
+ * persistence unit — Hibernate's {@code ddl-auto: validate} then sees the
+ * plugin tables, and a plugin that would break it is FAILED instead.
  *
  * <p>Runs once (memoized). Never throws: a plugin that fails is reported
  * {@code FAILED} and left out; {@code DISABLED}/{@code UNINSTALL_PENDING}
@@ -35,6 +37,7 @@ public class PluginBootstrap {
     private final PluginLoader loader;
     private final PluginMigrator migrator;
     private final PluginEntityScanner entityScanner;
+    private final PluginEntityValidator entityValidator;
     private final JdbcTemplate jdbc;
 
     private PluginBootstrapReport report;
@@ -45,12 +48,14 @@ public class PluginBootstrap {
             PluginLoader loader,
             PluginMigrator migrator,
             PluginEntityScanner entityScanner,
+            PluginEntityValidator entityValidator,
             JdbcTemplate jdbc) {
         this.foundationMigrations = foundationMigrations;
         this.discovery = discovery;
         this.loader = loader;
         this.migrator = migrator;
         this.entityScanner = entityScanner;
+        this.entityValidator = entityValidator;
         this.jdbc = jdbc;
     }
 
@@ -90,12 +95,14 @@ public class PluginBootstrap {
             classLoader = loader.createClassLoader(zip, manifest);
             migrator.migrate(zip, manifest);
             List<String> entities = entityScanner.scan(classLoader, basePackage(manifest));
+            entityValidator.validate(manifest, classLoader, entities);
             log.info("Plugin {} bootstrapped with {} entity class(es)", manifest.id(), entities.size());
             return BootstrappedPlugin.ready(result.packagePath(), manifest, classLoader, entities);
-        } catch (Exception e) {
-            log.error("Plugin {} failed to bootstrap: {}", manifest.id(), e.getMessage(), e);
+        } catch (Exception | LinkageError e) {
+            String reason = e.getMessage() != null ? e.getMessage() : e.getClass().getName();
+            log.error("Plugin {} failed to bootstrap: {}", manifest.id(), reason, e);
             closeQuietly(classLoader);
-            return BootstrappedPlugin.failed(result.packagePath(), manifest, e.getMessage());
+            return BootstrappedPlugin.failed(result.packagePath(), manifest, reason);
         }
     }
 
