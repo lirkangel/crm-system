@@ -1,0 +1,261 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0
+                             https://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <parent>
+        <groupId>com.crm</groupId>
+        <artifactId>crm-server-parent</artifactId>
+        <version>0.1.0-SNAPSHOT</version>
+        <relativePath>../pom.xml</relativePath>
+    </parent>
+
+    <artifactId>foundation</artifactId>
+    <name>foundation</name>
+    <description>CRM Foundation v0 — plugin-driven platform core</description>
+
+    <!-- ─────────────────────────────── dependencies ─── -->
+    <dependencies>
+
+        <!-- ── Plugin contract (shared with plugin modules) ── -->
+        <dependency>
+            <groupId>com.crm</groupId>
+            <artifactId>plugin-api</artifactId>
+            <version>${project.version}</version>
+        </dependency>
+
+        <!-- ── Core starters ── -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-web</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-data-jpa</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-security</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-validation</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-actuator</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-thymeleaf</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-mail</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-websocket</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.springdoc</groupId>
+            <artifactId>springdoc-openapi-starter-webmvc-ui</artifactId>
+            <version>${springdoc.version}</version>
+        </dependency>
+
+        <!-- ── Database ── (Hibernate version comes from Spring Boot — do not override with 7.x on Boot 3.4) -->
+        <dependency>
+            <groupId>org.postgresql</groupId>
+            <artifactId>postgresql</artifactId>
+            <scope>runtime</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.flywaydb</groupId>
+            <artifactId>flyway-core</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.flywaydb</groupId>
+            <artifactId>flyway-database-postgresql</artifactId>
+        </dependency>
+
+        <!-- ── JWT (JJWT 0.12.x) ── -->
+        <dependency>
+            <groupId>io.jsonwebtoken</groupId>
+            <artifactId>jjwt-api</artifactId>
+            <version>${jjwt.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>io.jsonwebtoken</groupId>
+            <artifactId>jjwt-impl</artifactId>
+            <version>${jjwt.version}</version>
+            <scope>runtime</scope>
+        </dependency>
+        <dependency>
+            <groupId>io.jsonwebtoken</groupId>
+            <artifactId>jjwt-jackson</artifactId>
+            <version>${jjwt.version}</version>
+            <scope>runtime</scope>
+        </dependency>
+
+        <!-- ── Office I/O ── -->
+        <dependency>
+            <groupId>org.apache.poi</groupId>
+            <artifactId>poi-ooxml</artifactId>
+            <version>${poi.version}</version>
+        </dependency>
+        <!--
+          DocxStamper for Word template rendering — add when reaching M7.3:
+          <dependency>
+              <groupId>pro.verron.officestamper</groupId>
+              <artifactId>spring-officestamper</artifactId>
+              <version>2.x.x</version>
+          </dependency>
+
+          OpenHTMLtoPDF for PDF rendering — add when reaching M7.2:
+          <dependency>
+              <groupId>com.openhtmltopdf</groupId>
+              <artifactId>openhtmltopdf-pdfbox</artifactId>
+              <version>1.0.10</version>
+          </dependency>
+        -->
+
+        <!-- ── Developer tools ── -->
+        <dependency>
+            <groupId>org.projectlombok</groupId>
+            <artifactId>lombok</artifactId>
+            <scope>compile</scope>
+            <optional>true</optional>
+        </dependency>
+        <dependency>
+            <groupId>org.mapstruct</groupId>
+            <artifactId>mapstruct</artifactId>
+            <version>${mapstruct.version}</version>
+        </dependency>
+
+        <!-- ── Test ── -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-test</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.springframework.security</groupId>
+            <artifactId>spring-security-test</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-testcontainers</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.testcontainers</groupId>
+            <artifactId>postgresql</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>io.rest-assured</groupId>
+            <artifactId>rest-assured</artifactId>
+            <version>${rest-assured.version}</version>
+            <scope>test</scope>
+        </dependency>
+        <!--
+          GreenMail for SMTP testing — add when reaching M7.5:
+          <dependency>
+              <groupId>com.icegreen</groupId>
+              <artifactId>greenmail-spring</artifactId>
+              <version>2.1.x</version>
+              <scope>test</scope>
+          </dependency>
+        -->
+
+    </dependencies>
+
+    <!-- ─────────────────────────────────────── build ─── -->
+    <build>
+        <plugins>
+
+            <!-- Lombok + MapStruct annotation processing must be ordered -->
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-compiler-plugin</artifactId>
+                <configuration>
+                    <source>${java.version}</source>
+                    <target>${java.version}</target>
+                    <annotationProcessorPaths>
+                        <path>
+                            <groupId>org.projectlombok</groupId>
+                            <artifactId>lombok</artifactId>
+                            <version>${lombok.version}</version>
+                        </path>
+                        <path>
+                            <groupId>org.mapstruct</groupId>
+                            <artifactId>mapstruct-processor</artifactId>
+                            <version>${mapstruct.version}</version>
+                        </path>
+                    </annotationProcessorPaths>
+                </configuration>
+            </plugin>
+
+            <!-- Default: skip Docker-backed tests; run with: mvn verify -Pintegration -->
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-surefire-plugin</artifactId>
+                <configuration>
+                    <!-- Mockito inline mocks on JDK 21+ (see Mockito javadoc §0.3); avoids self-attach / dynamic agent warnings -->
+                    <!-- net.bytebuddy.experimental: Byte Buddy 1.15.x officially supports up to JDK 24; required on JDK 25+ -->
+                    <argLine>
+                        -javaagent:${settings.localRepository}/org/mockito/mockito-core/${mockito.version}/mockito-core-${mockito.version}.jar
+                        -Xshare:off
+                        -Dnet.bytebuddy.experimental=true
+                    </argLine>
+                    <excludedGroups>integration</excludedGroups>
+                </configuration>
+            </plugin>
+
+            <!-- Spring Boot repackage (fat JAR for server-pack) -->
+            <plugin>
+                <groupId>org.springframework.boot</groupId>
+                <artifactId>spring-boot-maven-plugin</artifactId>
+                <configuration>
+                    <excludes>
+                        <exclude>
+                            <groupId>org.projectlombok</groupId>
+                            <artifactId>lombok</artifactId>
+                        </exclude>
+                    </excludes>
+                </configuration>
+            </plugin>
+
+        </plugins>
+    </build>
+
+    <profiles>
+        <profile>
+            <id>integration</id>
+            <build>
+                <plugins>
+                    <plugin>
+                        <groupId>org.apache.maven.plugins</groupId>
+                        <artifactId>maven-surefire-plugin</artifactId>
+                        <configuration>
+                            <!-- Run every test, including @Tag("integration") -->
+                            <excludedGroups combine.self="override"></excludedGroups>
+                            <!-- Surefire's defaults skip *IT.java; without this the ITs never run -->
+                            <includes>
+                                <include>**/*Test.java</include>
+                                <include>**/*Tests.java</include>
+                                <include>**/*IT.java</include>
+                            </includes>
+                            <!-- Same JVM as Maven: inherits DOCKER_HOST / socket visibility (IDE & fork issues) -->
+                            <forkCount>0</forkCount>
+                        </configuration>
+                    </plugin>
+                </plugins>
+            </build>
+        </profile>
+    </profiles>
+
+</project>
