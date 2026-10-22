@@ -1,16 +1,20 @@
 package com.crm.foundation.Plugin;
 
+import jakarta.persistence.Entity;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.boot.autoconfigure.flyway.FlywayMigrationInitializer;
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.orm.jpa.persistenceunit.PersistenceManagedTypes;
 import org.springframework.stereotype.Component;
 
 import java.io.IOException;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 
 /**
  * Early plugin phase (design 6.1): runs while Foundation's
@@ -33,6 +37,7 @@ public class PluginBootstrap {
     private static final String REGISTRY_STATE_SQL = "SELECT state FROM plugin_registry WHERE plugin_id = ?";
 
     private final ObjectProvider<FlywayMigrationInitializer> foundationMigrations;
+    private final ObjectProvider<PersistenceManagedTypes> foundationManagedTypes;
     private final PluginDiscovery discovery;
     private final PluginLoader loader;
     private final PluginMigrator migrator;
@@ -44,6 +49,7 @@ public class PluginBootstrap {
 
     public PluginBootstrap(
             ObjectProvider<FlywayMigrationInitializer> foundationMigrations,
+            ObjectProvider<PersistenceManagedTypes> foundationManagedTypes,
             PluginDiscovery discovery,
             PluginLoader loader,
             PluginMigrator migrator,
@@ -51,6 +57,7 @@ public class PluginBootstrap {
             PluginEntityValidator entityValidator,
             JdbcTemplate jdbc) {
         this.foundationMigrations = foundationMigrations;
+        this.foundationManagedTypes = foundationManagedTypes;
         this.discovery = discovery;
         this.loader = loader;
         this.migrator = migrator;
@@ -71,9 +78,12 @@ public class PluginBootstrap {
         foundationMigrations.getIfAvailable();
         List<BootstrappedPlugin> plugins = new ArrayList<>();
         try {
+            // JPA entity names are global to the shared persistence unit: Foundation's
+            // come first, then each READY plugin's, in discovery order (first claim wins)
+            Map<String, String> claimedEntityNames = new HashMap<>(foundationEntityNames());
             for (PluginDiscoveryResult result : discovery.scan()) {
                 if (result.isValid()) {
-                    plugins.add(bootstrapIsolated(result));
+                    plugins.add(bootstrapIsolated(result, claimedEntityNames));
                 }
             }
         } catch (RuntimeException e) {
@@ -82,7 +92,8 @@ public class PluginBootstrap {
         return new PluginBootstrapReport(plugins);
     }
 
-    private BootstrappedPlugin bootstrapIsolated(PluginDiscoveryResult result) {
+    private BootstrappedPlugin bootstrapIsolated(
+            PluginDiscoveryResult result, Map<String, String> claimedEntityNames) {
         PluginManifest manifest = result.manifest();
         ParentLastClassLoader classLoader = null;
         try {
@@ -95,7 +106,10 @@ public class PluginBootstrap {
             classLoader = loader.createClassLoader(zip, manifest);
             migrator.migrate(zip, manifest);
             List<String> entities = entityScanner.scan(classLoader, basePackage(manifest));
-            entityValidator.validate(manifest, classLoader, entities);
+            Map<String, String> entityNames =
+                entityValidator.validate(manifest, classLoader, entities, claimedEntityNames);
+            entityNames.forEach((name, className) ->
+                claimedEntityNames.put(name, "plugin " + manifest.id() + " entity " + className));
             log.info("Plugin {} bootstrapped with {} entity class(es)", manifest.id(), entities.size());
             return BootstrappedPlugin.ready(result.packagePath(), manifest, classLoader, entities);
         } catch (Exception | LinkageError e) {
@@ -104,6 +118,36 @@ public class PluginBootstrap {
             closeQuietly(classLoader);
             return BootstrappedPlugin.failed(result.packagePath(), manifest, reason);
         }
+    }
+
+    private Map<String, String> foundationEntityNames() {
+        PersistenceManagedTypes managedTypes = foundationManagedTypes.getIfAvailable();
+        return managedTypes == null
+            ? Map.of()
+            : foundationEntityNames(managedTypes.getManagedClassNames(), PluginBootstrap.class.getClassLoader());
+    }
+
+    /**
+     * JPA entity name → {@code "Foundation entity <class>"} for the
+     * {@code @Entity} classes among {@code classNames} (embeddables,
+     * mapped superclasses and converters have no entity name).
+     */
+    static Map<String, String> foundationEntityNames(List<String> classNames, ClassLoader classLoader) {
+        Map<String, String> names = new HashMap<>();
+        for (String className : classNames) {
+            try {
+                Entity entity = Class.forName(className, false, classLoader).getAnnotation(Entity.class);
+                if (entity != null) {
+                    String name = entity.name().isEmpty()
+                        ? className.substring(className.lastIndexOf('.') + 1)
+                        : entity.name();
+                    names.put(name, "Foundation entity " + className);
+                }
+            } catch (ClassNotFoundException | LinkageError e) {
+                log.warn("Cannot read the entity name of Foundation class {}: {}", className, e.toString());
+            }
+        }
+        return names;
     }
 
     private String registryState(String pluginId) {

@@ -17,6 +17,7 @@ import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.assertj.core.api.Assertions.entry;
 
 class PluginEntityValidatorTest {
 
@@ -77,7 +78,7 @@ class PluginEntityValidatorTest {
 
     @Test
     void entities_and_collection_tables_in_own_schema_pass() {
-        assertThat(violations(SchemaFixtures.Own.class)).isEmpty();
+        assertThat(violations(SchemaFixtures.Own.class, SchemaFixtures.NamedUser.class)).isEmpty();
     }
 
     @Test
@@ -108,11 +109,38 @@ class PluginEntityValidatorTest {
     }
 
     @Test
-    void trial_factory_is_started_and_closed() {
-        builtMetadata = metadata(SchemaFixtures.Own.class);
+    void entity_name_already_claimed_is_a_clash() {
+        Metadata metadata = metadata(SchemaFixtures.NamedUser.class);
 
-        validator.validate(MANIFEST, getClass().getClassLoader(), List.of("x.Thing"));
+        assertThat(PluginEntityValidator.entityNameClashes(
+                metadata, Map.of("User", "Foundation entity com.crm.foundation.Domain.User")))
+            .containsExactly("entity name 'User' (" + SchemaFixtures.NamedUser.class.getName()
+                + ") is already taken by Foundation entity com.crm.foundation.Domain.User");
+        assertThat(PluginEntityValidator.entityNameClashes(
+                metadata, Map.of("Note", "plugin com.crm.y entity y.Note")))
+            .isEmpty();
+    }
 
+    @Test
+    void trial_factory_is_started_and_closed_and_entity_names_returned() {
+        builtMetadata = metadata(SchemaFixtures.NamedUser.class);
+
+        Map<String, String> names = validator.validate(
+            MANIFEST, getClass().getClassLoader(), List.of("x.Thing"), Map.of("Note", "plugin com.crm.y entity y.Note"));
+
+        assertThat(names).containsExactly(entry("User", SchemaFixtures.NamedUser.class.getName()));
+        assertThat(events).containsExactly("start [x.Thing]", "close");
+    }
+
+    @Test
+    void entity_name_clash_rejects_during_the_build_and_factory_still_closed() {
+        builtMetadata = metadata(SchemaFixtures.NamedUser.class);
+
+        assertThatThrownBy(() -> validator.validate(MANIFEST, getClass().getClassLoader(), List.of("x.Thing"),
+                Map.of("User", "Foundation entity com.crm.foundation.Domain.User")))
+            .isInstanceOf(InvalidPluginPackageException.class)
+            .hasMessage("plugin com.crm.x entity name 'User' (" + SchemaFixtures.NamedUser.class.getName()
+                + ") is already taken by Foundation entity com.crm.foundation.Domain.User");
         assertThat(events).containsExactly("start [x.Thing]", "close");
     }
 
@@ -120,7 +148,7 @@ class PluginEntityValidatorTest {
     void schema_guard_rejects_during_the_build_and_factory_still_closed() {
         builtMetadata = metadata(SchemaFixtures.Own.class, SchemaFixtures.Escape.class);
 
-        assertThatThrownBy(() -> validator.validate(MANIFEST, getClass().getClassLoader(), List.of("x.Thing")))
+        assertThatThrownBy(() -> validator.validate(MANIFEST, getClass().getClassLoader(), List.of("x.Thing"), Map.of()))
             .isInstanceOf(InvalidPluginPackageException.class)
             .hasMessage("plugin com.crm.x maps database objects outside its schema 'plugin_x': table public.users");
         assertThat(events).containsExactly("start [x.Thing]", "close");
@@ -131,7 +159,7 @@ class PluginEntityValidatorTest {
         trialFailure = new IllegalStateException("wrapper",
             new IllegalArgumentException("Schema-validation: missing column [missing_col]"));
 
-        assertThatThrownBy(() -> validator.validate(MANIFEST, getClass().getClassLoader(), List.of("x.Thing")))
+        assertThatThrownBy(() -> validator.validate(MANIFEST, getClass().getClassLoader(), List.of("x.Thing"), Map.of()))
             .isInstanceOf(InvalidPluginPackageException.class)
             .hasMessageContaining("missing_col");
         assertThat(events).containsExactly("start [x.Thing]", "close");
@@ -143,14 +171,14 @@ class PluginEntityValidatorTest {
             "plugin com.crm.x maps database objects outside its schema 'plugin_x': table public.users");
         trialFailure = new IllegalStateException("Unable to build Hibernate SessionFactory", violation);
 
-        assertThatThrownBy(() -> validator.validate(MANIFEST, getClass().getClassLoader(), List.of("x.Thing")))
+        assertThatThrownBy(() -> validator.validate(MANIFEST, getClass().getClassLoader(), List.of("x.Thing"), Map.of()))
             .isSameAs(violation);
         assertThat(events).containsExactly("start [x.Thing]", "close");
     }
 
     @Test
     void no_entities_means_no_trial_factory() {
-        validator.validate(MANIFEST, getClass().getClassLoader(), List.of());
+        validator.validate(MANIFEST, getClass().getClassLoader(), List.of(), Map.of());
 
         assertThat(events).isEmpty();
     }

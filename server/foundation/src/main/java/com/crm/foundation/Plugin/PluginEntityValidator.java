@@ -10,6 +10,7 @@ import org.hibernate.engine.spi.SessionFactoryImplementor;
 import org.hibernate.integrator.spi.Integrator;
 import org.hibernate.jpa.boot.spi.IntegratorProvider;
 import org.hibernate.jpa.boot.spi.JpaSettings;
+import org.hibernate.mapping.PersistentClass;
 import org.hibernate.mapping.Table;
 import org.hibernate.service.spi.SessionFactoryServiceRegistry;
 import org.slf4j.Logger;
@@ -29,6 +30,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.TreeMap;
 
 /**
  * Checks one plugin's {@code @Entity} classes in isolation before they join
@@ -38,7 +40,7 @@ import java.util.Objects;
  * <p>It builds a throwaway {@code EntityManagerFactory} from only these
  * classes, on Foundation's {@link DataSource} and Hibernate settings, with
  * {@code hbm2ddl.auto=validate} and the plugin classloader in
- * {@code hibernate.classLoaders}. It is always closed. Two checks run on it:
+ * {@code hibernate.classLoaders}. It is always closed. Three checks run on it:
  * <ol>
  *   <li><b>Schema isolation</b> — every table and sequence in the mapping
  *       Hibernate actually built must live in the manifest's {@code schema}.
@@ -50,6 +52,10 @@ import java.util.Objects;
  *       {@link Integrator} — before schema validation — and again once the
  *       factory is up, when id generators have registered their sequences
  *       and tables.</li>
+ *   <li><b>Entity names</b> — JPA entity names are global to Foundation's
+ *       persistence unit, so a name already claimed (by a Foundation entity
+ *       or a plugin bootstrapped earlier) is rejected; it would otherwise
+ *       fail the shared factory with a duplicate-mapping error.</li>
  *   <li><b>Trial mapping</b> — Hibernate's own mapping and
  *       {@code hbm2ddl} validation of these classes against the database.
  *       Because Foundation's entities are absent, an association to one
@@ -73,20 +79,24 @@ public class PluginEntityValidator {
     }
 
     /**
+     * @param claimedEntityNames JPA entity names already in use → who holds
+     *        each (e.g. {@code "Foundation entity com.crm.foundation.Domain.User"})
+     * @return this plugin's JPA entity names → entity class names, sorted
      * @throws InvalidPluginPackageException when the entities map a table or
-     *         sequence outside {@code manifest.schema()}, or fail Hibernate's
-     *         mapping/schema validation
+     *         sequence outside {@code manifest.schema()}, reuse a claimed entity
+     *         name, or fail Hibernate's mapping/schema validation
      */
-    public void validate(PluginManifest manifest, ClassLoader classLoader, List<String> entityClassNames) {
+    public Map<String, String> validate(PluginManifest manifest, ClassLoader classLoader,
+            List<String> entityClassNames, Map<String, String> claimedEntityNames) {
         if (entityClassNames.isEmpty()) {
-            return;
+            return Map.of();
         }
-        SchemaGuard guard = new SchemaGuard(manifest);
+        SchemaGuard guard = new SchemaGuard(manifest, claimedEntityNames);
         LocalContainerEntityManagerFactoryBean trial =
             trialFactory(manifest, classLoader, entityClassNames, guard);
         try {
             trial.afterPropertiesSet();
-            guard.recheck();
+            return guard.recheck();
         } catch (InvalidPluginPackageException e) {
             throw e;
         } catch (RuntimeException | LinkageError e) {
@@ -122,6 +132,28 @@ public class PluginEntityValidator {
             }
         }
         return violations;
+    }
+
+    /**
+     * Entities of {@code metadata} whose JPA entity name is already in
+     * {@code claimedEntityNames}, as
+     * {@code "entity name 'User' (x.User) is already taken by <holder>"}.
+     */
+    static List<String> entityNameClashes(Metadata metadata, Map<String, String> claimedEntityNames) {
+        return entityNames(metadata).entrySet().stream()
+            .filter(entity -> claimedEntityNames.containsKey(entity.getKey()))
+            .map(entity -> "entity name '" + entity.getKey() + "' (" + entity.getValue()
+                + ") is already taken by " + claimedEntityNames.get(entity.getKey()))
+            .toList();
+    }
+
+    /** JPA entity name → entity class name, sorted by name. */
+    static Map<String, String> entityNames(Metadata metadata) {
+        Map<String, String> names = new TreeMap<>();
+        for (PersistentClass entity : metadata.getEntityBindings()) {
+            names.put(entity.getJpaEntityName(), entity.getClassName());
+        }
+        return names;
     }
 
     private static void closeQuietly(PluginManifest manifest, LocalContainerEntityManagerFactoryBean trial) {
@@ -164,10 +196,12 @@ public class PluginEntityValidator {
     private static final class SchemaGuard implements Integrator {
 
         private final PluginManifest manifest;
+        private final Map<String, String> claimedEntityNames;
         private Metadata metadata;
 
-        SchemaGuard(PluginManifest manifest) {
+        SchemaGuard(PluginManifest manifest, Map<String, String> claimedEntityNames) {
             this.manifest = manifest;
+            this.claimedEntityNames = claimedEntityNames;
         }
 
         @Override
@@ -177,13 +211,17 @@ public class PluginEntityValidator {
             check();
         }
 
-        /** Id generators register their sequences/tables after integration; check those too. */
-        void recheck() {
+        /**
+         * Id generators register their sequences/tables after integration;
+         * check those too. Returns the plugin's entity names.
+         */
+        Map<String, String> recheck() {
             if (metadata == null) {
                 throw new InvalidPluginPackageException(
                     "plugin " + manifest.id() + ": entity mapping was not inspected for schema isolation");
             }
             check();
+            return entityNames(metadata);
         }
 
         private void check() {
@@ -192,6 +230,11 @@ public class PluginEntityValidator {
                 throw new InvalidPluginPackageException("plugin " + manifest.id()
                     + " maps database objects outside its schema '" + manifest.schema() + "': "
                     + String.join(", ", violations));
+            }
+            List<String> clashes = entityNameClashes(metadata, claimedEntityNames);
+            if (!clashes.isEmpty()) {
+                throw new InvalidPluginPackageException(
+                    "plugin " + manifest.id() + " " + String.join(", ", clashes));
             }
         }
 

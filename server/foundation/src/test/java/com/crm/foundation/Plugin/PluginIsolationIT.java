@@ -197,11 +197,15 @@ class PluginIsolationIT {
         assertThat(plugin(BADMAP).classLoader()).isNull();
 
         assertThat(plugin(ESCAPE).status()).isEqualTo(BootstrappedPlugin.Status.FAILED);
-        assertThat(plugin(ESCAPE).failureReason()).contains("schema");
+        assertThat(plugin(ESCAPE).failureReason()).isEqualTo(
+            "plugin com.crm.iso.escape maps database objects outside its schema 'plugin_iso_escape': "
+                + "table public.users");
         assertThat(plugin(ESCAPE).classLoader()).isNull();
 
         assertThat(plugin(RBAC).status()).isEqualTo(BootstrappedPlugin.Status.FAILED);
-        assertThat(plugin(RBAC).failureReason()).contains("outside its schema").contains("member_roles");
+        assertThat(plugin(RBAC).failureReason()).isEqualTo(
+            "plugin com.crm.iso.rbac maps database objects outside its schema 'plugin_iso_rbac': "
+                + "table <default schema>.member_roles");
         assertThat(plugin(RBAC).classLoader()).isNull();
     }
 

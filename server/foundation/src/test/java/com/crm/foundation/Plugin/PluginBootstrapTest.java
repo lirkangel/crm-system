@@ -7,6 +7,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.boot.autoconfigure.flyway.FlywayMigrationInitializer;
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.orm.jpa.persistenceunit.PersistenceManagedTypes;
 
 import java.io.IOException;
 import java.net.URL;
@@ -18,13 +19,18 @@ import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.tuple;
+import static org.assertj.core.api.Assertions.entry;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
 class PluginBootstrapTest {
 
     @Mock
     private ObjectProvider<FlywayMigrationInitializer> foundationMigrations;
+
+    @Mock
+    private ObjectProvider<PersistenceManagedTypes> foundationManagedTypes;
 
     /** Subclass doubles — Mockito's inline mock-maker can't instrument concrete classes on this JDK. */
     private final Map<String, String> registryStates = new HashMap<>();
@@ -34,6 +40,8 @@ class PluginBootstrapTest {
     private final Map<String, Throwable> failValidationFor = new HashMap<>();
     private final List<String> classLoadersClosed = new ArrayList<>();
     private final List<String> validatedPlugins = new ArrayList<>();
+    /** Plugin id → copy of the claimed entity names the validator was given. */
+    private final Map<String, Map<String, String>> claimedSeen = new HashMap<>();
     private int scans;
 
     private static PluginManifest manifest(String id) {
@@ -79,7 +87,9 @@ class PluginBootstrapTest {
         };
         PluginEntityValidator validator = new PluginEntityValidator(null, null, null) {
             @Override
-            public void validate(PluginManifest manifest, ClassLoader classLoader, List<String> entityClassNames) {
+            public Map<String, String> validate(PluginManifest manifest, ClassLoader classLoader,
+                    List<String> entityClassNames, Map<String, String> claimedEntityNames) {
+                claimedSeen.put(manifest.id(), Map.copyOf(claimedEntityNames));
                 Throwable failure = failValidationFor.get(manifest.id());
                 if (failure instanceof RuntimeException runtime) {
                     throw runtime;
@@ -88,6 +98,10 @@ class PluginBootstrapTest {
                     throw error;
                 }
                 validatedPlugins.add(manifest.id() + ":" + entityClassNames);
+                // the double names each entity by its class name, so plugins never clash here
+                Map<String, String> names = new HashMap<>();
+                entityClassNames.forEach(className -> names.put(className, className));
+                return names;
             }
         };
         JdbcTemplate jdbc = new JdbcTemplate() {
@@ -98,7 +112,8 @@ class PluginBootstrapTest {
                 return (List<T>) (state == null ? List.of() : List.of(state));
             }
         };
-        return new PluginBootstrap(foundationMigrations, discovery, loader, migrator, scanner, validator, jdbc);
+        return new PluginBootstrap(
+            foundationMigrations, foundationManagedTypes, discovery, loader, migrator, scanner, validator, jdbc);
     }
 
     @Test
@@ -132,6 +147,38 @@ class PluginBootstrapTest {
         assertThat(badmap.entityClassNames()).isEmpty();
         assertThat(classLoadersClosed).containsExactly("com.crm.badmap");
         assertThat(report.ready()).extracting(p -> p.manifest().id()).containsExactly("com.crm.good");
+    }
+
+    @Test
+    void foundation_and_earlier_ready_plugins_entity_names_are_claimed() {
+        when(foundationManagedTypes.getIfAvailable()).thenReturn(
+            PersistenceManagedTypes.of(List.of("com.crm.foundation.Domain.User"), List.of()));
+        failValidationFor.put("com.crm.b", new InvalidPluginPackageException("bad mapping"));
+        PluginBootstrap bootstrap = bootstrapScanning(
+            PluginDiscoveryResult.valid("/plugins/a.zip", manifest("com.crm.a")),
+            PluginDiscoveryResult.valid("/plugins/b.zip", manifest("com.crm.b")),
+            PluginDiscoveryResult.valid("/plugins/c.zip", manifest("com.crm.c")));
+
+        bootstrap.report();
+
+        assertThat(claimedSeen.get("com.crm.a"))
+            .containsExactly(entry("User", "Foundation entity com.crm.foundation.Domain.User"));
+        // a is READY, so its names are claimed; b FAILED, so its names are not
+        assertThat(claimedSeen.get("com.crm.c")).containsOnly(
+            entry("User", "Foundation entity com.crm.foundation.Domain.User"),
+            entry("com.crm.a.Thing", "plugin com.crm.a entity com.crm.a.Thing"));
+    }
+
+    @Test
+    void foundation_entity_names_come_from_entity_classes_only() {
+        Map<String, String> names = PluginBootstrap.foundationEntityNames(
+            List.of("com.crm.foundation.Domain.User", "com.crm.foundation.Domain.Role",
+                "java.lang.String", "com.crm.does.not.Exist"),
+            getClass().getClassLoader());
+
+        assertThat(names).containsOnly(
+            entry("User", "Foundation entity com.crm.foundation.Domain.User"),
+            entry("Role", "Foundation entity com.crm.foundation.Domain.Role"));
     }
 
     @Test

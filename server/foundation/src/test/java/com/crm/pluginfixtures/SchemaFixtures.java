@@ -46,6 +46,14 @@ public final class SchemaFixtures {
         private UUID id;
     }
 
+    /** Named like Foundation's {@code User} entity. */
+    @Entity(name = "User")
+    @Table(schema = "plugin_x", name = "named_user")
+    public static class NamedUser {
+        @Id
+        private UUID id;
+    }
+
     /** {@code @ElementCollection} without {@code @CollectionTable}: Hibernate invents the table. */
     @Entity
     @Table(schema = "plugin_x", name = "implicit_collection")
