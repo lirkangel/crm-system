@@ -21,6 +21,7 @@
 
     <modules>
         <module>plugin-api</module>
+        <module>plugins/hotel</module>
         <module>foundation</module>
     </modules>
 

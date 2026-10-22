@@ -1,0 +1,23 @@
+id: com.crm.hotel
+version: 0.1.0
+display-name:
+  vi: "Khách sạn"
+  en: "Hotel"
+depends-on:
+  foundation: ">=0.1.0,<2.0.0"
+permissions-declared:
+  - hotel.rooms.read
+  - hotel.rooms.manage
+  - hotel.guests.read
+  - hotel.guests.manage
+  - hotel.reservations.read
+  - hotel.reservations.create
+  - hotel.reservations.cancel
+foundation-services-used:
+  - persistence
+  - rest
+  - audit
+  - sync
+schema: hotel
+route: hotel
+entry: com.crm.hotel.HotelPlugin

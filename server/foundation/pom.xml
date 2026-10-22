@@ -135,6 +135,15 @@
         </dependency>
 
         <!-- ── Test ── -->
+        <!-- The packaged hotel plugin: copied to target/test-plugins (see build) for the hotel ITs -->
+        <dependency>
+            <groupId>com.crm.plugins</groupId>
+            <artifactId>hotel</artifactId>
+            <version>${project.version}</version>
+            <classifier>plugin</classifier>
+            <type>zip</type>
+            <scope>test</scope>
+        </dependency>
         <dependency>
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-test</artifactId>
@@ -197,6 +206,34 @@
                         </path>
                     </annotationProcessorPaths>
                 </configuration>
+            </plugin>
+
+            <!-- Hotel plugin ZIP (built earlier in the reactor) -> target/test-plugins, the only plugin the hotel ITs install -->
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-dependency-plugin</artifactId>
+                <executions>
+                    <execution>
+                        <id>copy-hotel-plugin</id>
+                        <phase>process-test-resources</phase>
+                        <goals>
+                            <goal>copy</goal>
+                        </goals>
+                        <configuration>
+                            <artifactItems>
+                                <artifactItem>
+                                    <groupId>com.crm.plugins</groupId>
+                                    <artifactId>hotel</artifactId>
+                                    <version>${project.version}</version>
+                                    <classifier>plugin</classifier>
+                                    <type>zip</type>
+                                    <outputDirectory>${project.build.directory}/test-plugins</outputDirectory>
+                                    <destFileName>hotel-plugin.zip</destFileName>
+                                </artifactItem>
+                            </artifactItems>
+                        </configuration>
+                    </execution>
+                </executions>
             </plugin>
 
             <!-- Default: skip Docker-backed tests; run with: mvn verify -Pintegration -->
