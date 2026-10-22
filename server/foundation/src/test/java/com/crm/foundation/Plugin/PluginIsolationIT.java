@@ -37,6 +37,7 @@ class PluginIsolationIT {
     private static final String GOOD = "com.crm.iso.good";
     private static final String BADMAP = "com.crm.iso.badmap";
     private static final String ESCAPE = "com.crm.iso.escape";
+    private static final String RBAC = "com.crm.iso.rbac";
 
     @Autowired
     private ApplicationContext context;
@@ -127,6 +128,37 @@ class PluginIsolationIT {
                 """)
             .buildTo(pluginDir.resolve("escape.zip"));
 
+        // No @CollectionTable: Hibernate's implicit collection table goes to the
+        // default schema (public.member_roles), outside the plugin's schema. With an
+        // entity named User it would be public.user_roles, Foundation's RBAC table.
+        PluginPackageBuilder.plugin(RBAC)
+            .schema("plugin_iso_rbac")
+            .entry("iso.rbac.RbacPlugin")
+            .source("iso.rbac.RbacPlugin", activator("iso.rbac", "RbacPlugin"))
+            .source("iso.rbac.Member", """
+                package iso.rbac;
+
+                import jakarta.persistence.*;
+                import java.util.Set;
+                import java.util.UUID;
+
+                @Entity
+                @Table(schema = "plugin_iso_rbac", name = "app_user")
+                public class Member {
+                    @Id
+                    private UUID id;
+                    @ElementCollection
+                    @Column(name = "role_id")
+                    private Set<UUID> roles;
+                }
+                """)
+            .migration("V1__app_user.sql", """
+                CREATE TABLE app_user (
+                    id UUID PRIMARY KEY
+                );
+                """)
+            .buildTo(pluginDir.resolve("rbac.zip"));
+
         registry.add("foundation.plugins.directory", pluginDir::toString);
     }
 
@@ -150,11 +182,13 @@ class PluginIsolationIT {
     @Test
     void context_starts_with_broken_plugins_present() {
         assertThat(context).isNotNull();
-        assertThat(bootstrap.report().plugins()).hasSize(3);
+        assertThat(bootstrap.report().plugins()).hasSize(4);
     }
 
     @Test
     void good_plugin_ready_others_failed() {
+        // badmap: column missing from its table; escape: @Table in public;
+        // rbac: implicit collection table in the default schema
         assertThat(plugin(GOOD).status()).isEqualTo(BootstrappedPlugin.Status.READY);
         assertThat(plugin(GOOD).entityClassNames()).containsExactly("iso.good.Note");
 
@@ -165,6 +199,10 @@ class PluginIsolationIT {
         assertThat(plugin(ESCAPE).status()).isEqualTo(BootstrappedPlugin.Status.FAILED);
         assertThat(plugin(ESCAPE).failureReason()).contains("schema");
         assertThat(plugin(ESCAPE).classLoader()).isNull();
+
+        assertThat(plugin(RBAC).status()).isEqualTo(BootstrappedPlugin.Status.FAILED);
+        assertThat(plugin(RBAC).failureReason()).contains("outside its schema").contains("member_roles");
+        assertThat(plugin(RBAC).classLoader()).isNull();
     }
 
     @Test
