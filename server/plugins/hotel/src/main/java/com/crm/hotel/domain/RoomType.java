@@ -13,7 +13,7 @@ import org.hibernate.type.SqlTypes;
 import java.util.Map;
 import java.util.UUID;
 
-@Entity
+@Entity(name = "HotelRoomType")
 @Table(schema = "hotel", name = "room_type")
 @Getter
 @Setter

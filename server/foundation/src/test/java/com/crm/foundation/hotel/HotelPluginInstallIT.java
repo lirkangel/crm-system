@@ -4,6 +4,7 @@ import com.crm.foundation.Domain.PluginRegistry;
 import com.crm.foundation.Plugin.PluginState;
 import com.crm.foundation.Service.PluginRegistryService;
 import com.fasterxml.jackson.databind.JsonNode;
+import jakarta.persistence.EntityManagerFactory;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 
@@ -28,6 +29,9 @@ class HotelPluginInstallIT extends HotelITSupport {
     @Autowired
     private PluginRegistryService registryService;
 
+    @Autowired
+    private EntityManagerFactory emf;
+
     @Test
     void hotel_plugin_is_active() {
         PluginRegistry entry = registryService.findByPluginId(HOTEL_PLUGIN_ID).orElseThrow();
@@ -35,6 +39,19 @@ class HotelPluginInstallIT extends HotelITSupport {
         assertThat(entry.getState()).as(entry.getErrorMessage()).isEqualTo(PluginState.ACTIVE.name());
         assertThat(entry.getSchemaName()).isEqualTo(HOTEL_SCHEMA);
         assertThat(entry.getVersion()).isEqualTo("0.1.0");
+    }
+
+    @Test
+    void hotel_entity_names_are_plugin_prefixed() {
+        // JPA entity names are global to the shared persistence unit: generic names would block later plugins
+        List<String> hotelEntities = emf.getMetamodel().getEntities().stream()
+            .filter(type -> type.getJavaType().getName().startsWith("com.crm.hotel."))
+            .map(type -> type.getName() + "=" + type.getJavaType().getSimpleName())
+            .sorted()
+            .toList();
+
+        assertThat(hotelEntities).containsExactly(
+            "HotelGuest=Guest", "HotelReservation=Reservation", "HotelRoom=Room", "HotelRoomType=RoomType");
     }
 
     @Test

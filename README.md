@@ -32,6 +32,7 @@ crm-system/
 Each plugin is a ZIP package that:
 - Loads via a dedicated `URLClassLoader` (parent-last isolation) and its own Spring child context
 - Owns its own Postgres schema (e.g., `hotel`, `dental`); its JPA entities may map only that schema
+- Gives its JPA entities plugin-specific names (`@Entity(name = "HotelRoom")`): entity names are global to the shared persistence unit, so a name already taken by Foundation or an earlier plugin makes the plugin `LOAD_FAILED`
 - Runs its own Flyway migrations on install
 - Declares permissions (and, optionally, i18n bundles and custom JSON form metadata)
 

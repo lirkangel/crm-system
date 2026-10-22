@@ -10,7 +10,7 @@ import lombok.Setter;
 
 import java.util.UUID;
 
-@Entity
+@Entity(name = "HotelGuest")
 @Table(schema = "hotel", name = "guest")
 @Getter
 @Setter

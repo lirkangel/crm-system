@@ -18,7 +18,7 @@ import java.util.UUID;
  * A stay of one guest in one room over {@code [checkIn, checkOut)}. The database
  * ({@code reservation_no_overlap}) guarantees confirmed stays of a room never overlap.
  */
-@Entity
+@Entity(name = "HotelReservation")
 @Table(schema = "hotel", name = "reservation")
 @Getter
 @Setter
