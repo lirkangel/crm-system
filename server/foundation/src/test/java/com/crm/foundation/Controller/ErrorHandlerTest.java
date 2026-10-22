@@ -17,6 +17,9 @@ import org.springframework.mock.http.MockHttpInputMessage;
 import org.springframework.beans.TypeMismatchException;
 import org.springframework.web.HttpRequestMethodNotSupportedException;
 import org.springframework.web.bind.ServletRequestBindingException;
+import org.springframework.web.bind.annotation.ResponseStatus;
+import org.springframework.web.server.ResponseStatusException;
+import org.springframework.security.authentication.BadCredentialsException;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.validation.BeanPropertyBindingResult;
 import org.springframework.web.bind.MethodArgumentNotValidException;
@@ -27,6 +30,7 @@ import java.util.List;
 import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 class ErrorHandlerTest {
 
@@ -135,6 +139,47 @@ class ErrorHandlerTest {
         assertThat(response.getHeaders().getAllow()).contains(HttpMethod.GET, HttpMethod.POST);
         assertProblemBasics(response.getBody(), 405, "urn:problem-type:request-rejected");
         assertThat(response.getBody().getProperties().get("code")).isEqualTo("METHOD_NOT_ALLOWED");
+    }
+
+    @ResponseStatus(value = HttpStatus.CONFLICT, reason = "already booked")
+    static class AnnotatedConflict extends RuntimeException {
+    }
+
+    @Test
+    void unexpected_exception_is_generic_500_without_its_message() throws Exception {
+        ResponseEntity<ProblemDetail> response =
+            handler.handleUnexpected(new IllegalStateException("secret-internal-detail"));
+
+        assertThat(response.getStatusCode().value()).isEqualTo(500);
+        assertProblemBasics(response.getBody(), 500, "urn:problem-type:internal");
+        assertThat(response.getBody().getProperties().get("code")).isEqualTo("INTERNAL_ERROR");
+        assertThat(response.getBody().toString()).doesNotContain("secret-internal-detail");
+    }
+
+    @Test
+    void response_status_exception_keeps_its_status_and_reason() throws Exception {
+        ResponseEntity<ProblemDetail> response =
+            handler.handleUnexpected(new ResponseStatusException(HttpStatus.I_AM_A_TEAPOT, "short and stout"));
+
+        assertThat(response.getStatusCode().value()).isEqualTo(418);
+        assertProblemBasics(response.getBody(), 418, "urn:problem-type:request-rejected");
+        assertThat(response.getBody().getProperties().get("code")).isEqualTo("I_AM_A_TEAPOT");
+        assertThat(response.getBody().getDetail()).isEqualTo("short and stout");
+    }
+
+    @Test
+    void response_status_annotated_exception_keeps_its_status() throws Exception {
+        ResponseEntity<ProblemDetail> response = handler.handleUnexpected(new AnnotatedConflict());
+
+        assertThat(response.getStatusCode().value()).isEqualTo(409);
+        assertThat(response.getBody().getDetail()).isEqualTo("already booked");
+    }
+
+    @Test
+    void authentication_exception_is_left_to_spring_security() {
+        BadCredentialsException ex = new BadCredentialsException("no");
+
+        assertThatThrownBy(() -> handler.handleUnexpected(ex)).isSameAs(ex);
     }
 
     @Test

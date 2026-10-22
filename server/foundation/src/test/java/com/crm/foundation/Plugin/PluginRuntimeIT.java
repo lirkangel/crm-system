@@ -21,6 +21,7 @@ import org.springframework.context.annotation.Import;
 import org.springframework.core.annotation.AliasFor;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.repository.Repository;
+import jakarta.servlet.http.HttpServletResponse;
 import org.springframework.http.HttpEntity;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpMethod;
@@ -103,7 +104,7 @@ class PluginRuntimeIT {
             .entry("demo.echo.EchoPlugin")
             .withClasspathOf(
                 RestController.class, PreAuthorize.class, Transactional.class, JpaRepository.class,
-                Repository.class, Service.class, AliasFor.class)
+                Repository.class, Service.class, AliasFor.class, HttpServletResponse.class)
             .source("demo.echo.EchoPlugin", """
                 package demo.echo;
                 public class EchoPlugin implements com.crm.foundation.Plugin.PluginActivator {
@@ -234,11 +235,23 @@ class PluginRuntimeIT {
                         return CommonResponse.success(notes.text(id));
                     }
 
-                    /** Rejected through Spring's sendError path (ResponseStatusException), not an advice. */
                     @GetMapping("/teapot")
                     @PreAuthorize("hasAuthority('echo.ping')")
                     public CommonResponse<String> teapot() {
                         throw new ResponseStatusException(HttpStatus.I_AM_A_TEAPOT);
+                    }
+
+                    /** Goes through the servlet error-page (ERROR) dispatch, not an advice. */
+                    @GetMapping("/send-error")
+                    @PreAuthorize("hasAuthority('echo.ping')")
+                    public void sendError(jakarta.servlet.http.HttpServletResponse response) throws java.io.IOException {
+                        response.sendError(418, "secret-internal-detail");
+                    }
+
+                    @GetMapping("/boom")
+                    @PreAuthorize("hasAuthority('echo.ping')")
+                    public CommonResponse<String> boom() {
+                        throw new RuntimeException("secret-internal-detail");
                     }
                 }
                 """)
@@ -375,9 +388,30 @@ class PluginRuntimeIT {
 
     @Test
     void send_error_keeps_its_status_for_authenticated_caller() {
+        ResponseEntity<String> response = get("/api/v1/plugins/echo/send-error", token("echo.ping"));
+
+        assertThat(response.getStatusCode().value()).as(response.getBody()).isEqualTo(418);
+        assertThat(response.getBody()).doesNotContain("secret-internal-detail");
+    }
+
+    @Test
+    void response_status_exception_keeps_its_status() throws IOException {
         ResponseEntity<String> response = get("/api/v1/plugins/echo/teapot", token("echo.ping"));
 
         assertThat(response.getStatusCode().value()).as(response.getBody()).isEqualTo(418);
+        assertThat(response.getHeaders().getContentType()).isEqualTo(MediaType.APPLICATION_PROBLEM_JSON);
+        assertThat(json(response).path("code").asText()).isEqualTo("I_AM_A_TEAPOT");
+    }
+
+    @Test
+    void unexpected_plugin_exception_is_generic_500_problem() throws IOException {
+        ResponseEntity<String> response = get("/api/v1/plugins/echo/boom", token("echo.ping"));
+
+        assertThat(response.getStatusCode().value()).as(response.getBody()).isEqualTo(500);
+        assertThat(response.getHeaders().getContentType()).isEqualTo(MediaType.APPLICATION_PROBLEM_JSON);
+        assertThat(json(response).path("code").asText()).isEqualTo("INTERNAL_ERROR");
+        assertThat(json(response).path("trace_id").asText()).isNotBlank();
+        assertThat(response.getBody()).doesNotContain("secret-internal-detail");
     }
 
     @Test
