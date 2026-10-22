@@ -223,4 +223,41 @@ class PluginSchemaClaimIT {
                 + HOTEL_PLUGIN_ID);
         assertThat(squatterTables()).isZero();
     }
+
+    @Test
+    void registered_owner_wins_when_a_squatter_sorts_first() throws IOException {
+        // A restart where a stray squatter ZIP sorts before hotel's: hotel's registry row still decides
+        Path laterDir = Files.createTempDirectory("schema-claim-sorted-first-");
+        squatter().buildTo(laterDir.resolve("a-squatter.zip"));
+        Files.copy(HotelITSupport.hotelPluginDirectory().resolve("hotel-plugin.zip"),
+            laterDir.resolve("hotel-plugin.zip"));
+        PluginBootstrap later = new PluginBootstrap(
+            context.getBeanProvider(FlywayMigrationInitializer.class),
+            context.getBeanProvider(PersistenceManagedTypes.class),
+            new PluginDiscovery(laterDir.toString(), zipValidator, manifestParser),
+            loader, migrator, entityScanner, entityValidator, jdbc);
+
+        List<BootstrappedPlugin> plugins = later.report().plugins();
+        try {
+            assertThat(plugins).extracting(p -> p.manifest().id()).containsExactly(SQUATTER, HOTEL_PLUGIN_ID);
+            BootstrappedPlugin squatter = plugin(plugins, SQUATTER);
+            assertThat(squatter.status()).isEqualTo(BootstrappedPlugin.Status.FAILED);
+            assertThat(squatter.failureReason()).isEqualTo(
+                "plugin " + SQUATTER + " declares schema 'hotel', which plugin_registry assigns to plugin "
+                    + HOTEL_PLUGIN_ID);
+            BootstrappedPlugin hotel = plugin(plugins, HOTEL_PLUGIN_ID);
+            assertThat(hotel.status()).as(hotel.failureReason()).isEqualTo(BootstrappedPlugin.Status.READY);
+            assertThat(squatterTables()).isZero();
+        } finally {
+            for (BootstrappedPlugin plugin : plugins) {
+                if (plugin.classLoader() instanceof AutoCloseable closeable) {
+                    try {
+                        closeable.close();
+                    } catch (Exception ignored) {
+                        // test cleanup only
+                    }
+                }
+            }
+        }
+    }
 }

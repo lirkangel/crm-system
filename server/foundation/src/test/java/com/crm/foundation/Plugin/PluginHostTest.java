@@ -168,6 +168,36 @@ class PluginHostTest {
     }
 
     @Test
+    void should_leave_an_unregistered_schema_conflict_out_of_the_registry() {
+        PluginManifest manifest = manifest("com.crm.squatter");
+        PluginHost host = hostWith(BootstrappedPlugin.schemaConflict(
+            "/plugins/a-squatter.zip", manifest, "plugin com.crm.squatter declares schema 'demo', which ..."));
+        when(registryService.findByPluginId("com.crm.squatter")).thenReturn(Optional.empty());
+
+        host.startPlugins();
+
+        // plugin_registry.schema_name is unique and the schema is another plugin's: no row can exist
+        verify(registryService, never()).register(any());
+        verify(registryService, never()).markLoadFailed(anyString(), any());
+        verify(registryService, never()).activate(anyString());
+        assertThat(parentsSeen).isEmpty();
+    }
+
+    @Test
+    void should_mark_a_registered_schema_conflict_load_failed() {
+        PluginManifest manifest = manifest("com.crm.known");
+        PluginHost host = hostWith(BootstrappedPlugin.schemaConflict(
+            "/plugins/known.zip", manifest, "schema taken"));
+        when(registryService.findByPluginId("com.crm.known"))
+            .thenReturn(Optional.of(registryRow("com.crm.known", PluginState.ACTIVE)));
+
+        host.startPlugins();
+
+        verify(registryService, never()).register(any());
+        verify(registryService).markLoadFailed("com.crm.known", "schema taken");
+    }
+
+    @Test
     void should_not_start_skipped_plugin() {
         PluginManifest manifest = manifest("com.crm.disabled");
         PluginHost host = hostWith(BootstrappedPlugin.skipped("/plugins/disabled.zip", manifest));

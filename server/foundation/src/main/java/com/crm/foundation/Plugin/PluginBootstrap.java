@@ -30,11 +30,16 @@ import java.util.Map;
  * provides is left out of the report entirely: never classloaded, never
  * migrated, so it can't touch the first one's schema or registry row.
  *
- * <p>A plugin's schema is its own: a package declaring a schema that an earlier
- * package (discovery order, whatever became of it) or another plugin's
- * {@code plugin_registry} row already uses is {@code FAILED} before it is
- * classloaded or migrated. Such a plugin gets no registry row of its own
- * ({@code plugin_registry.schema_name} is unique), so its failure is logged.
+ * <p>A plugin's schema is its own: a package declaring a schema that another
+ * plugin's {@code plugin_registry} row holds, or that an earlier package
+ * (discovery order) claimed, is {@code FAILED} before it is classloaded or
+ * migrated. The registry is checked before a package claims its schema, so a
+ * package that fails that check claims nothing and the registered owner wins
+ * whatever the file names; a package that passes it keeps the schema claimed
+ * whatever becomes of it later ({@code SKIPPED} packages claim nothing here:
+ * their own registry row holds their schema). A schema-conflict failure gets no
+ * registry row of its own ({@code plugin_registry.schema_name} is unique), so it
+ * is logged.
  *
  * <p>Runs once (memoized). Never throws: a plugin that fails is reported
  * {@code FAILED} and left out; {@code DISABLED}/{@code UNINSTALL_PENDING}
@@ -109,14 +114,13 @@ public class PluginBootstrap {
                         result.packagePath(), id, firstPackage);
                     continue;
                 }
-                String schemaOwner = claimedSchemas.putIfAbsent(
-                    result.manifest().schema(), "plugin " + id + " (" + result.packagePath() + ")");
+                String schemaOwner = claimedSchemas.get(result.manifest().schema());
                 if (schemaOwner != null) {
-                    plugins.add(failedBeforeLoading(result, "plugin " + id + " declares schema '"
+                    plugins.add(schemaConflict(result, "plugin " + id + " declares schema '"
                         + result.manifest().schema() + "', which " + schemaOwner + " already uses"));
                     continue;
                 }
-                plugins.add(bootstrapIsolated(result, claimedEntityNames));
+                plugins.add(bootstrapIsolated(result, claimedEntityNames, claimedSchemas));
             }
         } catch (RuntimeException e) {
             log.error("Plugin discovery failed; starting without plugins: {}", e.getMessage(), e);
@@ -124,8 +128,8 @@ public class PluginBootstrap {
         return new PluginBootstrapReport(plugins);
     }
 
-    private BootstrappedPlugin bootstrapIsolated(
-            PluginDiscoveryResult result, Map<String, String> claimedEntityNames) {
+    private BootstrappedPlugin bootstrapIsolated(PluginDiscoveryResult result,
+            Map<String, String> claimedEntityNames, Map<String, String> claimedSchemas) {
         PluginManifest manifest = result.manifest();
         ParentLastClassLoader classLoader = null;
         try {
@@ -137,9 +141,11 @@ public class PluginBootstrap {
             List<String> schemaHolders = jdbc.queryForList(
                 REGISTRY_SCHEMA_HOLDER_SQL, String.class, manifest.schema(), manifest.id());
             if (!schemaHolders.isEmpty()) {
-                return failedBeforeLoading(result, "plugin " + manifest.id() + " declares schema '"
+                // Claims nothing: a package sorting before the registered owner must not lock it out
+                return schemaConflict(result, "plugin " + manifest.id() + " declares schema '"
                     + manifest.schema() + "', which plugin_registry assigns to plugin " + schemaHolders.get(0));
             }
+            claimedSchemas.put(manifest.schema(), "plugin " + manifest.id() + " (" + result.packagePath() + ")");
             Path zip = Path.of(result.packagePath());
             classLoader = loader.createClassLoader(zip, manifest);
             migrator.migrate(zip, manifest);
@@ -158,9 +164,9 @@ public class PluginBootstrap {
         }
     }
 
-    private static BootstrappedPlugin failedBeforeLoading(PluginDiscoveryResult result, String reason) {
+    private static BootstrappedPlugin schemaConflict(PluginDiscoveryResult result, String reason) {
         log.error("Plugin {} from {} not loaded: {}", result.manifest().id(), result.packagePath(), reason);
-        return BootstrappedPlugin.failed(result.packagePath(), result.manifest(), reason);
+        return BootstrappedPlugin.schemaConflict(result.packagePath(), result.manifest(), reason);
     }
 
     private Map<String, String> foundationEntityNames() {

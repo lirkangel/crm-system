@@ -77,6 +77,12 @@ public class PluginHost implements ApplicationRunner, DisposableBean {
         PluginManifest manifest = plugin.manifest();
         try {
             if (registryService.findByPluginId(manifest.id()).isEmpty()) {
+                if (plugin.schemaConflict()) {
+                    // Its schema is another plugin's and plugin_registry.schema_name is unique: no row is
+                    // possible, and PluginBootstrap already logged why it failed
+                    log.warn("Plugin {} left unregistered: its schema belongs to another plugin", manifest.id());
+                    return;
+                }
                 registryService.register(manifest);
             }
         } catch (Exception e) {

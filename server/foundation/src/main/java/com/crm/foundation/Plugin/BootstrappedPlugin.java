@@ -14,6 +14,8 @@ import java.util.List;
  * @param status           {@code READY} to contribute, {@code FAILED} on any error, {@code SKIPPED}
  *                         when the registry says {@code DISABLED}/{@code UNINSTALL_PENDING}
  * @param failureReason    why the plugin failed; {@code null} otherwise
+ * @param schemaConflict   {@code FAILED} because its manifest schema belongs to another plugin; such a
+ *                         plugin can't get a {@code plugin_registry} row ({@code schema_name} is unique)
  */
 public record BootstrappedPlugin(
     String packagePath,
@@ -21,7 +23,8 @@ public record BootstrappedPlugin(
     ClassLoader classLoader,
     List<String> entityClassNames,
     Status status,
-    String failureReason
+    String failureReason,
+    boolean schemaConflict
 ) {
 
     public enum Status { READY, FAILED, SKIPPED }
@@ -29,14 +32,18 @@ public record BootstrappedPlugin(
     static BootstrappedPlugin ready(
             String packagePath, PluginManifest manifest, ClassLoader classLoader, List<String> entityClassNames) {
         return new BootstrappedPlugin(
-            packagePath, manifest, classLoader, List.copyOf(entityClassNames), Status.READY, null);
+            packagePath, manifest, classLoader, List.copyOf(entityClassNames), Status.READY, null, false);
     }
 
     static BootstrappedPlugin failed(String packagePath, PluginManifest manifest, String reason) {
-        return new BootstrappedPlugin(packagePath, manifest, null, List.of(), Status.FAILED, reason);
+        return new BootstrappedPlugin(packagePath, manifest, null, List.of(), Status.FAILED, reason, false);
+    }
+
+    static BootstrappedPlugin schemaConflict(String packagePath, PluginManifest manifest, String reason) {
+        return new BootstrappedPlugin(packagePath, manifest, null, List.of(), Status.FAILED, reason, true);
     }
 
     static BootstrappedPlugin skipped(String packagePath, PluginManifest manifest) {
-        return new BootstrappedPlugin(packagePath, manifest, null, List.of(), Status.SKIPPED, null);
+        return new BootstrappedPlugin(packagePath, manifest, null, List.of(), Status.SKIPPED, null, false);
     }
 }

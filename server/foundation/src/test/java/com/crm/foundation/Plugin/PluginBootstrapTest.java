@@ -340,6 +340,40 @@ class PluginBootstrapTest {
     }
 
     @Test
+    void registered_owner_wins_when_a_squatter_sorts_first() {
+        registrySchemas.put("hotel", "com.crm.hotel");
+        registryStates.put("com.crm.hotel", PluginState.ACTIVE.name());
+        PluginBootstrap bootstrap = bootstrapScanning(
+            PluginDiscoveryResult.valid("/plugins/a-squatter.zip", manifest("com.crm.squatter", "hotel")),
+            PluginDiscoveryResult.valid("/plugins/hotel.zip", manifest("com.crm.hotel", "hotel")));
+
+        PluginBootstrapReport report = bootstrap.report();
+
+        assertThat(report.plugins()).extracting(p -> p.manifest().id(), BootstrappedPlugin::status)
+            .containsExactly(
+                tuple("com.crm.squatter", BootstrappedPlugin.Status.FAILED),
+                tuple("com.crm.hotel", BootstrappedPlugin.Status.READY));
+        assertThat(report.plugins().get(0).failureReason()).isEqualTo(
+            "plugin com.crm.squatter declares schema 'hotel', which plugin_registry assigns to plugin com.crm.hotel");
+        assertThat(report.plugins().get(0).schemaConflict()).isTrue();
+        assertThat(classLoadersBuilt).containsExactly("com.crm.hotel");
+        assertThat(migratedPlugins).containsExactly("com.crm.hotel");
+    }
+
+    @Test
+    void schema_conflicts_are_flagged_and_other_failures_are_not() {
+        failMigrationFor.add("com.crm.broken");
+        PluginBootstrap bootstrap = bootstrapScanning(
+            PluginDiscoveryResult.valid("/plugins/broken.zip", manifest("com.crm.broken", "shared")),
+            PluginDiscoveryResult.valid("/plugins/squatter.zip", manifest("com.crm.squatter", "shared")));
+
+        PluginBootstrapReport report = bootstrap.report();
+
+        assertThat(report.plugins()).extracting(p -> p.manifest().id(), BootstrappedPlugin::schemaConflict)
+            .containsExactly(tuple("com.crm.broken", false), tuple("com.crm.squatter", true));
+    }
+
+    @Test
     void schema_held_in_the_registry_by_the_same_plugin_is_fine() {
         registrySchemas.put("hotel", "com.crm.hotel");
         registryStates.put("com.crm.hotel", PluginState.ACTIVE.name());
