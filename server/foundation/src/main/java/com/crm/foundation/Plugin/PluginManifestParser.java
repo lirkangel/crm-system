@@ -1,5 +1,7 @@
 package com.crm.foundation.Plugin;
 
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 import org.yaml.snakeyaml.LoaderOptions;
 import org.yaml.snakeyaml.Yaml;
@@ -16,12 +18,33 @@ import java.util.regex.Pattern;
  * Parses and validates {@code plugin.yaml} (kebab-case keys per the plugin
  * contract) into a {@link PluginManifest}. Required fields: {@code id},
  * {@code version}, {@code schema}, {@code entry}.
+ *
+ * <p>The {@code schema} must be a plain lower-case Postgres identifier of the
+ * plugin's own ({@link #SCHEMA_PATTERN}): {@code public}, Foundation's default
+ * schema, {@code information_schema} and {@code pg_*} are refused, so a plugin
+ * can never declare (and then map) Foundation's or the system's tables. That
+ * no two plugins share one schema is checked at bootstrap ({@link PluginBootstrap}).
  */
 @Component
 public class PluginManifestParser {
 
     private static final Pattern ROUTE_PATTERN = Pattern.compile("^[a-z][a-z0-9-]{1,31}$");
     private static final List<String> REQUIRED_FIELDS = List.of("id", "version", "schema", "entry");
+    /** Unquoted lower-case Postgres identifier, 2–63 characters (Postgres' identifier limit). */
+    static final Pattern SCHEMA_PATTERN = Pattern.compile("^[a-z][a-z0-9_]{1,62}$");
+
+    private final String foundationSchema;
+
+    /** Foundation on {@code public} (its default). */
+    public PluginManifestParser() {
+        this("public");
+    }
+
+    @Autowired
+    public PluginManifestParser(
+            @Value("${spring.jpa.properties.hibernate.default_schema:public}") String foundationSchema) {
+        this.foundationSchema = foundationSchema.trim().toLowerCase(Locale.ROOT);
+    }
 
     public PluginManifest parse(String yamlContent) {
         Map<String, Object> root = loadMapping(yamlContent);
@@ -34,9 +57,22 @@ public class PluginManifestParser {
             stringMap(root.get("depends-on")),
             stringList(root.get("permissions-declared")),
             stringList(root.get("foundation-services-used")),
-            stringField(root, "schema"),
+            validSchema(stringField(root, "schema")),
             stringField(root, "entry"),
             resolveRoute(root, id));
+    }
+
+    private String validSchema(String schema) {
+        if (!SCHEMA_PATTERN.matcher(schema).matches()) {
+            throw new InvalidPluginPackageException(
+                "plugin.yaml schema '" + schema + "' is invalid: must match " + SCHEMA_PATTERN.pattern());
+        }
+        if (schema.equals("public") || schema.equals(foundationSchema)
+                || schema.equals("information_schema") || schema.startsWith("pg_")) {
+            throw new InvalidPluginPackageException("plugin.yaml schema '" + schema
+                + "' is reserved (Foundation or system schema); a plugin needs a schema of its own");
+        }
+        return schema;
     }
 
     private static String resolveRoute(Map<String, Object> root, String id) {

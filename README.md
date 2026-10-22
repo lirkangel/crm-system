@@ -31,7 +31,7 @@ crm-system/
 
 Each plugin is a ZIP package that:
 - Loads via a dedicated `URLClassLoader` (parent-last isolation) and its own Spring child context
-- Owns its own Postgres schema (e.g., `hotel`, `dental`); its JPA entities may map only that schema
+- Owns its own Postgres schema (e.g., `hotel`, `dental`); its JPA entities may map only that schema. The manifest `schema` must match `^[a-z][a-z0-9_]{1,62}$` and may not be `public`, Foundation's default schema, `information_schema` or `pg_*`; a schema already used by another plugin (earlier in file-name order, or in `plugin_registry`) fails the later plugin before it is migrated
 - Gives its JPA entities plugin-specific names (`@Entity(name = "HotelRoom")`): entity names are global to the shared persistence unit, so a name already taken by Foundation or an earlier plugin makes the plugin `LOAD_FAILED`
 - Runs its own Flyway migrations on install
 - Declares permissions (and, optionally, i18n bundles and custom JSON form metadata)
@@ -41,7 +41,7 @@ How it behaves at runtime:
 - **Deny by default:** every plugin handler method must carry `@PreAuthorize` (on the method or its class). A plugin with an unguarded handler method gets none of its routes and is `LOAD_FAILED`.
 - **Install:** restart-required, no hot reload. Plugin ZIPs are read from the directory in `foundation.plugins.directory` (env `PLUGINS_DIR`, default `plugins`). The hotel ZIP ships inside the server image at `/app/plugins`, so a normal deploy installs it with no manual step.
 - **Permissions:** on load the plugin's `permissions-declared` keys are written to `permissions` and granted to the `admin` role when first inserted (a later removal of a grant survives restarts). Permissions reach a user through the JWT at login, so **an admin must log in again after a plugin is first installed**.
-- **Failure isolation:** a ZIP whose package or manifest is invalid (zip-slip entries, missing or malformed `plugin.yaml`) is rejected with a warning in the server log and is not registered, so there is no `plugin_registry` row for it. Once the manifest parses, a failure in the migration, entity mapping (invalid, out-of-schema or clashing entities), classloader or entry point, child context, routes or permission registration marks the plugin `LOAD_FAILED` with the reason in `plugin_registry.error_message`. Either way the server still starts with the other plugins.
+- **Failure isolation:** a ZIP whose package or manifest is invalid (zip-slip entries, missing or malformed `plugin.yaml`, an invalid or reserved `schema`) is rejected with a warning in the server log and is not registered, so there is no `plugin_registry` row for it. Once the manifest parses, a failure in the migration, entity mapping (invalid, out-of-schema or clashing entities), classloader or entry point, child context, routes or permission registration marks the plugin `LOAD_FAILED` with the reason in `plugin_registry.error_message`. The one exception is a plugin whose schema another plugin already uses: `plugin_registry.schema_name` is unique, so it gets no row and its failure is only in the server log. Either way the server still starts with the other plugins.
 - **Upgrades:** if two ZIPs declare the same plugin id, only the first in file-name order is loaded. Remove old versions when upgrading (`hotel-0.9.0.zip` sorts before `hotel-1.0.0.zip`, so the old one would win).
 
 ## MVP — Hotel PMS

@@ -34,6 +34,8 @@ class PluginBootstrapTest {
 
     /** Subclass doubles — Mockito's inline mock-maker can't instrument concrete classes on this JDK. */
     private final Map<String, String> registryStates = new HashMap<>();
+    /** plugin_registry: schema name → plugin id holding it. */
+    private final Map<String, String> registrySchemas = new HashMap<>();
     private final List<String> classLoadersBuilt = new ArrayList<>();
     private final List<String> migratedPlugins = new ArrayList<>();
     private final List<String> failMigrationFor = new ArrayList<>();
@@ -44,9 +46,14 @@ class PluginBootstrapTest {
     private final Map<String, Map<String, String>> claimedSeen = new HashMap<>();
     private int scans;
 
+    /** A manifest with a schema of its own, derived from the id. */
     private static PluginManifest manifest(String id) {
+        return manifest(id, id.replace('.', '_'));
+    }
+
+    private static PluginManifest manifest(String id, String schema) {
         return new PluginManifest(
-            id, "1.0.0", Map.of(), Map.of(), List.of(), List.of(), "demo", id + ".Entry", "demo");
+            id, "1.0.0", Map.of(), Map.of(), List.of(), List.of(), schema, id + ".Entry", "demo");
     }
 
     private PluginBootstrap bootstrapScanning(PluginDiscoveryResult... results) {
@@ -108,6 +115,11 @@ class PluginBootstrapTest {
             @Override
             @SuppressWarnings("unchecked")
             public <T> List<T> queryForList(String sql, Class<T> elementType, Object... args) {
+                if (sql.contains("schema_name")) {
+                    // plugin ids other than args[1] holding schema args[0]
+                    String holder = registrySchemas.get((String) args[0]);
+                    return (List<T>) (holder == null || holder.equals(args[1]) ? List.of() : List.of(holder));
+                }
                 String state = registryStates.get((String) args[0]);
                 return (List<T>) (state == null ? List.of() : List.of(state));
             }
@@ -269,5 +281,72 @@ class PluginBootstrapTest {
         assertThat(report.plugins()).extracting(BootstrappedPlugin::packagePath, BootstrappedPlugin::status)
             .containsExactly(tuple("/plugins/hotel-a.zip", BootstrappedPlugin.Status.FAILED));
         assertThat(classLoadersBuilt).containsExactly("com.crm.hotel");
+    }
+
+    @Test
+    void later_package_with_an_already_claimed_schema_fails_untouched() {
+        PluginBootstrap bootstrap = bootstrapScanning(
+            PluginDiscoveryResult.valid("/plugins/hotel.zip", manifest("com.crm.hotel", "hotel")),
+            PluginDiscoveryResult.valid("/plugins/squatter.zip", manifest("com.crm.squatter", "hotel")),
+            PluginDiscoveryResult.valid("/plugins/good.zip", manifest("com.crm.good")));
+
+        PluginBootstrapReport report = bootstrap.report();
+
+        assertThat(report.plugins()).extracting(p -> p.manifest().id(), BootstrappedPlugin::status)
+            .containsExactly(
+                tuple("com.crm.hotel", BootstrappedPlugin.Status.READY),
+                tuple("com.crm.squatter", BootstrappedPlugin.Status.FAILED),
+                tuple("com.crm.good", BootstrappedPlugin.Status.READY));
+        assertThat(report.plugins().get(1).failureReason()).isEqualTo(
+            "plugin com.crm.squatter declares schema 'hotel', which plugin com.crm.hotel (/plugins/hotel.zip) "
+                + "already uses");
+        assertThat(classLoadersBuilt).containsExactly("com.crm.hotel", "com.crm.good");
+        assertThat(migratedPlugins).containsExactly("com.crm.hotel", "com.crm.good");
+    }
+
+    @Test
+    void schema_stays_claimed_even_when_its_first_plugin_failed() {
+        failMigrationFor.add("com.crm.hotel");
+        PluginBootstrap bootstrap = bootstrapScanning(
+            PluginDiscoveryResult.valid("/plugins/hotel.zip", manifest("com.crm.hotel", "hotel")),
+            PluginDiscoveryResult.valid("/plugins/squatter.zip", manifest("com.crm.squatter", "hotel")));
+
+        PluginBootstrapReport report = bootstrap.report();
+
+        assertThat(report.plugins()).extracting(p -> p.manifest().id(), BootstrappedPlugin::status)
+            .containsExactly(
+                tuple("com.crm.hotel", BootstrappedPlugin.Status.FAILED),
+                tuple("com.crm.squatter", BootstrappedPlugin.Status.FAILED));
+        assertThat(classLoadersBuilt).containsExactly("com.crm.hotel");
+    }
+
+    @Test
+    void schema_held_in_the_registry_by_another_plugin_fails_untouched() {
+        registrySchemas.put("hotel", "com.crm.hotel");
+        PluginBootstrap bootstrap = bootstrapScanning(
+            PluginDiscoveryResult.valid("/plugins/squatter.zip", manifest("com.crm.squatter", "hotel")),
+            PluginDiscoveryResult.valid("/plugins/good.zip", manifest("com.crm.good")));
+
+        PluginBootstrapReport report = bootstrap.report();
+
+        assertThat(report.plugins()).extracting(p -> p.manifest().id(), BootstrappedPlugin::status)
+            .containsExactly(
+                tuple("com.crm.squatter", BootstrappedPlugin.Status.FAILED),
+                tuple("com.crm.good", BootstrappedPlugin.Status.READY));
+        assertThat(report.plugins().get(0).failureReason()).isEqualTo(
+            "plugin com.crm.squatter declares schema 'hotel', which plugin_registry assigns to plugin com.crm.hotel");
+        assertThat(classLoadersBuilt).containsExactly("com.crm.good");
+        assertThat(migratedPlugins).containsExactly("com.crm.good");
+    }
+
+    @Test
+    void schema_held_in_the_registry_by_the_same_plugin_is_fine() {
+        registrySchemas.put("hotel", "com.crm.hotel");
+        registryStates.put("com.crm.hotel", PluginState.ACTIVE.name());
+        PluginBootstrap bootstrap = bootstrapScanning(
+            PluginDiscoveryResult.valid("/plugins/hotel.zip", manifest("com.crm.hotel", "hotel")));
+
+        assertThat(bootstrap.report().plugins().get(0).status()).isEqualTo(BootstrappedPlugin.Status.READY);
+        assertThat(migratedPlugins).containsExactly("com.crm.hotel");
     }
 }

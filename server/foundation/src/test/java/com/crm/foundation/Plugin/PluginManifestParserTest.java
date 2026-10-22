@@ -1,6 +1,8 @@
 package com.crm.foundation.Plugin;
 
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -172,5 +174,55 @@ class PluginManifestParserTest {
             """))
             .isInstanceOf(InvalidPluginPackageException.class)
             .hasMessageContaining("route");
+    }
+
+    private static String withSchema(String schema) {
+        return """
+            id: com.crm.demo
+            version: 1.0.0
+            schema: "%s"
+            entry: com.crm.demo.DemoPlugin
+            """.formatted(schema);
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"demo", "hotel", "plugin_iso_good", "ab", "a1_b2"})
+    void valid_schema_names_are_accepted(String schema) {
+        assertThat(parser.parse(withSchema(schema)).schema()).isEqualTo(schema);
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"public", "information_schema", "pg_catalog", "pg_toast", "pg_anything"})
+    void reserved_schema_names_are_rejected(String schema) {
+        assertThatThrownBy(() -> parser.parse(withSchema(schema)))
+            .isInstanceOf(InvalidPluginPackageException.class)
+            .hasMessageContaining("schema")
+            .hasMessageContaining("'" + schema + "'")
+            .hasMessageContaining("reserved");
+    }
+
+    @Test
+    void foundation_default_schema_is_reserved() {
+        PluginManifestParser foundationOnCrm = new PluginManifestParser("crm_core");
+
+        assertThatThrownBy(() -> foundationOnCrm.parse(withSchema("crm_core")))
+            .isInstanceOf(InvalidPluginPackageException.class)
+            .hasMessageContaining("schema 'crm_core'")
+            .hasMessageContaining("reserved");
+        // public stays reserved whatever Foundation's default schema is
+        assertThatThrownBy(() -> foundationOnCrm.parse(withSchema("public")))
+            .isInstanceOf(InvalidPluginPackageException.class)
+            .hasMessageContaining("reserved");
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {
+        "Hotel", "HOTEL", "1hotel", "_hotel", "hotel-x", "hotel.x", "hot el", "h", "\"hotel\"",
+        "abcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcd"})
+    void malformed_schema_names_are_rejected(String schema) {
+        assertThatThrownBy(() -> parser.parse(withSchema(schema.replace("\"", "\\\""))))
+            .isInstanceOf(InvalidPluginPackageException.class)
+            .hasMessageContaining("schema")
+            .hasMessageContaining("^[a-z][a-z0-9_]{1,62}$");
     }
 }

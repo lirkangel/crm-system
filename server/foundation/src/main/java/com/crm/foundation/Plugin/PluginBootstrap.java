@@ -30,6 +30,12 @@ import java.util.Map;
  * provides is left out of the report entirely: never classloaded, never
  * migrated, so it can't touch the first one's schema or registry row.
  *
+ * <p>A plugin's schema is its own: a package declaring a schema that an earlier
+ * package (discovery order, whatever became of it) or another plugin's
+ * {@code plugin_registry} row already uses is {@code FAILED} before it is
+ * classloaded or migrated. Such a plugin gets no registry row of its own
+ * ({@code plugin_registry.schema_name} is unique), so its failure is logged.
+ *
  * <p>Runs once (memoized). Never throws: a plugin that fails is reported
  * {@code FAILED} and left out; {@code DISABLED}/{@code UNINSTALL_PENDING}
  * plugins are {@code SKIPPED} without being touched.
@@ -39,6 +45,8 @@ public class PluginBootstrap {
 
     private static final Logger log = LoggerFactory.getLogger(PluginBootstrap.class);
     private static final String REGISTRY_STATE_SQL = "SELECT state FROM plugin_registry WHERE plugin_id = ?";
+    private static final String REGISTRY_SCHEMA_HOLDER_SQL =
+        "SELECT plugin_id FROM plugin_registry WHERE schema_name = ? AND plugin_id <> ?";
 
     private final ObjectProvider<FlywayMigrationInitializer> foundationMigrations;
     private final ObjectProvider<PersistenceManagedTypes> foundationManagedTypes;
@@ -88,6 +96,8 @@ public class PluginBootstrap {
             // Plugin id → package that claimed it; a later package with the same id (e.g. an old
             // version left next to the new one) must never touch the first one's schema or registry row
             Map<String, String> claimedIds = new HashMap<>();
+            // Schema → "plugin <id> (<package>)" that declared it first; a schema is never shared
+            Map<String, String> claimedSchemas = new HashMap<>();
             for (PluginDiscoveryResult result : discovery.scan()) {
                 if (!result.isValid()) {
                     continue;
@@ -97,6 +107,13 @@ public class PluginBootstrap {
                 if (firstPackage != null) {
                     log.error("Ignoring plugin package {}: plugin id {} is already provided by {}",
                         result.packagePath(), id, firstPackage);
+                    continue;
+                }
+                String schemaOwner = claimedSchemas.putIfAbsent(
+                    result.manifest().schema(), "plugin " + id + " (" + result.packagePath() + ")");
+                if (schemaOwner != null) {
+                    plugins.add(failedBeforeLoading(result, "plugin " + id + " declares schema '"
+                        + result.manifest().schema() + "', which " + schemaOwner + " already uses"));
                     continue;
                 }
                 plugins.add(bootstrapIsolated(result, claimedEntityNames));
@@ -117,6 +134,12 @@ public class PluginBootstrap {
                 log.info("Plugin {} is {}; contributing no entities", manifest.id(), state);
                 return BootstrappedPlugin.skipped(result.packagePath(), manifest);
             }
+            List<String> schemaHolders = jdbc.queryForList(
+                REGISTRY_SCHEMA_HOLDER_SQL, String.class, manifest.schema(), manifest.id());
+            if (!schemaHolders.isEmpty()) {
+                return failedBeforeLoading(result, "plugin " + manifest.id() + " declares schema '"
+                    + manifest.schema() + "', which plugin_registry assigns to plugin " + schemaHolders.get(0));
+            }
             Path zip = Path.of(result.packagePath());
             classLoader = loader.createClassLoader(zip, manifest);
             migrator.migrate(zip, manifest);
@@ -133,6 +156,11 @@ public class PluginBootstrap {
             closeQuietly(classLoader);
             return BootstrappedPlugin.failed(result.packagePath(), manifest, reason);
         }
+    }
+
+    private static BootstrappedPlugin failedBeforeLoading(PluginDiscoveryResult result, String reason) {
+        log.error("Plugin {} from {} not loaded: {}", result.manifest().id(), result.packagePath(), reason);
+        return BootstrappedPlugin.failed(result.packagePath(), result.manifest(), reason);
     }
 
     private Map<String, String> foundationEntityNames() {
