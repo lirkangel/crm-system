@@ -3,7 +3,10 @@
 # The Mac's own Maven/JDK cannot compile Lombok, so all builds and tests go through here.
 #
 # Usage:  server/scripts/remote-verify.sh -Pintegration clean verify
-#         server/scripts/remote-verify.sh -pl foundation -am test
+#         server/scripts/remote-verify.sh -Pintegration clean verify -Dtest='A,B' -Dsurefire.failIfNoSpecifiedTests=false
+#         server/scripts/remote-verify.sh -pl plugins/hotel -am test      # hotel-module unit tests only
+# Focused runs must go through `verify`: foundation test-depends on the hotel plugin ZIP, which
+# only exists after the hotel module is packaged, so `-pl foundation -am test` cannot resolve it.
 #
 # Env:    DOCKER_TEST_HOST         ssh target (default root@10.0.0.11)
 #         HOMELAB_SSH_PASSPHRASE   optional; when set, ssh goes through sshpass.

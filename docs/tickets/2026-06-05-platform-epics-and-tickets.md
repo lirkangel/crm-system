@@ -23,11 +23,13 @@ F-EPIC-1 (scaffold) ─► F-EPIC-2 (auth UI) ─► F-EPIC-3 (data) ─► F-EP
                                               ▼
                           D-EPIC-2 (cache) ─► D-EPIC-3 (sync engine)
 ```
-**Do not start Hotel plugin work until Backend EPIC-1 + EPIC-2 are green.** The server contract is the blocking path.
+**Do not start Hotel plugin work until Backend EPIC-1 + EPIC-2 are green.** The server contract is the blocking path. _(Both are green; the hotel booking slice — B-EPIC-7 + H-EPIC-1 below — was built 2026-10-22/23.)_
 
 ---
 
 # BACKEND
+
+> **State (2026-10-23):** B-EPIC-1 to B-EPIC-7 are done. The plugin host now runs real plugins (own classloader, Spring child context, REST routes, permissions, per-plugin failure isolation) and the first one, the hotel booking slice (H-EPIC-1), is proven end to end. Full gate on the homelab docker-host: 340 tests (322 foundation + 18 hotel unit), 0 failures, 0 skipped.
 
 ## B-EPIC-1 — Identity & Auth
 *Goal: a usable, rotation-safe token contract.*
@@ -212,6 +214,57 @@ F-EPIC-1 (scaffold) ─► F-EPIC-2 (auth UI) ─► F-EPIC-3 (data) ─► F-EP
 
 ---
 
+## B-EPIC-7 — Plugin runtime
+*Goal: a plugin can be a real vertical — persist through Foundation's transaction, expose endpoints, register permissions — without ever taking the server down.*
+*Spec: [`2026-10-22-hotel-booking-slice-design.md`](../superpowers/specs/2026-10-22-hotel-booking-slice-design.md) §6.1–6.4. Built on branch `claude/hotel-booking-slice`.*
+
+### T018 — Two-phase plugin host · `DONE` · P0 · (needs T015b)
+**Expected:** plugin JPA entities live in Foundation's own `EntityManagerFactory` (so one transaction covers plugin data, `change_event` and audit); an early phase prepares plugins before Hibernate starts, a late phase brings them up after the context is ready; `server/` becomes a Maven reactor with a `plugin-api` module for plugin-facing types.
+**Acceptance:** a plugin entity persists through Foundation's EMF and rolls back together with its `change_event`; a plugin with a broken or out-of-schema mapping is `LOAD_FAILED` while the app and the other plugins start; `DemoPluginEndToEndIT` stays green.
+**Done:** (7c795c1) `server/` split into `plugin-api` (`PluginActivator`, `CommonResponse`, recorder interfaces — same FQNs), `plugins/hotel` and `foundation` (the Spring Boot app, `foundation/src`). (2a0269d) Early phase: `PluginBootstrap` runs before the EMF is built — discover, build the parent-last classloader, run the plugin's Flyway migration into its schema (after Foundation's own), scan its `@Entity` classes (own jars only, so a shared package prefix never pulls in Foundation entities) and report READY/FAILED/SKIPPED (DISABLED and UNINSTALL_PENDING contribute nothing); `PluginJpaContributor` adds the READY entities to the persistence unit and hands the plugin classloaders to Hibernate. (087e6c8, e19236d, 51e34e0) Isolation: `PluginEntityValidator` rejects any entity that maps a table outside the manifest `schema` (`@Table`, secondary/join/collection tables) and trial-maps each plugin's entities in a throwaway EMF with `validate`, so a mapping error fails only that plugin; it also rejects entity names clashing with Foundation's and checks isolation against Hibernate's own built metadata. Late phase: see T019. `PluginJpaIT` (commit/rollback with `change_event` atomic), `PluginIsolationIT` (good + bad-mapping + schema-escape plugins in one directory, app starts, only the good one maps), `PluginBootstrapTest`, `PluginEntityValidatorTest`. Verified 2026-10-23 (homelab docker-host, `-Pintegration clean verify`, 340/340 green).
+
+### T019 — Plugin child context + routes · `DONE` · P0 · (needs T018)
+**Expected:** each plugin gets its own Spring child context (services, Spring Data repositories on Foundation's EMF/transaction manager, controllers); its controllers are served under `/api/v1/plugins/{route}/…` with method security; plugins get a small Foundation API (change events, audit, current user, problem errors).
+**Acceptance:** a plugin endpoint is reachable at its prefix, 401 without a token, 403 without the permission, 404 once the plugin is disabled/failed; a plugin write and its `change_event` commit or roll back together.
+**Done:** (12b7657) `plugin-api` gains `ChangeRecorder`, `AuditRecorder`, `CurrentUser`, `ChangeOp`, `PluginProblem` (status + stable code → problem+json via `ErrorHandler`), implemented in Foundation over `ChangeEventService`/`AuditService`/the security context. (6bf9e04) Optional manifest field `route` (default: last dot-segment of the id, validated `^[a-z][a-z0-9-]{1,31}$`). (d9684d6) `PluginContextFactory` builds the child context on the bootstrap classloader (`PluginChildConfiguration`: method security + transaction management; component scan of the entry package restricted to the plugin's own jars; repositories registered against Foundation's EMF); `PluginRouteRegistry` maps `@RestController` beans under the prefix (duplicate route rejected, roll-back on partial failure, unregistered on failure/shutdown); `PluginHost` rewritten as the late phase (register → start → `onLoad()` → routes → permissions → activate; any failure → routes removed, child closed, `LOAD_FAILED`). Unmatched URLs now return a 404 problem instead of 401. (993edc0, 3efaa7c) Error contract hardened: `sendError` statuses and `ResponseStatusException`/`@ResponseStatus` keep their status for authenticated callers; any unexpected exception becomes a generic 500 problem (`INTERNAL_ERROR`, `trace_id`, no message leak). `PluginRuntimeIT` (15: prefix, 403 problem+json, 401, unknown route 404, atomic write + rollback, child config stays out of the parent context, error shapes), `PluginRouteRegistryTest`, `PluginRecordersTest`, `ErrorHandlerTest`. Verified 2026-10-23 (340/340 green).
+
+### T020 — Plugin permissions · `DONE` · P0 · (needs T019)
+**Expected:** a plugin's `permissions-declared` keys are registered in `permissions` (with `plugin_id`) and granted to the `admin` role; plugin endpoints enforce them like Foundation endpoints.
+**Acceptance:** after install the keys exist with `plugin_id` and `admin` holds them; a restart does not re-grant a permission an admin removed; Foundation permissions are untouched.
+**Done:** (c9c8573) `PluginPermissionRegistrar` upserts every declared key (deduped) with `plugin_id` and grants **only newly inserted** keys to `admin`; it runs after the routes are registered and before `activate`, inside the host's failure handling. Permissions reach users through the JWT, so an admin must log in again after a plugin is first installed (documented in the README, not engineered around). `PluginPermissionRegistrarIT` (4: inserted with `plugin_id`, granted to admin, re-grant only on first insert, Foundation permissions untouched), `PluginHostTest`. Verified 2026-10-23 (340/340 green).
+
+---
+
+# HOTEL PLUGIN (`server/plugins/hotel/`)
+
+## H-EPIC-1 — Hotel booking slice
+*Goal: a receptionist can find free rooms for a date range and book one for a guest, and a booking can never collide with another one. Server side only; the desktop screens come with F301/F401.*
+*Spec: [`2026-10-22-hotel-booking-slice-design.md`](../superpowers/specs/2026-10-22-hotel-booking-slice-design.md). The plugin ID is `com.crm.hotel`, schema `hotel`, route `hotel`; permissions `hotel.rooms.*`, `hotel.guests.*`, `hotel.reservations.{read,create,cancel}` (admin only for now — no role management yet).*
+
+### H101 — Room catalog · `DONE` · P0 · (needs T020)
+**Expected:** the hotel plugin module and its schema; room types (`{vi,en}` names, max guests, one gross nightly rate in whole VND) and rooms (number, type, floor, in service) with list/create/update endpoints.
+**Acceptance:** the hotel ZIP installs at startup under `/api/v1/plugins/hotel` with its 7 permissions on `admin`; reading needs `hotel.rooms.read`, writing `hotel.rooms.manage`; updates use `If-Match` with the entity version and a stale version is 409; duplicates are 409 `HOTEL_DUPLICATE`.
+**Done:** (35e5e57) Maven module `com.crm.plugins:hotel` builds `hotel-0.1.0-plugin.zip` (`plugin.yaml`, `db/V1__hotel_booking.sql`, one jar of `com.crm.hotel.**`); the migration creates the `hotel` schema (room_type, room, guest, reservation, the reservation-code sequence and the `reservation_no_overlap` exclusion constraint on `btree_gist`); `server/Dockerfile` builds it and ships the ZIP in the image at `/app/plugins`; `foundation` test-depends on the ZIP, so focused test runs must use `verify`. (a72f2bc) `RoomCatalogController`/`RoomCatalogService`: `If-Match` required on PUT (missing → 428 `HOTEL_VERSION_REQUIRED`, stale → 409), unique violations → 409 `HOTEL_DUPLICATE`, unknown ids → 404 `HOTEL_NOT_FOUND`, Bean Validation → 400 `VALIDATION_ERROR`; every write records a `change_event` in the same transaction. `HotelPluginInstallIT` (5), `RoomCatalogIT` (9), `HotelErrorsTest`. `docker build server/` on the homelab docker-host succeeds and the image holds `/app/plugins/hotel-0.1.0-plugin.zip` (image removed afterwards). Verified 2026-10-23 (340/340 green).
+
+### H102 — Guests · `DONE` · P0 · (needs H101)
+**Expected:** create guests and search them by name or phone ignoring Vietnamese accents and case.
+**Acceptance:** "Nguyen" finds "Nguyễn"; a phone fragment finds the guest; `%` and `_` in the query are literal; the same phone may belong to several guests.
+**Done:** (fe56bb1) `GuestSearchKey` normalizes (NFD, strip combining marks, `đ` → `d`, lower case) name + phone into a stored `search_key`, searched with an escaped `LIKE` (results ordered by name, capped at 50); blank or normalizes-to-empty query → 400 `HOTEL_INVALID_QUERY`. Permissions `hotel.guests.read` / `hotel.guests.manage`; create records a `Guest` change event. `GuestSearchKeyTest` (5), `GuestIT` (8). ID documents and nationality are deliberately not here — they arrive with check-in and the police export. Verified 2026-10-23 (340/340 green).
+
+### H103 — Availability search and stay rules · `DONE` · P0 · (needs H101)
+**Expected:** `GET /availability?checkIn=&checkOut=&adults=` returns the free rooms grouped by room type with the nightly rate and the stay total; the stay rules and gross pricing used by booking.
+**Acceptance:** rooms with a CONFIRMED overlapping reservation, out-of-service rooms, inactive types and types too small for `adults` are absent; cancelled reservations free the room; back-to-back stays do not collide.
+**Done:** (e173e3c) `StayPolicy` (pure): `check_out > check_in`, 1–60 nights, check-in not before today in Asia/Ho_Chi_Minh (injectable `hotelClock`), adults ≥ 1 and ≤ `max_guests`, total = gross nightly rate × nights with overflow → 400 `HOTEL_INVALID_STAY`; `AvailabilityService` is one JPQL query (`NOT EXISTS` over CONFIRMED overlapping `[check_in, check_out)` ranges, no N+1); missing or malformed parameters → 400 `HOTEL_INVALID_QUERY`; permission `hotel.reservations.read`. `StayPolicyTest` (9), `AvailabilityIT` (8). Verified 2026-10-23 (340/340 green).
+
+### H104 — Reservations: create, view, list, cancel · `DONE` · P0 · (needs H102, H103)
+**Expected:** create a reservation for an existing guest or an inline new guest, get one, list by date-range overlap, cancel; the booking can never double-book a room, even under concurrency.
+**Acceptance:** two overlapping bookings of one room → one 201 and one 409 `HOTEL_ROOM_UNAVAILABLE`, enforced by the database; cancelling frees the room at once; create and cancel write `change_event` and audit rows in the same transaction.
+**Done:** (d0185f6) `ReservationService.create` (one transaction): exactly one of `guestId`/`newGuest`; locks the room row (`FOR NO KEY UPDATE`, so bookings of one room queue instead of deadlocking while catalog edits wait only for an in-flight booking); stay rules; room in service and type active (else 409 `HOTEL_ROOM_NOT_BOOKABLE`); overlap pre-check for a friendly 409; rate snapshotted with the gross total; code `R-<year>-<6-digit sequence>`; the Postgres exclusion constraint `reservation_no_overlap` stays the guarantee — a violation (SQLState 23P01 naming it) maps to 409 `HOTEL_ROOM_UNAVAILABLE` and a losing inline guest rolls back with it. Cancel locks the reservation, `CONFIRMED → CANCELLED` only (else 409 `HOTEL_ALREADY_CANCELLED`), `Reservation` change events plus audit `RESERVATION_CREATE` / `RESERVATION_CANCEL` with before/after JSON. Permissions `hotel.reservations.{read,create,cancel}`. `ReservationFlowIT` (14: book, view, list, availability disappears and returns, cancel, rules, 403 for a read-only user), `ReservationConcurrencyIT` (8 parallel bookings → exactly one 201, seven 409, one row; deterministic exclusion-constraint path), `ReservationServiceTest`. Verified 2026-10-23 (340/340 green).
+
+**Not in this slice:** check-in/out, folio and payments, rate plans, a receptionist role (needs role management), the generic desktop write endpoint (D302 forward contract), hotel screens in the desktop app.
+
+---
+
 # FRONTEND (React — `desktop/src/`)
 
 > **State: greenfield.** Empty `auth/ data/ forms/ routes/ sync/` dirs; `package.json` is a stub with no React/Vite/TS. Everything below is new.
@@ -356,7 +409,7 @@ F-EPIC-1 (scaffold) ─► F-EPIC-2 (auth UI) ─► F-EPIC-3 (data) ─► F-EP
 
 # DESKTOP (Tauri Rust — `desktop/src-tauri/`)
 
-> **State (2026-10-17):** shell, SQLite cache (D201–D203), sync engine (D301–D306) and cache IPC (D401) and OS-keychain refresh token (D501) are done; `cargo test` 67/67 green. Remaining: auth/config close-out (D102, D103), sync events to the webview + pull scheduling (D402), first-run config (D502), packaging (D601, D602).
+> **State (2026-10-23):** unchanged since 2026-10-17 — shell, SQLite cache (D201–D203), sync engine (D301–D306) and cache IPC (D401) and OS-keychain refresh token (D501) are done; `cargo test` 67/67 green. Remaining: auth/config close-out (D102, D103), sync events to the webview + pull scheduling (D402), first-run config (D502), packaging (D601, D602).
 
 ## D-EPIC-1 — Shell scaffold
 
@@ -462,9 +515,9 @@ F-EPIC-1 (scaffold) ─► F-EPIC-2 (auth UI) ─► F-EPIC-3 (data) ─► F-EP
 ---
 
 ## Recommended next 5 tickets (in order)
-_Updated 2026-10-17. The backend epics (B-EPIC-1 to B-EPIC-6) are done, so the critical path now runs through desktop auth and the frontend data layer._
+_Updated 2026-10-23. The backend epics (B-EPIC-1 to B-EPIC-7) and the hotel booking slice (H-EPIC-1) are done on the server, so the critical path runs through desktop auth and the frontend data layer; the hotel screens (F301/F401) and the next hotel slice (check-in/out) follow._
 1. ~~**D501** — refresh token in the OS keychain (unblocks F202).~~ `DONE`
-2. **F202** — frontend token storage on top of D501: call `restore_session` at startup, stop exposing the refresh token to the webview. ← next
+2. **F202** — frontend token storage on top of D501: call `restore_session` at startup, stop exposing the refresh token to the webview. ← next (in progress on another branch)
 3. **D102 + D103** — finish the auth client and config/state so login/refresh/logout round-trips cleanly.
 4. **F301** — `useEntity` / `useList` hooks over the D401 cache IPC.
 5. **F401** — render forms from plugin JSON metadata.
@@ -472,6 +525,8 @@ _Updated 2026-10-17. The backend epics (B-EPIC-1 to B-EPIC-6) are done, so the c
 ITs for **T015b** / **T017** verified on the homelab docker-host 2026-10-17 (190/190). Note: the live `crm-server` DB has **0 users** — there is no bootstrap admin, so nobody can log in yet; needs a first-admin seed/CLI ticket.
 
 ## Notes
-- Hotel plugin work stays out until Backend EPIC-1 + EPIC-2 are green.
+- Hotel plugin work was gated on Backend EPIC-1 + EPIC-2 being green; both are, and the booking slice (H-EPIC-1) is built. Next hotel slice: check-in/check-out (needs a reservation to exist — H104) and a receptionist role (needs role management, F602/B-EPIC-2 follow-up).
+- Plugin admins must log in again after a plugin is first installed (permissions reach the JWT at login). If two ZIPs share a plugin id only the first in file-name order loads, so remove old versions when upgrading.
+- Leftovers from the slice: `docker-compose.yml`'s `server-test` service still runs `mvn -B test`, which cannot resolve the hotel ZIP in the reactor — it needs `verify`.
 - The next backend value is finishing platform *contracts*, not more CRUD.
 - Frontend and desktop can proceed in parallel once the auth contract (EPIC-1) is stable.
