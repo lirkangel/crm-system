@@ -4,6 +4,7 @@ import com.crm.foundation.Exception.AuthException;
 import com.crm.foundation.Exception.BadRequestException;
 import com.crm.foundation.Exception.NotFoundException;
 import com.crm.foundation.Plugin.InvalidPluginPackageException;
+import com.crm.foundation.Plugin.PluginProblem;
 import org.junit.jupiter.api.Test;
 import org.springframework.core.MethodParameter;
 import org.springframework.dao.OptimisticLockingFailureException;
@@ -109,6 +110,16 @@ class ErrorHandlerTest {
 
         assertProblemBasics(problem, 422, "urn:problem-type:plugin-load");
         assertThat(problem.getDetail()).contains("unsafe ZIP entry path");
+    }
+
+    @Test
+    void plugin_problem_maps_status_and_code() {
+        ProblemDetail problem = handler.handlePluginProblem(
+            new PluginProblem(409, "HOTEL_ROOM_UNAVAILABLE", "x"));
+
+        assertProblemBasics(problem, 409, "urn:problem-type:plugin");
+        assertThat(problem.getProperties().get("code")).isEqualTo("HOTEL_ROOM_UNAVAILABLE");
+        assertThat(problem.getDetail()).isEqualTo("x");
     }
 
     @Test

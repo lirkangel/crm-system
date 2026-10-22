@@ -4,6 +4,7 @@ import com.crm.foundation.Exception.AuthException;
 import com.crm.foundation.Exception.BadRequestException;
 import com.crm.foundation.Exception.NotFoundException;
 import com.crm.foundation.Plugin.InvalidPluginPackageException;
+import com.crm.foundation.Plugin.PluginProblem;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.dao.OptimisticLockingFailureException;
@@ -37,6 +38,7 @@ public class ErrorHandler {
     static final String TYPE_BAD_REQUEST = "urn:problem-type:bad-request";
     static final String TYPE_CONFLICT = "urn:problem-type:conflict";
     static final String TYPE_PLUGIN_LOAD = "urn:problem-type:plugin-load";
+    static final String TYPE_PLUGIN = "urn:problem-type:plugin";
 
     @ExceptionHandler(MethodArgumentNotValidException.class)
     public ProblemDetail handleValidation(MethodArgumentNotValidException ex) {
@@ -85,6 +87,11 @@ public class ErrorHandler {
     @ExceptionHandler(InvalidPluginPackageException.class)
     public ProblemDetail handlePluginPackage(InvalidPluginPackageException ex) {
         return problem(HttpStatus.UNPROCESSABLE_ENTITY, TYPE_PLUGIN_LOAD, "PLUGIN_LOAD_FAILED", ex.getMessage());
+    }
+
+    @ExceptionHandler(PluginProblem.class)
+    public ProblemDetail handlePluginProblem(PluginProblem ex) {
+        return problem(HttpStatus.valueOf(ex.status()), TYPE_PLUGIN, ex.code(), ex.getMessage());
     }
 
     private ProblemDetail problem(HttpStatus status, String type, String code, String detail) {
