@@ -1,6 +1,7 @@
 package com.crm.foundation.Config;
 
 import com.crm.foundation.Middleware.JwtAuthenticationFilter;
+import jakarta.servlet.DispatcherType;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.security.config.annotation.method.configuration.EnableMethodSecurity;
@@ -33,7 +34,11 @@ public class WebSecurityConfig {
                     (req, res, e) -> res.sendError(401, "Unauthorized")))
             .authorizeHttpRequests(
                 auth ->
-                    auth.requestMatchers(
+                    // The ERROR dispatch of an already-filtered request (sendError) runs without the
+                    // JWT filter; permit it so 400/405/… keep their status instead of becoming 401.
+                    // Direct requests to /error are REQUEST dispatches and still need authentication.
+                    auth.dispatcherTypeMatchers(DispatcherType.ERROR).permitAll()
+                        .requestMatchers(
                             "/api/v1/auth/login",
                             "/api/v1/auth/refresh",
                             "/api/v1/auth/logout",

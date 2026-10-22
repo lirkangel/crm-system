@@ -91,6 +91,8 @@ class PluginRuntimeIT {
     static void pluginDirectory(DynamicPropertyRegistry registry) throws IOException {
         Path pluginDir = Files.createTempDirectory("runtime-plugins-");
         buildEchoPlugin(pluginDir.resolve("echo.zip"));
+        // Same plugin id, later in discovery order (an old version left behind): must be ignored
+        buildDuplicateEchoPackage(pluginDir.resolve("zz-echo-duplicate.zip"));
         registry.add("foundation.plugins.directory", pluginDir::toString);
     }
 
@@ -139,6 +141,10 @@ class PluginRuntimeIT {
                     public Long getVersion() {
                         return version;
                     }
+
+                    public String getText() {
+                        return text;
+                    }
                 }
                 """)
             .source("demo.echo.NoteRepository", """
@@ -179,6 +185,12 @@ class PluginRuntimeIT {
                         }
                         return note.getId();
                     }
+
+                    @Transactional(readOnly = true)
+                    public String text(UUID id) {
+                        return notes.findById(id).map(Note::getText)
+                            .orElseThrow(() -> new PluginProblem(404, "ECHO_NOT_FOUND", "no such note"));
+                    }
                 }
                 """)
             .source("demo.echo.EchoController", """
@@ -186,11 +198,15 @@ class PluginRuntimeIT {
 
                 import com.crm.foundation.DTO.CommonResponse;
                 import java.util.Map;
+                import java.util.UUID;
+                import org.springframework.http.HttpStatus;
                 import org.springframework.security.access.prepost.PreAuthorize;
                 import org.springframework.web.bind.annotation.GetMapping;
+                import org.springframework.web.bind.annotation.PathVariable;
                 import org.springframework.web.bind.annotation.PostMapping;
                 import org.springframework.web.bind.annotation.RequestBody;
                 import org.springframework.web.bind.annotation.RestController;
+                import org.springframework.web.server.ResponseStatusException;
 
                 @RestController
                 public class EchoController {
@@ -211,6 +227,19 @@ class PluginRuntimeIT {
                     public CommonResponse<String> create(@RequestBody Map<String, String> body) {
                         return CommonResponse.success(notes.create(body.get("text")).toString());
                     }
+
+                    @GetMapping("/notes/{id}")
+                    @PreAuthorize("hasAuthority('echo.ping')")
+                    public CommonResponse<String> read(@PathVariable("id") UUID id) {
+                        return CommonResponse.success(notes.text(id));
+                    }
+
+                    /** Rejected through Spring's sendError path (ResponseStatusException), not an advice. */
+                    @GetMapping("/teapot")
+                    @PreAuthorize("hasAuthority('echo.ping')")
+                    public CommonResponse<String> teapot() {
+                        throw new ResponseStatusException(HttpStatus.I_AM_A_TEAPOT);
+                    }
                 }
                 """)
             .migration("V1__note.sql", """
@@ -220,6 +249,24 @@ class PluginRuntimeIT {
                     text    VARCHAR(255) NOT NULL
                 );
                 """)
+            .buildTo(zip);
+    }
+
+    private static void buildDuplicateEchoPackage(Path zip) throws IOException {
+        PluginPackageBuilder.plugin(PLUGIN_ID)
+            .version("0.0.9")
+            .schema(SCHEMA)
+            .route("echo-old")
+            .entry("demo.echo.EchoPlugin")
+            .source("demo.echo.EchoPlugin", """
+                package demo.echo;
+                public class EchoPlugin implements com.crm.foundation.Plugin.PluginActivator {
+                    public void onLoad() {
+                    }
+                }
+                """)
+            // Differs from the real V1: if this package were migrated, Flyway validation would fail it
+            .migration("V1__note.sql", "CREATE TABLE stale_note (id UUID PRIMARY KEY);")
             .buildTo(zip);
     }
 
@@ -285,10 +332,65 @@ class PluginRuntimeIT {
     }
 
     @Test
-    void unknown_plugin_route_is_404() {
+    void unknown_plugin_route_is_404() throws IOException {
         ResponseEntity<String> response = get("/api/v1/plugins/nope/ping", token("echo.ping"));
 
         assertThat(response.getStatusCode().value()).as(response.getBody()).isEqualTo(404);
+        assertThat(response.getHeaders().getContentType()).isEqualTo(MediaType.APPLICATION_PROBLEM_JSON);
+        assertThat(json(response).path("code").asText()).isEqualTo("NOT_FOUND");
+    }
+
+    @Test
+    void unknown_path_without_token_is_401() {
+        assertThat(get("/api/v1/plugins/nope/ping", null).getStatusCode().value()).isEqualTo(401);
+        assertThat(post("/api/v1/plugins/nope/x", null, Map.of()).getStatusCode().value()).isEqualTo(401);
+    }
+
+    @Test
+    void malformed_json_is_400_problem() throws IOException {
+        ResponseEntity<String> response = post("/api/v1/plugins/echo/notes", token("echo.write"), "{");
+
+        assertThat(response.getStatusCode().value()).as(response.getBody()).isEqualTo(400);
+        assertThat(response.getHeaders().getContentType()).isEqualTo(MediaType.APPLICATION_PROBLEM_JSON);
+        assertThat(json(response).path("code").asText()).isEqualTo("BAD_REQUEST");
+    }
+
+    @Test
+    void bad_uuid_path_variable_is_400_problem() throws IOException {
+        ResponseEntity<String> response = get("/api/v1/plugins/echo/notes/not-a-uuid", token("echo.ping"));
+
+        assertThat(response.getStatusCode().value()).as(response.getBody()).isEqualTo(400);
+        assertThat(response.getHeaders().getContentType()).isEqualTo(MediaType.APPLICATION_PROBLEM_JSON);
+        assertThat(json(response).path("code").asText()).isEqualTo("BAD_REQUEST");
+    }
+
+    @Test
+    void wrong_method_is_405_problem() throws IOException {
+        ResponseEntity<String> response = rest.exchange("/api/v1/plugins/echo/ping", HttpMethod.DELETE,
+            new HttpEntity<>(headers(token("echo.ping"))), String.class);
+
+        assertThat(response.getStatusCode().value()).as(response.getBody()).isEqualTo(405);
+        assertThat(json(response).path("code").asText()).isEqualTo("METHOD_NOT_ALLOWED");
+    }
+
+    @Test
+    void send_error_keeps_its_status_for_authenticated_caller() {
+        ResponseEntity<String> response = get("/api/v1/plugins/echo/teapot", token("echo.ping"));
+
+        assertThat(response.getStatusCode().value()).as(response.getBody()).isEqualTo(418);
+    }
+
+    @Test
+    void duplicate_plugin_id_package_is_ignored() {
+        PluginRegistry entry = registryService.findByPluginId(PLUGIN_ID).orElseThrow();
+
+        assertThat(entry.getState()).isEqualTo(PluginState.ACTIVE.name());
+        assertThat(entry.getVersion()).isEqualTo("1.0.0");
+        assertThat(get("/api/v1/plugins/echo/ping", token("echo.ping")).getStatusCode().value()).isEqualTo(200);
+        assertThat(get("/api/v1/plugins/echo-old/ping", token("echo.ping")).getStatusCode().value()).isEqualTo(404);
+        assertThat(jdbc.queryForObject(
+            "SELECT count(*) FROM information_schema.tables WHERE table_schema = ? AND table_name = 'stale_note'",
+            Integer.class, SCHEMA)).isZero();
     }
 
     @Test

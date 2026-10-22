@@ -7,11 +7,18 @@ import com.crm.foundation.Plugin.InvalidPluginPackageException;
 import com.crm.foundation.Plugin.PluginProblem;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.TypeMismatchException;
 import org.springframework.dao.OptimisticLockingFailureException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ProblemDetail;
+import org.springframework.http.ResponseEntity;
+import org.springframework.http.converter.HttpMessageNotReadableException;
 import org.springframework.security.access.AccessDeniedException;
+import org.springframework.web.ErrorResponse;
+import org.springframework.web.HttpMediaTypeNotSupportedException;
+import org.springframework.web.HttpRequestMethodNotSupportedException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
+import org.springframework.web.bind.ServletRequestBindingException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 import org.springframework.web.servlet.NoHandlerFoundException;
@@ -41,6 +48,7 @@ public class ErrorHandler {
     static final String TYPE_CONFLICT = "urn:problem-type:conflict";
     static final String TYPE_PLUGIN_LOAD = "urn:problem-type:plugin-load";
     static final String TYPE_PLUGIN = "urn:problem-type:plugin";
+    static final String TYPE_REQUEST_REJECTED = "urn:problem-type:request-rejected";
 
     @ExceptionHandler(MethodArgumentNotValidException.class)
     public ProblemDetail handleValidation(MethodArgumentNotValidException ex) {
@@ -72,12 +80,40 @@ public class ErrorHandler {
 
     /**
      * No controller matched (e.g. the route of a plugin that isn't running):
-     * answered here, in the request's own dispatch — an error-page dispatch
-     * would run unauthenticated and turn the 404 into a 401.
+     * a 404 problem like every other error, rather than Spring Boot's
+     * error-page JSON.
      */
     @ExceptionHandler({NoResourceFoundException.class, NoHandlerFoundException.class})
     public ProblemDetail handleNoRoute(Exception ex) {
         return problem(HttpStatus.NOT_FOUND, TYPE_NOT_FOUND, "NOT_FOUND", "No endpoint matches this request");
+    }
+
+    /** Unreadable body (malformed JSON) or a value that doesn't convert (e.g. a bad UUID path variable). */
+    @ExceptionHandler({HttpMessageNotReadableException.class, TypeMismatchException.class})
+    public ProblemDetail handleMalformedRequest(Exception ex) {
+        String detail = ex instanceof TypeMismatchException mismatch && mismatch.getPropertyName() != null
+            ? "Invalid value for '" + mismatch.getPropertyName() + "'"
+            : "Malformed request body";
+        return problem(HttpStatus.BAD_REQUEST, TYPE_BAD_REQUEST, "BAD_REQUEST", detail);
+    }
+
+    /**
+     * Spring MVC's own request rejections (missing header/parameter, wrong
+     * method, unsupported content type) keep their status and headers
+     * (e.g. {@code Allow}) as a problem with the status name as {@code code}.
+     */
+    @ExceptionHandler({
+        ServletRequestBindingException.class,
+        HttpRequestMethodNotSupportedException.class,
+        HttpMediaTypeNotSupportedException.class})
+    public ResponseEntity<ProblemDetail> handleRejectedRequest(Exception ex) {
+        ErrorResponse response = (ErrorResponse) ex;
+        HttpStatus status = HttpStatus.valueOf(response.getStatusCode().value());
+        String type = status == HttpStatus.BAD_REQUEST ? TYPE_BAD_REQUEST : TYPE_REQUEST_REJECTED;
+        String detail = response.getBody().getDetail() != null ? response.getBody().getDetail() : ex.getMessage();
+        return ResponseEntity.status(status)
+            .headers(response.getHeaders())
+            .body(problem(status, type, status.name(), detail));
     }
 
     @ExceptionHandler(BadRequestException.class)

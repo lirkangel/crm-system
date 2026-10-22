@@ -26,6 +26,10 @@ import java.util.Map;
  * persistence unit — Hibernate's {@code ddl-auto: validate} then sees the
  * plugin tables, and a plugin that would break it is FAILED instead.
  *
+ * <p>A package whose plugin id an earlier package (discovery order) already
+ * provides is left out of the report entirely: never classloaded, never
+ * migrated, so it can't touch the first one's schema or registry row.
+ *
  * <p>Runs once (memoized). Never throws: a plugin that fails is reported
  * {@code FAILED} and left out; {@code DISABLED}/{@code UNINSTALL_PENDING}
  * plugins are {@code SKIPPED} without being touched.
@@ -81,10 +85,21 @@ public class PluginBootstrap {
             // JPA entity names are global to the shared persistence unit: Foundation's
             // come first, then each READY plugin's, in discovery order (first claim wins)
             Map<String, String> claimedEntityNames = new HashMap<>(foundationEntityNames());
+            // Plugin id → package that claimed it; a later package with the same id (e.g. an old
+            // version left next to the new one) must never touch the first one's schema or registry row
+            Map<String, String> claimedIds = new HashMap<>();
             for (PluginDiscoveryResult result : discovery.scan()) {
-                if (result.isValid()) {
-                    plugins.add(bootstrapIsolated(result, claimedEntityNames));
+                if (!result.isValid()) {
+                    continue;
                 }
+                String id = result.manifest().id();
+                String firstPackage = claimedIds.putIfAbsent(id, result.packagePath());
+                if (firstPackage != null) {
+                    log.error("Ignoring plugin package {}: plugin id {} is already provided by {}",
+                        result.packagePath(), id, firstPackage);
+                    continue;
+                }
+                plugins.add(bootstrapIsolated(result, claimedEntityNames));
             }
         } catch (RuntimeException e) {
             log.error("Plugin discovery failed; starting without plugins: {}", e.getMessage(), e);

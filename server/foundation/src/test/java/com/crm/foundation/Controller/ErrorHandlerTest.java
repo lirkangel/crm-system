@@ -11,6 +11,12 @@ import org.springframework.dao.OptimisticLockingFailureException;
 import org.springframework.http.HttpMethod;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ProblemDetail;
+import org.springframework.http.ResponseEntity;
+import org.springframework.http.converter.HttpMessageNotReadableException;
+import org.springframework.mock.http.MockHttpInputMessage;
+import org.springframework.beans.TypeMismatchException;
+import org.springframework.web.HttpRequestMethodNotSupportedException;
+import org.springframework.web.bind.ServletRequestBindingException;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.validation.BeanPropertyBindingResult;
 import org.springframework.web.bind.MethodArgumentNotValidException;
@@ -88,6 +94,47 @@ class ErrorHandlerTest {
 
         assertProblemBasics(problem, 404, "urn:problem-type:not-found");
         assertThat(problem.getProperties().get("code")).isEqualTo("NOT_FOUND");
+    }
+
+    @Test
+    void malformed_body_problem_is_400() {
+        ProblemDetail problem = handler.handleMalformedRequest(
+            new HttpMessageNotReadableException("JSON parse error", new MockHttpInputMessage(new byte[0])));
+
+        assertProblemBasics(problem, 400, "urn:problem-type:bad-request");
+        assertThat(problem.getProperties().get("code")).isEqualTo("BAD_REQUEST");
+    }
+
+    @Test
+    void unconvertible_value_problem_is_400_naming_the_parameter() {
+        TypeMismatchException mismatch = new TypeMismatchException("not-a-uuid", java.util.UUID.class);
+        mismatch.initPropertyName("id");
+
+        ProblemDetail problem = handler.handleMalformedRequest(mismatch);
+
+        assertProblemBasics(problem, 400, "urn:problem-type:bad-request");
+        assertThat(problem.getDetail()).isEqualTo("Invalid value for 'id'");
+    }
+
+    @Test
+    void missing_header_problem_is_400() {
+        ResponseEntity<ProblemDetail> response = handler.handleRejectedRequest(
+            new ServletRequestBindingException("Required header 'If-Match' is not present"));
+
+        assertThat(response.getStatusCode().value()).isEqualTo(400);
+        assertProblemBasics(response.getBody(), 400, "urn:problem-type:bad-request");
+        assertThat(response.getBody().getProperties().get("code")).isEqualTo("BAD_REQUEST");
+    }
+
+    @Test
+    void wrong_method_problem_is_405_with_allow_header() {
+        ResponseEntity<ProblemDetail> response = handler.handleRejectedRequest(
+            new HttpRequestMethodNotSupportedException("DELETE", List.of("GET", "POST")));
+
+        assertThat(response.getStatusCode().value()).isEqualTo(405);
+        assertThat(response.getHeaders().getAllow()).contains(HttpMethod.GET, HttpMethod.POST);
+        assertProblemBasics(response.getBody(), 405, "urn:problem-type:request-rejected");
+        assertThat(response.getBody().getProperties().get("code")).isEqualTo("METHOD_NOT_ALLOWED");
     }
 
     @Test

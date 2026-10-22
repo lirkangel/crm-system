@@ -239,4 +239,35 @@ class PluginBootstrapTest {
         assertThat(migratedPlugins).containsExactly("com.crm.demo");
         verify(foundationMigrations).getIfAvailable();
     }
+
+    @Test
+    void later_package_with_an_already_seen_id_is_left_out_untouched() {
+        PluginBootstrap bootstrap = bootstrapScanning(
+            PluginDiscoveryResult.valid("/plugins/hotel-0.1.0.zip", manifest("com.crm.hotel")),
+            PluginDiscoveryResult.valid("/plugins/hotel-0.2.0.zip", manifest("com.crm.hotel")),
+            PluginDiscoveryResult.valid("/plugins/good.zip", manifest("com.crm.good")));
+
+        PluginBootstrapReport report = bootstrap.report();
+
+        assertThat(report.plugins()).extracting(BootstrappedPlugin::packagePath, BootstrappedPlugin::status)
+            .containsExactly(
+                tuple("/plugins/hotel-0.1.0.zip", BootstrappedPlugin.Status.READY),
+                tuple("/plugins/good.zip", BootstrappedPlugin.Status.READY));
+        assertThat(classLoadersBuilt).containsExactly("com.crm.hotel", "com.crm.good");
+        assertThat(migratedPlugins).containsExactly("com.crm.hotel", "com.crm.good");
+    }
+
+    @Test
+    void duplicate_id_stays_out_even_when_the_first_package_failed() {
+        failMigrationFor.add("com.crm.hotel");
+        PluginBootstrap bootstrap = bootstrapScanning(
+            PluginDiscoveryResult.valid("/plugins/hotel-a.zip", manifest("com.crm.hotel")),
+            PluginDiscoveryResult.valid("/plugins/hotel-b.zip", manifest("com.crm.hotel")));
+
+        PluginBootstrapReport report = bootstrap.report();
+
+        assertThat(report.plugins()).extracting(BootstrappedPlugin::packagePath, BootstrappedPlugin::status)
+            .containsExactly(tuple("/plugins/hotel-a.zip", BootstrappedPlugin.Status.FAILED));
+        assertThat(classLoadersBuilt).containsExactly("com.crm.hotel");
+    }
 }
