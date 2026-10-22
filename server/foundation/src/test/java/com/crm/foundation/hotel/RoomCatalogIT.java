@@ -239,6 +239,40 @@ class RoomCatalogIT extends HotelITSupport {
         assertThat(jdbc.queryForObject("SELECT count(*) FROM hotel.room_type WHERE code = ?", Integer.class, code)).isZero();
     }
 
+    @Test
+    void room_type_without_active_is_400_with_no_row() {
+        String token = adminToken();
+        String code = uniqueCode("NOA");
+        Map<String, Object> body = roomTypeBody(code, 2, 1_000_000, true);
+        body.remove("active");
+
+        ResponseEntity<String> response = post(HOTEL_API + "/room-types", token, body);
+
+        assertThat(response.getStatusCode().value()).as(response.getBody()).isEqualTo(400);
+        assertThat(json(response).path("code").asText()).isEqualTo("VALIDATION_ERROR");
+        assertThat(json(response).path("errors").toString()).contains("active");
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM hotel.room_type WHERE code = ?", Integer.class, code)).isZero();
+    }
+
+    @Test
+    void room_put_without_in_service_is_400_and_room_unchanged() {
+        String token = adminToken();
+        UUID typeId = createRoomType(token, uniqueCode("NIS"), 2);
+        JsonNode room = data(post(HOTEL_API + "/rooms", token, roomBody(uniqueNumber(), typeId, 1, true)));
+        UUID roomId = UUID.fromString(room.path("id").asText());
+        Map<String, Object> body = roomBody(room.path("number").asText(), typeId, 4, true);
+        body.remove("inService");
+
+        ResponseEntity<String> response = put(HOTEL_API + "/rooms/" + roomId, token, body, "0");
+
+        assertThat(response.getStatusCode().value()).as(response.getBody()).isEqualTo(400);
+        assertThat(json(response).path("code").asText()).isEqualTo("VALIDATION_ERROR");
+        assertThat(json(response).path("errors").toString()).contains("inService");
+        Map<String, Object> row = jdbc.queryForMap(
+            "SELECT in_service, floor, version FROM hotel.room WHERE id = ?", roomId);
+        assertThat(row).containsEntry("in_service", true).containsEntry("floor", 1).containsEntry("version", 0L);
+    }
+
     private UUID createRoomType(String token, String code, int maxGuests) {
         ResponseEntity<String> created = post(HOTEL_API + "/room-types", token, roomTypeBody(code, maxGuests, 1_000_000, true));
         assertThat(created.getStatusCode().value()).as(created.getBody()).isEqualTo(201);
