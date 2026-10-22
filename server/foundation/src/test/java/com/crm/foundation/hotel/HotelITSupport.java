@@ -28,6 +28,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.LocalDate;
 import java.time.temporal.ChronoUnit;
+import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.UUID;
 import java.util.stream.Stream;
@@ -135,6 +136,54 @@ public abstract class HotelITSupport {
             id, "SEED-" + id.toString().replace("-", "").substring(0, 12), guestId, roomId, in, out, status,
             rate, rate * nights);
         return id;
+    }
+
+    /** Creates a room type over HTTP (asserting 201) and returns its id. */
+    protected UUID newRoomType(String token, String code, int maxGuests, long rate, boolean active) {
+        Map<String, Object> body = new LinkedHashMap<>();
+        body.put("code", code);
+        body.put("nameI18n", Map.of("vi", "Phòng " + code, "en", "Room " + code));
+        body.put("maxGuests", maxGuests);
+        body.put("nightlyRateGrossVnd", rate);
+        body.put("active", active);
+        ResponseEntity<String> created = post(HOTEL_API + "/room-types", token, body);
+        assertThat(created.getStatusCode().value()).as(created.getBody()).isEqualTo(201);
+        return UUID.fromString(data(created).path("id").asText());
+    }
+
+    /** Creates a room over HTTP (asserting 201) and returns its id. */
+    protected UUID newRoom(String token, String number, UUID roomTypeId, boolean inService) {
+        Map<String, Object> body = new LinkedHashMap<>();
+        body.put("number", number);
+        body.put("roomTypeId", roomTypeId);
+        body.put("floor", 1);
+        body.put("inService", inService);
+        ResponseEntity<String> created = post(HOTEL_API + "/rooms", token, body);
+        assertThat(created.getStatusCode().value()).as(created.getBody()).isEqualTo(201);
+        return UUID.fromString(data(created).path("id").asText());
+    }
+
+    /** Body of {@code POST /reservations}; pass exactly one of {@code guestId} / {@code newGuest} for a valid one. */
+    protected static Map<String, Object> reservationBody(
+            UUID guestId, Map<String, Object> newGuest, UUID roomId, LocalDate in, LocalDate out, int adults) {
+        Map<String, Object> body = new LinkedHashMap<>();
+        body.put("guestId", guestId);
+        body.put("newGuest", newGuest);
+        body.put("roomId", roomId);
+        body.put("checkIn", in);
+        body.put("checkOut", out);
+        body.put("adults", adults);
+        body.put("notes", "Late arrival");
+        return body;
+    }
+
+    /** An inline new guest for {@link #reservationBody}. */
+    protected static Map<String, Object> inlineGuest(String fullName, String phone) {
+        Map<String, Object> guest = new LinkedHashMap<>();
+        guest.put("fullName", fullName);
+        guest.put("phone", phone);
+        guest.put("email", null);
+        return guest;
     }
 
     protected ResponseEntity<String> get(String path, String token) {

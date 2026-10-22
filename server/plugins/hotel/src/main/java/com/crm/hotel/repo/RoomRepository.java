@@ -7,6 +7,7 @@ import org.springframework.data.repository.query.Param;
 
 import java.time.LocalDate;
 import java.util.List;
+import java.util.Optional;
 import java.util.UUID;
 
 public interface RoomRepository extends JpaRepository<Room, UUID> {
@@ -27,4 +28,12 @@ public interface RoomRepository extends JpaRepository<Room, UUID> {
         """)
     List<Object[]> findAvailable(
         @Param("checkIn") LocalDate checkIn, @Param("checkOut") LocalDate checkOut, @Param("adults") int adults);
+
+    /**
+     * The room with its row locked {@code FOR NO KEY UPDATE} until the transaction ends, so bookings of one
+     * room queue up here instead of racing (and room edits wait for them). Unlike {@code FOR UPDATE} (what
+     * JPA's {@code PESSIMISTIC_WRITE} gives) it does not block inserts that only reference the room.
+     */
+    @Query(value = "select * from hotel.room where id = :id for no key update", nativeQuery = true)
+    Optional<Room> lockById(@Param("id") UUID id);
 }

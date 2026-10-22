@@ -1,0 +1,215 @@
+package com.crm.hotel.booking;
+
+import com.crm.foundation.Plugin.AuditRecorder;
+import com.crm.foundation.Plugin.ChangeOp;
+import com.crm.foundation.Plugin.ChangeRecorder;
+import com.crm.foundation.Plugin.CurrentUser;
+import com.crm.hotel.HotelErrors;
+import com.crm.hotel.domain.Guest;
+import com.crm.hotel.domain.Reservation;
+import com.crm.hotel.domain.ReservationStatus;
+import com.crm.hotel.domain.Room;
+import com.crm.hotel.domain.RoomType;
+import com.crm.hotel.guest.GuestService;
+import com.crm.hotel.guest.GuestView;
+import com.crm.hotel.repo.GuestRepository;
+import com.crm.hotel.repo.ReservationRepository;
+import com.crm.hotel.repo.RoomRepository;
+import com.crm.hotel.repo.RoomTypeRepository;
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import lombok.RequiredArgsConstructor;
+import org.hibernate.exception.ConstraintViolationException;
+import org.springframework.dao.DataIntegrityViolationException;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+
+import java.sql.SQLException;
+import java.time.Clock;
+import java.time.Instant;
+import java.time.LocalDate;
+import java.time.temporal.ChronoUnit;
+import java.util.List;
+import java.util.UUID;
+
+/**
+ * Booking, viewing, listing and cancelling reservations. No double booking: the database's
+ * {@code reservation_no_overlap} exclusion constraint is the guarantee; the room lock and the
+ * overlap pre-check only make the common conflict a friendly 409 instead of a constraint error.
+ */
+@Service
+@RequiredArgsConstructor
+public class ReservationService {
+
+    static final String ENTITY_TYPE = "Reservation";
+    static final String AUDIT_CREATE = "RESERVATION_CREATE";
+    static final String AUDIT_CANCEL = "RESERVATION_CANCEL";
+
+    private static final String EXCLUSION_VIOLATION = "23P01";
+    private static final String NO_OVERLAP_CONSTRAINT = "reservation_no_overlap";
+    private static final String UNAVAILABLE = "The room is already booked for some of these nights";
+
+    // The field name doubles as the bean name, which disambiguates from any Clock in the parent context.
+    private final Clock hotelClock;
+    private final ReservationRepository reservations;
+    private final RoomRepository rooms;
+    private final RoomTypeRepository roomTypes;
+    private final GuestRepository guests;
+    private final GuestService guestService;
+    private final ReservationCodeGenerator codes;
+    private final ChangeRecorder changes;
+    private final AuditRecorder audit;
+    private final CurrentUser currentUser;
+    private final ObjectMapper objectMapper;
+
+    /**
+     * Books a room in one transaction: an inline new guest is created only if the booking succeeds.
+     *
+     * @throws com.crm.foundation.Plugin.PluginProblem {@code HOTEL_INVALID_GUEST} (400) unless exactly one of
+     *         guestId/newGuest is given; {@code HOTEL_NOT_FOUND} (404) for an unknown guest or room;
+     *         {@code HOTEL_INVALID_STAY}/{@code HOTEL_TOO_MANY_GUESTS} (400) from {@link StayPolicy};
+     *         {@code HOTEL_ROOM_NOT_BOOKABLE} (409) for a room out of service or of an inactive type;
+     *         {@code HOTEL_ROOM_UNAVAILABLE} (409) when a confirmed stay of the room overlaps
+     */
+    @Transactional
+    public ReservationView create(CreateReservationRequest request) {
+        if ((request.guestId() == null) == (request.newGuest() == null)) {
+            throw HotelErrors.invalidGuest("Give exactly one of guestId (an existing guest) or newGuest");
+        }
+        Guest existingGuest = request.guestId() == null ? null : guests.findById(request.guestId())
+            .orElseThrow(() -> HotelErrors.notFound("Guest not found"));
+
+        // Concurrent bookings of this room wait here until this transaction ends, then see its result.
+        Room room = rooms.lockById(request.roomId()).orElseThrow(() -> HotelErrors.notFound("Room not found"));
+        RoomType type = roomTypes.findById(room.getRoomTypeId())
+            .orElseThrow(() -> HotelErrors.notFound("Room type not found"));
+        LocalDate checkIn = request.checkIn();
+        LocalDate checkOut = request.checkOut();
+        StayPolicy.check(checkIn, checkOut, request.adults(), type.getMaxGuests(), LocalDate.now(hotelClock));
+        if (!room.isInService() || !type.isActive()) {
+            throw HotelErrors.roomNotBookable("The room is out of service or its room type is inactive");
+        }
+        if (reservations.countConfirmedOverlaps(room.getId(), checkIn, checkOut) > 0) {
+            throw HotelErrors.roomUnavailable(UNAVAILABLE);
+        }
+        long totalGross = StayPolicy.totalGross(type.getNightlyRateGrossVnd(), StayPolicy.nights(checkIn, checkOut));
+
+        UUID guestId;
+        String guestName;
+        if (existingGuest != null) {
+            guestId = existingGuest.getId();
+            guestName = existingGuest.getFullName();
+        } else {
+            GuestView created = guestService.create(request.newGuest());
+            guestId = created.id();
+            guestName = created.fullName();
+        }
+
+        Reservation reservation = new Reservation();
+        reservation.setCode(codes.next());
+        reservation.setGuestId(guestId);
+        reservation.setRoomId(room.getId());
+        reservation.setCheckIn(checkIn);
+        reservation.setCheckOut(checkOut);
+        reservation.setAdults(request.adults());
+        reservation.setStatus(ReservationStatus.CONFIRMED);
+        reservation.setNightlyRateGrossVnd(type.getNightlyRateGrossVnd());
+        reservation.setTotalGrossVnd(totalGross);
+        reservation.setNotes(request.notes() == null || request.notes().isBlank() ? null : request.notes().trim());
+        reservation.setCreatedBy(currentUser.id().orElse(null));
+        reservation.setCreatedAt(now());
+        Reservation saved = insert(reservation);
+
+        changes.record(ENTITY_TYPE, saved.getId(), saved.getVersion(), ChangeOp.CREATE);
+        ReservationView view = ReservationView.of(saved, guestName, room.getNumber());
+        audit.record(ENTITY_TYPE, saved.getId(), AUDIT_CREATE, null, json(view));
+        return view;
+    }
+
+    @Transactional(readOnly = true)
+    public ReservationView get(UUID id) {
+        return reservations.findDetailed(id).stream().findFirst().map(ReservationView::of)
+            .orElseThrow(() -> HotelErrors.notFound("Reservation not found"));
+    }
+
+    /** Reservations of any status overlapping {@code [from, to)}, by check-in. */
+    @Transactional(readOnly = true)
+    public List<ReservationView> list(LocalDate from, LocalDate to) {
+        if (!to.isAfter(from)) {
+            throw HotelErrors.invalidQuery("to must be after from");
+        }
+        return reservations.findDetailedOverlapping(from, to).stream().map(ReservationView::of).toList();
+    }
+
+    /**
+     * {@code CONFIRMED -> CANCELLED}; frees the room at once (the exclusion constraint ignores cancelled
+     * stays). The row is locked first, so of two concurrent cancels the second sees the first's result.
+     *
+     * @throws com.crm.foundation.Plugin.PluginProblem {@code HOTEL_NOT_FOUND} (404), or
+     *         {@code HOTEL_ALREADY_CANCELLED} (409) when the reservation is not confirmed
+     */
+    @Transactional
+    public ReservationView cancel(UUID id) {
+        Reservation reservation = reservations.lockById(id)
+            .orElseThrow(() -> HotelErrors.notFound("Reservation not found"));
+        if (reservation.getStatus() != ReservationStatus.CONFIRMED) {
+            throw HotelErrors.alreadyCancelled("The reservation is already cancelled");
+        }
+        String guestName = guests.findById(reservation.getGuestId()).map(Guest::getFullName).orElse(null);
+        String roomNumber = rooms.findById(reservation.getRoomId()).map(Room::getNumber).orElse(null);
+        String before = json(ReservationView.of(reservation, guestName, roomNumber));
+
+        reservation.setStatus(ReservationStatus.CANCELLED);
+        reservation.setCancelledAt(now());
+        Reservation saved = reservations.saveAndFlush(reservation);
+
+        changes.record(ENTITY_TYPE, saved.getId(), saved.getVersion(), ChangeOp.UPDATE);
+        ReservationView view = ReservationView.of(saved, guestName, roomNumber);
+        audit.record(ENTITY_TYPE, saved.getId(), AUDIT_CANCEL, before, json(view));
+        return view;
+    }
+
+    /**
+     * Inserts and flushes, so a {@code reservation_no_overlap} violation (a conflicting stay committed
+     * after the pre-check) surfaces here as {@code HOTEL_ROOM_UNAVAILABLE}; other violations propagate.
+     */
+    private Reservation insert(Reservation reservation) {
+        try {
+            return reservations.saveAndFlush(reservation);
+        } catch (DataIntegrityViolationException e) {
+            if (isNoOverlapViolation(e)) {
+                throw HotelErrors.roomUnavailable(UNAVAILABLE);
+            }
+            throw e;
+        }
+    }
+
+    static boolean isNoOverlapViolation(Throwable error) {
+        boolean exclusionViolation = false;
+        boolean namesConstraint = false;
+        for (Throwable cause = error; cause != null; cause = cause.getCause() == cause ? null : cause.getCause()) {
+            if (cause instanceof ConstraintViolationException hibernate
+                    && NO_OVERLAP_CONSTRAINT.equalsIgnoreCase(hibernate.getConstraintName())) {
+                namesConstraint = true;
+            }
+            if (cause instanceof SQLException sql && EXCLUSION_VIOLATION.equals(sql.getSQLState())) {
+                exclusionViolation = true;
+                namesConstraint |= sql.getMessage() != null && sql.getMessage().contains('"' + NO_OVERLAP_CONSTRAINT + '"');
+            }
+        }
+        return exclusionViolation && namesConstraint;
+    }
+
+    /** Microsecond precision, as stored by {@code timestamptz}, so responses and later reads agree. */
+    private Instant now() {
+        return Instant.now(hotelClock).truncatedTo(ChronoUnit.MICROS);
+    }
+
+    private String json(ReservationView view) {
+        try {
+            return objectMapper.writeValueAsString(view);
+        } catch (JsonProcessingException e) {
+            throw new IllegalStateException("Reservation " + view.id() + " could not be serialized for the audit log", e);
+        }
+    }
+}

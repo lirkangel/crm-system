@@ -9,9 +9,6 @@ import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
-import java.time.LocalDate;
-import java.time.format.DateTimeParseException;
-
 /** Served under {@code /api/v1/plugins/hotel}. */
 @RestController
 @RequiredArgsConstructor
@@ -30,18 +27,7 @@ public class AvailabilityController {
             @RequestParam(value = "checkOut", required = false) String checkOut,
             @RequestParam(value = "adults", required = false) String adults) {
         return CommonResponse.success(availability.search(
-            date("checkIn", checkIn), date("checkOut", checkOut), adults(adults)));
-    }
-
-    private static LocalDate date(String name, String value) {
-        if (value == null || value.isBlank()) {
-            throw HotelErrors.invalidQuery(name + " is required (ISO date, yyyy-MM-dd)");
-        }
-        try {
-            return LocalDate.parse(value.trim());
-        } catch (DateTimeParseException e) {
-            throw HotelErrors.invalidQuery(name + " must be an ISO date (yyyy-MM-dd)");
-        }
+            QueryDates.required("checkIn", checkIn), QueryDates.required("checkOut", checkOut), adults(adults)));
     }
 
     private static int adults(String value) {
