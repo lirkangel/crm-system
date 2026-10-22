@@ -26,7 +26,10 @@ import java.io.IOException;
 import java.net.URISyntaxException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.time.LocalDate;
+import java.time.temporal.ChronoUnit;
 import java.util.Map;
+import java.util.UUID;
 import java.util.stream.Stream;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -107,6 +110,31 @@ public abstract class HotelITSupport {
             "/api/v1/auth/login", Map.of("username", ADMIN_USERNAME, "password", ADMIN_PASSWORD), String.class);
         assertThat(login.getStatusCode().value()).as(login.getBody()).isEqualTo(200);
         return data(login).path("accessToken").asText();
+    }
+
+    /**
+     * Inserts a guest and a reservation of {@code roomId} over {@code [in, out)} with plain SQL, so
+     * availability tests don't depend on the booking endpoint. {@code status} is {@code CONFIRMED}
+     * or {@code CANCELLED}; returns the reservation id. (Two CONFIRMED stays of one room that
+     * overlap are rejected by the database, as in production.)
+     */
+    protected UUID seedReservation(UUID roomId, LocalDate in, LocalDate out, String status) {
+        UUID guestId = UUID.randomUUID();
+        String name = "Seed Guest " + guestId.toString().substring(0, 8);
+        jdbc.update(
+            "INSERT INTO hotel.guest (id, full_name, phone, search_key, version) VALUES (?, ?, ?, ?, 0)",
+            guestId, name, "0900000000", name.toLowerCase() + " 0900000000");
+        UUID id = UUID.randomUUID();
+        long nights = ChronoUnit.DAYS.between(in, out);
+        long rate = 1_000_000L;
+        jdbc.update("""
+            INSERT INTO hotel.reservation (id, code, guest_id, room_id, check_in, check_out, adults, status,
+                                           nightly_rate_gross_vnd, total_gross_vnd, created_at, version)
+            VALUES (?, ?, ?, ?, ?, ?, 1, ?, ?, ?, now(), 0)
+            """,
+            id, "SEED-" + id.toString().replace("-", "").substring(0, 12), guestId, roomId, in, out, status,
+            rate, rate * nights);
+        return id;
     }
 
     protected ResponseEntity<String> get(String path, String token) {
