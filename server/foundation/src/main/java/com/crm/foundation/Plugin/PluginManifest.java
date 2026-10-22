@@ -16,6 +16,8 @@ import java.util.Map;
  * @param foundationServicesUsed  foundation services the plugin consumes (persistence, rest, …)
  * @param schema                  dedicated Postgres schema name
  * @param entry                   fully-qualified entrypoint class
+ * @param route                   URL prefix segment: the plugin's controllers mount under
+ *                                {@code /api/v1/plugins/{route}}; defaults to the last id segment
  */
 public record PluginManifest(
     String id,
@@ -25,6 +27,7 @@ public record PluginManifest(
     List<String> permissionsDeclared,
     List<String> foundationServicesUsed,
     String schema,
-    String entry
+    String entry,
+    String route
 ) {
 }

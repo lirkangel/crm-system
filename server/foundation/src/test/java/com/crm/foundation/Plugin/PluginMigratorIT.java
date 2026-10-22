@@ -64,7 +64,7 @@ class PluginMigratorIT {
     void should_create_plugin_tables_in_plugin_schema_not_public() throws IOException {
         PluginManifest manifest = new PluginManifest(
             "com.crm.demo", "1.0.0", Map.of(), Map.of(), List.of(), List.of(),
-            "plugin_demo", "demo.Entry");
+            "plugin_demo", "demo.Entry", "demo");
 
         migrator.migrate(demoZip(), manifest);
 

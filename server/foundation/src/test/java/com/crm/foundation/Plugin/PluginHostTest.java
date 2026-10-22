@@ -26,7 +26,7 @@ class PluginHostTest {
 
     private static PluginManifest manifest(String id) {
         return new PluginManifest(
-            id, "1.0.0", Map.of(), Map.of(), List.of(), List.of(), "demo", id + ".Entry");
+            id, "1.0.0", Map.of(), Map.of(), List.of(), List.of(), "demo", id + ".Entry", "demo");
     }
 
     private static PluginRegistry registryRow(String pluginId, PluginState state) {

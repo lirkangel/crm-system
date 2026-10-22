@@ -44,7 +44,8 @@ class PluginRegistryServiceTest {
             List.of("demo.widget.read", "demo.widget.write"),
             List.of("persistence", "rest"),
             "demo",
-            "com.crm.demo.DemoPlugin");
+            "com.crm.demo.DemoPlugin",
+            "demo");
     }
 
     private static PluginRegistry entryInState(PluginState state) {

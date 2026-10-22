@@ -29,7 +29,7 @@ class PluginMigratorTest {
 
     private static PluginManifest manifest(String schema) {
         return new PluginManifest(
-            "com.crm.demo", "1.0.0", Map.of(), Map.of(), List.of(), List.of(), schema, "demo.Entry");
+            "com.crm.demo", "1.0.0", Map.of(), Map.of(), List.of(), List.of(), schema, "demo.Entry", "demo");
     }
 
     private Path zipWith(String... entries) throws IOException {

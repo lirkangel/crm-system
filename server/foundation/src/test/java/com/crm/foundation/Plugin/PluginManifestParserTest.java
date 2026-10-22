@@ -123,4 +123,54 @@ class PluginManifestParserTest {
             .isInstanceOf(InvalidPluginPackageException.class)
             .hasMessageContaining("plugin.yaml");
     }
+
+    @Test
+    void route_defaults_to_last_id_segment() {
+        PluginManifest manifest = parser.parse("""
+            id: com.crm.Hotel
+            version: 1.0.0
+            schema: hotel
+            entry: com.crm.hotel.HotelPlugin
+            """);
+
+        assertThat(manifest.route()).isEqualTo("hotel");
+    }
+
+    @Test
+    void explicit_route_is_kept() {
+        PluginManifest manifest = parser.parse("""
+            id: com.crm.hotel
+            version: 1.0.0
+            schema: hotel
+            entry: com.crm.hotel.HotelPlugin
+            route: front-desk
+            """);
+
+        assertThat(manifest.route()).isEqualTo("front-desk");
+    }
+
+    @Test
+    void invalid_route_is_rejected() {
+        assertThatThrownBy(() -> parser.parse("""
+            id: com.crm.hotel
+            version: 1.0.0
+            schema: hotel
+            entry: com.crm.hotel.HotelPlugin
+            route: "Bad_Route"
+            """))
+            .isInstanceOf(InvalidPluginPackageException.class)
+            .hasMessageContaining("route");
+    }
+
+    @Test
+    void default_route_that_violates_the_pattern_is_rejected() {
+        assertThatThrownBy(() -> parser.parse("""
+            id: com.crm.hotel_x
+            version: 1.0.0
+            schema: hotel
+            entry: com.crm.hotel.HotelPlugin
+            """))
+            .isInstanceOf(InvalidPluginPackageException.class)
+            .hasMessageContaining("route");
+    }
 }

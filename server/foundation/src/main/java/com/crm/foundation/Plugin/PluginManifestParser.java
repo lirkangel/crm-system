@@ -8,7 +8,9 @@ import org.yaml.snakeyaml.constructor.SafeConstructor;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
+import java.util.regex.Pattern;
 
 /**
  * Parses and validates {@code plugin.yaml} (kebab-case keys per the plugin
@@ -18,20 +20,36 @@ import java.util.Map;
 @Component
 public class PluginManifestParser {
 
+    private static final Pattern ROUTE_PATTERN = Pattern.compile("^[a-z][a-z0-9-]{1,31}$");
     private static final List<String> REQUIRED_FIELDS = List.of("id", "version", "schema", "entry");
 
     public PluginManifest parse(String yamlContent) {
         Map<String, Object> root = loadMapping(yamlContent);
         requireFields(root);
+        String id = stringField(root, "id");
         return new PluginManifest(
-            stringField(root, "id"),
+            id,
             stringField(root, "version"),
             stringMap(root.get("display-name")),
             stringMap(root.get("depends-on")),
             stringList(root.get("permissions-declared")),
             stringList(root.get("foundation-services-used")),
             stringField(root, "schema"),
-            stringField(root, "entry"));
+            stringField(root, "entry"),
+            resolveRoute(root, id));
+    }
+
+    private static String resolveRoute(Map<String, Object> root, String id) {
+        Object declared = root.get("route");
+        String route = declared == null
+            ? id.substring(id.lastIndexOf('.') + 1).toLowerCase(Locale.ROOT)
+            : String.valueOf(declared).trim();
+        if (!ROUTE_PATTERN.matcher(route).matches()) {
+            throw new InvalidPluginPackageException(
+                "plugin.yaml route '" + route + "' is invalid: must match " + ROUTE_PATTERN.pattern()
+                    + (declared == null ? " (derived from the last segment of id; set 'route' explicitly)" : ""));
+        }
+        return route;
     }
 
     private Map<String, Object> loadMapping(String yamlContent) {

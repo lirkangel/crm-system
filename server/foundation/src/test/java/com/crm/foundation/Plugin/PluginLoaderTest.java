@@ -31,7 +31,7 @@ class PluginLoaderTest {
 
     private static PluginManifest manifest(String entry) {
         return new PluginManifest(
-            "com.crm.demo", "1.0.0", Map.of(), Map.of(), List.of(), List.of(), "demo", entry);
+            "com.crm.demo", "1.0.0", Map.of(), Map.of(), List.of(), List.of(), "demo", entry, "demo");
     }
 
     /** Compiles {@code source} (declaring {@code className}) and returns the class-output dir. */
