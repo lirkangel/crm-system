@@ -87,6 +87,11 @@ class PluginLoaderTest {
         return pluginZip(jarOf(compile(className, body)));
     }
 
+    /** Classloader + entry, as the plugin host gets them (bootstrap builds the loader, the host the entry). */
+    private PluginActivator load(Path zip, PluginManifest manifest) {
+        return loader.instantiateEntry(loader.createClassLoader(zip, manifest), manifest);
+    }
+
     @Test
     void should_load_and_instantiate_entrypoint_in_isolated_classloader() throws IOException {
         Path zip = zipWithActivator("demo.DemoPlugin", """
@@ -98,7 +103,7 @@ class PluginLoaderTest {
             }
             """);
 
-        PluginActivator activator = loader.loadEntrypoint(zip, manifest("demo.DemoPlugin"));
+        PluginActivator activator = load(zip, manifest("demo.DemoPlugin"));
 
         // Plugin class lives in its own loader; the shared API type comes from the parent
         assertThat(activator.getClass().getClassLoader()).isNotEqualTo(getClass().getClassLoader());
@@ -118,7 +123,7 @@ class PluginLoaderTest {
             }
             """);
 
-        assertThatThrownBy(() -> loader.loadEntrypoint(zip, manifest("demo.NoSuchPlugin")))
+        assertThatThrownBy(() -> load(zip, manifest("demo.NoSuchPlugin")))
             .isInstanceOf(InvalidPluginPackageException.class)
             .hasMessageContaining("demo.NoSuchPlugin");
     }
@@ -131,7 +136,7 @@ class PluginLoaderTest {
             }
             """);
 
-        assertThatThrownBy(() -> loader.loadEntrypoint(zip, manifest("demo.NotAnActivator")))
+        assertThatThrownBy(() -> load(zip, manifest("demo.NotAnActivator")))
             .isInstanceOf(InvalidPluginPackageException.class)
             .hasMessageContaining("PluginActivator");
     }
@@ -146,7 +151,7 @@ class PluginLoaderTest {
             }
             """);
 
-        assertThatThrownBy(() -> loader.loadEntrypoint(zip, manifest("demo.NoDefaultCtor")))
+        assertThatThrownBy(() -> load(zip, manifest("demo.NoDefaultCtor")))
             .isInstanceOf(InvalidPluginPackageException.class)
             .hasMessageContaining("demo.NoDefaultCtor");
     }

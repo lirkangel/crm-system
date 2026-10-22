@@ -14,6 +14,8 @@ import org.springframework.security.access.AccessDeniedException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
+import org.springframework.web.servlet.NoHandlerFoundException;
+import org.springframework.web.servlet.resource.NoResourceFoundException;
 
 import java.net.URI;
 import java.util.List;
@@ -66,6 +68,16 @@ public class ErrorHandler {
     @ExceptionHandler(NotFoundException.class)
     public ProblemDetail handleNotFound(NotFoundException ex) {
         return problem(HttpStatus.NOT_FOUND, TYPE_NOT_FOUND, "NOT_FOUND", ex.getMessage());
+    }
+
+    /**
+     * No controller matched (e.g. the route of a plugin that isn't running):
+     * answered here, in the request's own dispatch — an error-page dispatch
+     * would run unauthenticated and turn the 404 into a 401.
+     */
+    @ExceptionHandler({NoResourceFoundException.class, NoHandlerFoundException.class})
+    public ProblemDetail handleNoRoute(Exception ex) {
+        return problem(HttpStatus.NOT_FOUND, TYPE_NOT_FOUND, "NOT_FOUND", "No endpoint matches this request");
     }
 
     @ExceptionHandler(BadRequestException.class)

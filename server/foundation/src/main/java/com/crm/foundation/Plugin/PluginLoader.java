@@ -28,11 +28,6 @@ public class PluginLoader {
 
     private static final Logger log = LoggerFactory.getLogger(PluginLoader.class);
 
-    /** Builds the plugin's classloader and instantiates its entry (classloader + entry in one step). */
-    public PluginActivator loadEntrypoint(Path zipPath, PluginManifest manifest) {
-        return instantiateEntry(createClassLoader(zipPath, manifest), manifest);
-    }
-
     /** Extracts {@code lib/*.jar} and builds a {@link ParentLastClassLoader} over them. */
     public ParentLastClassLoader createClassLoader(Path zipPath, PluginManifest manifest) {
         List<URL> jarUrls = extractLibJars(zipPath, manifest.id());

@@ -40,6 +40,7 @@ public final class PluginPackageBuilder {
     private String version = "1.0.0";
     private String schema;
     private String entry;
+    private String route;
     private final Set<Class<?>> classpathMarkers =
         new LinkedHashSet<>(List.of(PluginActivator.class, Entity.class, CommonResponse.class));
     /** Fully-qualified class name → Java source. */
@@ -68,6 +69,12 @@ public final class PluginPackageBuilder {
     /** Manifest {@code entry}: fully-qualified activator class name. */
     public PluginPackageBuilder entry(String entry) {
         this.entry = entry;
+        return this;
+    }
+
+    /** Manifest {@code route} (URL prefix segment); omitted from {@code plugin.yaml} when unset. */
+    public PluginPackageBuilder route(String route) {
+        this.route = route;
         return this;
     }
 
@@ -103,7 +110,7 @@ public final class PluginPackageBuilder {
     }
 
     private String manifestYaml() {
-        return """
+        String yaml = """
             id: %s
             version: %s
             display-name:
@@ -111,6 +118,7 @@ public final class PluginPackageBuilder {
             schema: %s
             entry: %s
             """.formatted(id, version, id, schema, entry);
+        return route == null ? yaml : yaml + "route: " + route + "\n";
     }
 
     private Path compile(Path work) throws IOException {

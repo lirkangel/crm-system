@@ -8,11 +8,13 @@ import com.crm.foundation.Plugin.PluginProblem;
 import org.junit.jupiter.api.Test;
 import org.springframework.core.MethodParameter;
 import org.springframework.dao.OptimisticLockingFailureException;
+import org.springframework.http.HttpMethod;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ProblemDetail;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.validation.BeanPropertyBindingResult;
 import org.springframework.web.bind.MethodArgumentNotValidException;
+import org.springframework.web.servlet.resource.NoResourceFoundException;
 
 import java.net.URI;
 import java.util.List;
@@ -77,6 +79,15 @@ class ErrorHandlerTest {
 
         assertProblemBasics(problem, 404, "urn:problem-type:not-found");
         assertThat(problem.getDetail()).isEqualTo("Plugin not found: x");
+    }
+
+    @Test
+    void unmatched_route_problem_is_404_not_found() {
+        ProblemDetail problem = handler.handleNoRoute(
+            new NoResourceFoundException(HttpMethod.GET, "api/v1/plugins/nope/ping"));
+
+        assertProblemBasics(problem, 404, "urn:problem-type:not-found");
+        assertThat(problem.getProperties().get("code")).isEqualTo("NOT_FOUND");
     }
 
     @Test

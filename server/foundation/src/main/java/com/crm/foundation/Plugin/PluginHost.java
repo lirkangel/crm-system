@@ -1,45 +1,62 @@
 package com.crm.foundation.Plugin;
 
-import com.crm.foundation.Domain.PluginRegistry;
 import com.crm.foundation.Service.PluginRegistryService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.DisposableBean;
 import org.springframework.boot.ApplicationArguments;
 import org.springframework.boot.ApplicationRunner;
+import org.springframework.context.ApplicationContext;
+import org.springframework.context.ConfigurableApplicationContext;
 import org.springframework.stereotype.Component;
 
-import java.nio.file.Path;
-import java.util.Optional;
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
 
 /**
- * Startup orchestrator for the plugin lifecycle (T014a): scans the plugin
- * directory, registers newly discovered plugins, activates loadable ones, and
- * marks failures {@code LOAD_FAILED} — strictly per-plugin, so one broken
- * package can never prevent the others (or the application) from starting.
+ * Late plugin phase (design 6.1), run once the application context is up.
+ * Works through {@link PluginBootstrap#report()} — discovery, classloaders,
+ * migrations and entity mapping already happened in the early phase — and per
+ * plugin: registers it in {@code plugin_registry} if new, records early-phase
+ * failures as {@code LOAD_FAILED}, and starts every READY plugin: its Spring
+ * child context ({@link PluginContextFactory}), its entry's
+ * {@link PluginActivator#onLoad()}, and its routes ({@link PluginRouteRegistry})
+ * — then marks it {@code ACTIVE}.
  *
- * <p>{@code DISABLED} and {@code UNINSTALL_PENDING} plugins are skipped.
- * Classloading (T015) and per-schema migration (T015a) slot into
- * {@link #loadPlugin} as the next steps of the pipeline.
+ * <p>Strictly per plugin (T014a): a plugin that fails to start is torn down
+ * (child context closed, routes removed) and marked {@code LOAD_FAILED}, and
+ * the application and the other plugins carry on.
  */
 @Component
-public class PluginHost implements ApplicationRunner {
+public class PluginHost implements ApplicationRunner, DisposableBean {
 
     private static final Logger log = LoggerFactory.getLogger(PluginHost.class);
 
-    private final PluginDiscovery discovery;
+    private final PluginBootstrap bootstrap;
     private final PluginRegistryService registryService;
     private final PluginLoader pluginLoader;
-    private final PluginMigrator pluginMigrator;
+    private final PluginContextFactory contextFactory;
+    private final PluginRouteRegistry routes;
+    private final ApplicationContext applicationContext;
+
+    /** Running plugins: plugin id → child context, in start order. */
+    private final Map<String, RunningPlugin> running = new LinkedHashMap<>();
 
     public PluginHost(
-            PluginDiscovery discovery,
+            PluginBootstrap bootstrap,
             PluginRegistryService registryService,
             PluginLoader pluginLoader,
-            PluginMigrator pluginMigrator) {
-        this.discovery = discovery;
+            PluginContextFactory contextFactory,
+            PluginRouteRegistry routes,
+            ApplicationContext applicationContext) {
+        this.bootstrap = bootstrap;
         this.registryService = registryService;
         this.pluginLoader = pluginLoader;
-        this.pluginMigrator = pluginMigrator;
+        this.contextFactory = contextFactory;
+        this.routes = routes;
+        this.applicationContext = applicationContext;
     }
 
     @Override
@@ -48,46 +65,90 @@ public class PluginHost implements ApplicationRunner {
     }
 
     public void startPlugins() {
-        for (PluginDiscoveryResult result : discovery.scan()) {
-            if (result.isValid()) {
-                loadIsolated(result);
-            } else {
-                // No parseable manifest — no plugin id to record against; discovery already logged the reason
-                log.warn("Skipping rejected plugin package {}: {}", result.packagePath(), result.rejectionReason());
-            }
+        for (BootstrappedPlugin plugin : bootstrap.report().plugins()) {
+            startIsolated(plugin);
         }
     }
 
-    private void loadIsolated(PluginDiscoveryResult result) {
-        PluginManifest manifest = result.manifest();
+    private void startIsolated(BootstrappedPlugin plugin) {
+        PluginManifest manifest = plugin.manifest();
         try {
-            loadPlugin(result);
+            if (registryService.findByPluginId(manifest.id()).isEmpty()) {
+                registryService.register(manifest);
+            }
         } catch (Exception e) {
-            log.error("Plugin {} failed to load: {}", manifest.id(), e.getMessage(), e);
-            markLoadFailedQuietly(manifest.id(), e.getMessage());
-        }
-    }
-
-    private void loadPlugin(PluginDiscoveryResult result) {
-        PluginManifest manifest = result.manifest();
-        Optional<PluginRegistry> existing = registryService.findByPluginId(manifest.id());
-        if (existing.isPresent() && isSkipped(existing.get())) {
-            log.info("Skipping plugin {} (state {})", manifest.id(), existing.get().getState());
+            log.error("Plugin {} could not be registered: {}", manifest.id(), reason(e), e);
+            markLoadFailedQuietly(manifest.id(), reason(e));
             return;
         }
-        if (existing.isEmpty()) {
-            registryService.register(manifest);
+        switch (plugin.status()) {
+            case SKIPPED -> log.info("Skipping plugin {} (disabled or uninstall pending)", manifest.id());
+            case FAILED -> {
+                log.warn("Plugin {} failed in the early phase: {}", manifest.id(), plugin.failureReason());
+                markLoadFailedQuietly(manifest.id(), plugin.failureReason());
+            }
+            case READY -> start(plugin);
         }
-        pluginMigrator.migrate(Path.of(result.packagePath()), manifest);
-        PluginActivator activator = pluginLoader.loadEntrypoint(Path.of(result.packagePath()), manifest);
-        activator.onLoad();
-        registryService.activate(manifest.id());
-        log.info("Plugin {} v{} active", manifest.id(), manifest.version());
     }
 
-    private static boolean isSkipped(PluginRegistry entry) {
-        return PluginState.DISABLED.name().equals(entry.getState())
-            || PluginState.UNINSTALL_PENDING.name().equals(entry.getState());
+    private void start(BootstrappedPlugin plugin) {
+        PluginManifest manifest = plugin.manifest();
+        ConfigurableApplicationContext child = null;
+        boolean routesRegistered = false;
+        try {
+            child = contextFactory.start(plugin, applicationContext);
+            pluginLoader.instantiateEntry(plugin.classLoader(), manifest).onLoad();
+            routes.register(manifest.route(), child);
+            routesRegistered = true;
+            // Task 7: permissions
+            registryService.activate(manifest.id());
+            running.put(manifest.id(), new RunningPlugin(manifest.route(), child));
+            log.info("Plugin {} v{} active under {}{}",
+                manifest.id(), manifest.version(), PluginRouteRegistry.PREFIX, manifest.route());
+        } catch (Exception | LinkageError e) {
+            log.error("Plugin {} failed to start: {}", manifest.id(), reason(e), e);
+            if (routesRegistered) {
+                // Only this plugin's own routes: a duplicate route belongs to the plugin that holds it
+                unregisterQuietly(manifest.route());
+            }
+            closeQuietly(manifest.id(), child);
+            markLoadFailedQuietly(manifest.id(), reason(e));
+        }
+    }
+
+    /** Stops running plugins (reverse start order) before the parent context goes away. */
+    @Override
+    public void destroy() {
+        List<Map.Entry<String, RunningPlugin>> plugins = new ArrayList<>(running.entrySet());
+        running.clear();
+        for (int i = plugins.size() - 1; i >= 0; i--) {
+            Map.Entry<String, RunningPlugin> plugin = plugins.get(i);
+            unregisterQuietly(plugin.getValue().route());
+            closeQuietly(plugin.getKey(), plugin.getValue().context());
+        }
+    }
+
+    private static String reason(Throwable e) {
+        return e.getMessage() != null ? e.getMessage() : e.getClass().getName();
+    }
+
+    private void unregisterQuietly(String route) {
+        try {
+            routes.unregister(route);
+        } catch (RuntimeException e) {
+            log.error("Could not unregister plugin route {}: {}", route, e.getMessage(), e);
+        }
+    }
+
+    private static void closeQuietly(String pluginId, ConfigurableApplicationContext context) {
+        if (context == null) {
+            return;
+        }
+        try {
+            context.close();
+        } catch (RuntimeException e) {
+            log.error("Could not close the context of plugin {}: {}", pluginId, e.getMessage(), e);
+        }
     }
 
     private void markLoadFailedQuietly(String pluginId, String reason) {
@@ -97,5 +158,8 @@ public class PluginHost implements ApplicationRunner {
             // Startup resilience trumps bookkeeping: never let failure-marking abort the host
             log.error("Could not mark plugin {} as LOAD_FAILED: {}", pluginId, e.getMessage(), e);
         }
+    }
+
+    private record RunningPlugin(String route, ConfigurableApplicationContext context) {
     }
 }

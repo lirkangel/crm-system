@@ -34,7 +34,8 @@ public class PluginEntityScanner {
             .toList();
     }
 
-    private static boolean definedInPluginJars(ClassLoader classLoader, String className) {
+    /** Whether {@code className} comes from the plugin's own jars (not from the application through the parent). */
+    static boolean definedInPluginJars(ClassLoader classLoader, String className) {
         return !(classLoader instanceof URLClassLoader pluginJars)
             || pluginJars.findResource(className.replace('.', '/') + ".class") != null;
     }
