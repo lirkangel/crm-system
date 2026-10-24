@@ -20,12 +20,9 @@ import com.crm.hotel.repo.RoomTypeRepository;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
-import org.hibernate.exception.ConstraintViolationException;
-import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.sql.SQLException;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.LocalDate;
@@ -45,10 +42,6 @@ public class ReservationService {
     static final String ENTITY_TYPE = "Reservation";
     static final String AUDIT_CREATE = "RESERVATION_CREATE";
     static final String AUDIT_CANCEL = "RESERVATION_CANCEL";
-
-    private static final String EXCLUSION_VIOLATION = "23P01";
-    private static final String NO_OVERLAP_CONSTRAINT = "reservation_no_overlap";
-    private static final String UNAVAILABLE = "The room is already booked for some of these nights";
 
     // The field name doubles as the bean name, which disambiguates from any Clock in the parent context.
     private final Clock hotelClock;
@@ -98,7 +91,7 @@ public class ReservationService {
             throw HotelErrors.roomNotBookable("The room is out of service or its room type is inactive");
         }
         if (reservations.countBlockingOverlaps(room.getId(), checkIn, checkOut) > 0) {
-            throw HotelErrors.roomUnavailable(UNAVAILABLE);
+            throw HotelErrors.roomUnavailable(OverlapGuard.UNAVAILABLE);
         }
         long totalGross = StayPolicy.totalGross(type.getNightlyRateGrossVnd(), StayPolicy.nights(checkIn, checkOut));
 
@@ -130,7 +123,7 @@ public class ReservationService {
             ? null : request.otaReference().trim());
         reservation.setCreatedBy(currentUser.id().orElse(null));
         reservation.setCreatedAt(now());
-        Reservation saved = insert(reservation);
+        Reservation saved = OverlapGuard.saveAndFlush(reservations, reservation);
 
         changes.record(ENTITY_TYPE, saved.getId(), saved.getVersion(), ChangeOp.CREATE);
         ReservationView view = ReservationView.of(saved, guestName, room.getNumber());
@@ -157,15 +150,20 @@ public class ReservationService {
      * {@code CONFIRMED -> CANCELLED}; frees the room at once (the exclusion constraint ignores cancelled
      * stays). The row is locked first, so of two concurrent cancels the second sees the first's result.
      *
-     * @throws com.crm.foundation.Plugin.PluginProblem {@code HOTEL_NOT_FOUND} (404), or
-     *         {@code HOTEL_ALREADY_CANCELLED} (409) when the reservation is not confirmed
+     * @throws com.crm.foundation.Plugin.PluginProblem {@code HOTEL_NOT_FOUND} (404),
+     *         {@code HOTEL_ALREADY_CANCELLED} (409) when it is already cancelled, or {@code HOTEL_INVALID_STATE}
+     *         (409) when it is checked in or out (a stay that has begun can't be cancelled)
      */
     @Transactional
     public ReservationView cancel(UUID id) {
         Reservation reservation = reservations.lockById(id)
             .orElseThrow(() -> HotelErrors.notFound("Reservation not found"));
-        if (reservation.getStatus() != ReservationStatus.CONFIRMED) {
+        if (reservation.getStatus() == ReservationStatus.CANCELLED) {
             throw HotelErrors.alreadyCancelled("The reservation is already cancelled");
+        }
+        if (reservation.getStatus() != ReservationStatus.CONFIRMED) {
+            throw HotelErrors.invalidState("Only a confirmed reservation can be cancelled; this one is "
+                + reservation.getStatus());
         }
         String guestName = guests.findById(reservation.getGuestId()).map(Guest::getFullName).orElse(null);
         String roomNumber = rooms.findById(reservation.getRoomId()).map(Room::getNumber).orElse(null);
@@ -179,37 +177,6 @@ public class ReservationService {
         ReservationView view = ReservationView.of(saved, guestName, roomNumber);
         audit.record(ENTITY_TYPE, saved.getId(), AUDIT_CANCEL, before, json(view));
         return view;
-    }
-
-    /**
-     * Inserts and flushes, so a {@code reservation_no_overlap} violation (a conflicting stay committed
-     * after the pre-check) surfaces here as {@code HOTEL_ROOM_UNAVAILABLE}; other violations propagate.
-     */
-    private Reservation insert(Reservation reservation) {
-        try {
-            return reservations.saveAndFlush(reservation);
-        } catch (DataIntegrityViolationException e) {
-            if (isNoOverlapViolation(e)) {
-                throw HotelErrors.roomUnavailable(UNAVAILABLE);
-            }
-            throw e;
-        }
-    }
-
-    static boolean isNoOverlapViolation(Throwable error) {
-        boolean exclusionViolation = false;
-        boolean namesConstraint = false;
-        for (Throwable cause = error; cause != null; cause = cause.getCause() == cause ? null : cause.getCause()) {
-            if (cause instanceof ConstraintViolationException hibernate
-                    && NO_OVERLAP_CONSTRAINT.equalsIgnoreCase(hibernate.getConstraintName())) {
-                namesConstraint = true;
-            }
-            if (cause instanceof SQLException sql && EXCLUSION_VIOLATION.equals(sql.getSQLState())) {
-                exclusionViolation = true;
-                namesConstraint |= sql.getMessage() != null && sql.getMessage().contains('"' + NO_OVERLAP_CONSTRAINT + '"');
-            }
-        }
-        return exclusionViolation && namesConstraint;
     }
 
     /** Microsecond precision, as stored by {@code timestamptz}, so responses and later reads agree. */

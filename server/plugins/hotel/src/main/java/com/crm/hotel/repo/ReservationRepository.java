@@ -1,6 +1,7 @@
 package com.crm.hotel.repo;
 
 import com.crm.hotel.domain.Reservation;
+import com.crm.hotel.domain.ReservationStatus;
 import jakarta.persistence.LockModeType;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Lock;
@@ -26,6 +27,12 @@ public interface ReservationRepository extends JpaRepository<Reservation, UUID> 
         """)
     long countBlockingOverlaps(
         @Param("roomId") UUID roomId, @Param("checkIn") LocalDate checkIn, @Param("checkOut") LocalDate checkOut);
+
+    /**
+     * Whether a reservation other than {@code id} holds the room in {@code status}; with {@code CHECKED_IN} this
+     * asks "is someone (perhaps an overstayer) physically in the room?".
+     */
+    boolean existsByRoomIdAndStatusAndIdNot(UUID roomId, ReservationStatus status, UUID id);
 
     /** Next number of the reservation code ({@code hotel.reservation_code_seq}; gaps are harmless). */
     @Query(value = "select nextval('hotel.reservation_code_seq')", nativeQuery = true)

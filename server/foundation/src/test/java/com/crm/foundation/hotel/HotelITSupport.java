@@ -27,6 +27,7 @@ import java.net.URISyntaxException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.LocalDate;
+import java.time.ZoneId;
 import java.time.temporal.ChronoUnit;
 import java.util.LinkedHashMap;
 import java.util.Map;
@@ -175,6 +176,38 @@ public abstract class HotelITSupport {
         body.put("adults", adults);
         body.put("notes", "Late arrival");
         return body;
+    }
+
+    /** Hotel-local today (Asia/Ho_Chi_Minh), the date the check-in rules use. */
+    protected static LocalDate hotelToday() {
+        return LocalDate.now(ZoneId.of("Asia/Ho_Chi_Minh"));
+    }
+
+    /**
+     * Books {@code roomId} over {@code [in, out)} for {@code adults} with a fresh inline guest over HTTP
+     * (asserting 201) and returns the reservation id.
+     */
+    protected UUID book(String token, UUID roomId, LocalDate in, LocalDate out, int adults) {
+        String suffix = UUID.randomUUID().toString().substring(0, 8);
+        String phone = "09" + (10_000_000 + (long) (Math.random() * 89_000_000));
+        ResponseEntity<String> booked = post(HOTEL_API + "/reservations", token,
+            reservationBody(null, inlineGuest("Booker " + suffix, phone), roomId, in, out, adults));
+        assertThat(booked.getStatusCode().value()).as(booked.getBody()).isEqualTo(201);
+        return UUID.fromString(data(booked).path("id").asText());
+    }
+
+    /** One adult of a check-in request: valid as given (a Vietnamese citizen with an address). */
+    protected static Map<String, Object> adult(String idType, String idNumber, String name) {
+        Map<String, Object> adult = new LinkedHashMap<>();
+        adult.put("idType", idType);
+        adult.put("idNumber", idNumber);
+        adult.put("fullName", name);
+        adult.put("dateOfBirth", LocalDate.of(1990, 5, 17));
+        adult.put("nationality", "VN");
+        adult.put("address", "12 Lê Lợi, Phú Hội, Huế");
+        adult.put("visaNumber", null);
+        adult.put("entryDate", null);
+        return adult;
     }
 
     /** An inline new guest for {@link #reservationBody}. */

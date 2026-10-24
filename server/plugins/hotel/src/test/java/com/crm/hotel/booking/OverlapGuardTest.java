@@ -7,14 +7,14 @@ import java.sql.SQLException;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-class ReservationServiceTest {
+class OverlapGuardTest {
 
     @Test
     void no_overlap_exclusion_violation_is_recognized() {
         SQLException sql = new SQLException(
             "ERROR: conflicting key value violates exclusion constraint \"reservation_no_overlap\"", "23P01");
 
-        assertThat(ReservationService.isNoOverlapViolation(new DataIntegrityViolationException("insert", sql))).isTrue();
+        assertThat(OverlapGuard.isNoOverlapViolation(new DataIntegrityViolationException("insert", sql))).isTrue();
     }
 
     @Test
@@ -25,9 +25,9 @@ class ReservationServiceTest {
             "ERROR: duplicate key value violates unique constraint \"reservation_code_key\"", "23505");
         SQLException namedButNotExclusion = new SQLException("check \"reservation_no_overlap\"", "23514");
 
-        assertThat(ReservationService.isNoOverlapViolation(new DataIntegrityViolationException("x", otherExclusion))).isFalse();
-        assertThat(ReservationService.isNoOverlapViolation(new DataIntegrityViolationException("x", unique))).isFalse();
-        assertThat(ReservationService.isNoOverlapViolation(new DataIntegrityViolationException("x", namedButNotExclusion))).isFalse();
-        assertThat(ReservationService.isNoOverlapViolation(new DataIntegrityViolationException("no cause"))).isFalse();
+        assertThat(OverlapGuard.isNoOverlapViolation(new DataIntegrityViolationException("x", otherExclusion))).isFalse();
+        assertThat(OverlapGuard.isNoOverlapViolation(new DataIntegrityViolationException("x", unique))).isFalse();
+        assertThat(OverlapGuard.isNoOverlapViolation(new DataIntegrityViolationException("x", namedButNotExclusion))).isFalse();
+        assertThat(OverlapGuard.isNoOverlapViolation(new DataIntegrityViolationException("no cause"))).isFalse();
     }
 }

@@ -31,7 +31,7 @@ public record ReservationView(
         Instant checkedOutAt,
         long version) {
 
-    static ReservationView of(Reservation reservation, String guestName, String roomNumber) {
+    public static ReservationView of(Reservation reservation, String guestName, String roomNumber) {
         return new ReservationView(
             reservation.getId(), reservation.getCode(), reservation.getGuestId(), guestName,
             reservation.getRoomId(), roomNumber, reservation.getCheckIn(), reservation.getCheckOut(),

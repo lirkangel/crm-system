@@ -57,7 +57,8 @@ class HotelPluginInstallIT extends HotelITSupport {
             .toList();
 
         assertThat(hotelEntities).containsExactly(
-            "HotelGuest=Guest", "HotelReservation=Reservation", "HotelRoom=Room", "HotelRoomType=RoomType");
+            "HotelGuest=Guest", "HotelReservation=Reservation", "HotelRoom=Room", "HotelRoomType=RoomType",
+            "HotelStayGuest=StayGuest");
     }
 
     @Test
