@@ -31,6 +31,8 @@ F-EPIC-1 (scaffold) ─► F-EPIC-2 (auth UI) ─► F-EPIC-3 (data) ─► F-EP
 
 > **State (2026-10-23):** B-EPIC-1 to B-EPIC-7 are done. The plugin host now runs real plugins (own classloader, Spring child context, REST routes, permissions, per-plugin failure isolation) and the first one, the hotel booking slice (H-EPIC-1), is proven end to end. Full gate on the homelab docker-host: 340 tests (322 foundation + 18 hotel unit), 0 failures, 0 skipped.
 
+> **State (2026-10-25):** the hotel check-in/folio/check-out slice (H-EPIC-2, plugin 0.2.0) is done on the server. Full gate on the homelab docker-host: 460 tests (428 foundation + 32 hotel unit), 0 failures, 0 skipped.
+
 ## B-EPIC-1 — Identity & Auth
 *Goal: a usable, rotation-safe token contract.*
 
@@ -262,6 +264,47 @@ F-EPIC-1 (scaffold) ─► F-EPIC-2 (auth UI) ─► F-EPIC-3 (data) ─► F-EP
 **Done:** (d0185f6) `ReservationService.create` (one transaction): exactly one of `guestId`/`newGuest`; locks the room row (`FOR NO KEY UPDATE`, so bookings of one room queue instead of deadlocking while catalog edits wait only for an in-flight booking); stay rules; room in service and type active (else 409 `HOTEL_ROOM_NOT_BOOKABLE`); overlap pre-check for a friendly 409; rate snapshotted with the gross total; code `R-<year>-<6-digit sequence>`; the Postgres exclusion constraint `reservation_no_overlap` stays the guarantee — a violation (SQLState 23P01 naming it) maps to 409 `HOTEL_ROOM_UNAVAILABLE` and a losing inline guest rolls back with it. Cancel locks the reservation, `CONFIRMED → CANCELLED` only (else 409 `HOTEL_ALREADY_CANCELLED`), `Reservation` change events plus audit `RESERVATION_CREATE` / `RESERVATION_CANCEL` with before/after JSON. Permissions `hotel.reservations.{read,create,cancel}`. `ReservationFlowIT` (14: book, view, list, availability disappears and returns, cancel, rules, 403 for a read-only user), `ReservationConcurrencyIT` (8 parallel bookings → exactly one 201, seven 409, one row; deterministic exclusion-constraint path), `ReservationServiceTest`. Verified 2026-10-23 (340/340 green).
 
 **Not in this slice:** check-in/out, folio and payments, rate plans, a receptionist role (needs role management), the generic desktop write endpoint (D302 forward contract), hotel screens in the desktop app.
+
+## H-EPIC-2 — Check-in, folio, check-out
+*Goal: a receptionist can run a whole stay on the server: see who arrives, check the guests in with their identity records, charge and take payment (including OTA prepayment), and check them out at a zero balance, with a checked-in room staying blocked until then. Server side only; the desktop screens come with F301/F401.*
+*Spec: `2026-10-24-hotel-checkin-checkout-design.md` — design doc kept locally (docs/superpowers is git-ignored). Plugin version 0.2.0 (migration `V2__hotel_stay.sql`); new permissions `hotel.stays.{checkin,checkout,read}` and `hotel.folio.{read,charge,pay}` (admin only for now — admins log in again after the upgrade to receive them).*
+
+### H201 — Stay lifecycle and occupancy · `DONE` · P0 · (needs H104)
+**Expected:** reservations gain the statuses `CHECKED_IN` and `CHECKED_OUT`; a room with a checked-in guest stays blocked until check-out, even past the booked check-out date.
+**Acceptance:** blocking statuses are exactly `CONFIRMED` and `CHECKED_IN` in the exclusion constraint and in every availability/overlap query; a slice-1 database migrates to V2 and still works.
+**Done:** (fcf3e5d) `V2__hotel_stay.sql` extends `hotel.reservation` (status check of four values, `source`, `ota_channel`, `ota_reference`, `checked_in_at`, `checked_out_at`), recreates `reservation_no_overlap` as `WHERE (status IN ('CONFIRMED','CHECKED_IN'))` and adds `stay_guest`, `folio_charge`, `folio_payment` (all in schema `hotel`, no implicit join tables); `RoomRepository.findAvailable` and the overlap count (`countBlockingOverlaps`) use the same two statuses; the plugin and the Maven property are 0.2.0 with the six new permission keys and nine new error factories (`HOTEL_ROOM_OCCUPIED`, `HOTEL_PAYMENTS_ON_FOLIO`, `HOTEL_INVALID_STATE`, `HOTEL_NOT_CHECKIN_DAY`, `HOTEL_BALANCE_DUE`, `HOTEL_OVERPAYMENT`, `HOTEL_INVALID_ID_DOC`, `HOTEL_INVALID_PAYMENT`, `HOTEL_INVALID_SOURCE`). `OccupancyIT` (4: a checked-in room is absent from availability, booking over it is 409, the constraint itself rejects an overlapping insert with SQLState 23P01, checked-out and cancelled stays do not block), `HotelUpgradeIT` (1: Flyway V1 → data → V2 on a scratch schema), `HotelErrorsTest`, `HotelPluginInstallIT` updated. Verified 2026-10-25.
+
+### H202 — Booking source and OTA reference · `DONE` · P1 · (needs H201)
+**Expected:** a reservation records where it came from (`WALK_IN` default, `PHONE`, `OTA`, `OTHER`), the OTA channel and an optional external reference.
+**Acceptance:** `source: OTA` requires an `otaChannel` and any channel requires `source: OTA`, else 400 `HOTEL_INVALID_SOURCE` before anything is written; unknown enum values are 400; the fields come back on every reservation view.
+**Done:** (d2ca5e5) `CreateReservationRequest` and `ReservationView` carry `source`, `otaChannel`, `otaReference` (and the view `checkedInAt`/`checkedOutAt`); `ReservationService.create` resolves null → `WALK_IN` and validates before the room lock and the inline-guest insert, so a refused booking leaves no rows; the DB CHECK `(source = 'OTA') = (ota_channel IS NOT NULL)` is only the backstop. `BookingSourceIT` (6). Verified 2026-10-25.
+
+### H203 — Check-in with identity records · `DONE` · P0 · (needs H201, H202)
+**Expected:** `POST /reservations/{id}/check-in` with one identity record per adult (ID type CCCD/PASSPORT/OTHER, number, name, date of birth, nationality, address, visa and entry date for foreigners), optionally moving the guest to another room of the same type; `GET /reservations/{id}/stay-guests` reads the records.
+**Acceptance:** only a CONFIRMED reservation whose check-in date has come (hotel-local) can be checked in, else 409 `HOTEL_NOT_CHECKIN_DAY` / `HOTEL_INVALID_STATE`; adults ≤ the room type's maximum; a swap needs a bookable room of the same type, an already occupied room is 409 `HOTEL_ROOM_OCCUPIED`; Vietnamese citizens need an address (400 `HOTEL_INVALID_ID_DOC`); reading the records needs `hotel.stays.read`; audit rows never hold identity data.
+**Done:** (acb898b) `CheckInService.checkIn` validates the identity rules (`CheckInPolicy`, pure) before taking locks, then locks the reservation and the old and new rooms (`FOR NO KEY UPDATE`, ordered by id), checks occupancy under the room lock, sets room/status/`checkedInAt`/adults and flushes through the shared `OverlapGuard` so a swap into a room booked later in the stay surfaces as 409 `HOTEL_ROOM_UNAVAILABLE`; `Reservation` UPDATE and `StayGuest` CREATE change events; audit `RESERVATION_CHECK_IN` holds the status change, the adult count and the stay-guest ids only. `CheckInPolicyTest` (8), `CheckInIT` (13), `OverlapGuardTest` (2, the extracted mapping). Verified 2026-10-25.
+
+### H204 — Undo check-in and identity corrections · `DONE` · P1 · (needs H203)
+**Expected:** a mis-click on check-in can be undone on the same day; a typo in an identity record can be corrected without losing the audit trail.
+**Acceptance:** `POST /reservations/{id}/undo-check-in` works only on the hotel-local check-in day while no extra charge (active or voided) exists, returns the stay to `CONFIRMED`, deletes the identity records and keeps payments; `PUT /reservations/{id}/stay-guests/{stayGuestId}` (If-Match) revalidates the record and audits the names of the changed fields, never their values.
+**Done:** (ba6e606) `CheckInService.undoCheckIn` (reservation lock, then a native count on `hotel.folio_charge`, so it is serialized with charge adds) records `RESERVATION_CHECK_IN_UNDO` and `StayGuest` DELETE change events; a room swap is not reverted; `correct` records `STAY_GUEST_CORRECT` against the reservation (changed field names only) and makes no write when nothing changed. Both need `hotel.stays.checkin`. (64083ef) the `If-Match` version check is now shared by the room catalog and the stay services. `UndoAndCorrectIT` (13). Verified 2026-10-25.
+
+### H205 — Folio: charges, payments, voids · `DONE` · P0 · (needs H203)
+**Expected:** each stay has a folio: the room total plus extra charges (minibar and the like) minus payments (cash, card, transfer, or OTA prepayment with its channel); lines are voided, never deleted.
+**Acceptance:** all amounts are positive whole VND gross; the balance (`totalGrossVnd` + active charges − active payments) can never go below 0, so an overpayment (or voiding a charge that would cause one) is 409 `HOTEL_OVERPAYMENT`; `method: OTA` needs a channel and no other method may have one (400 `HOTEL_INVALID_PAYMENT`); charges only while CHECKED_IN, payments also while CONFIRMED (OTA prepayment), else 409 `HOTEL_INVALID_STATE`; the folio stays readable afterwards; a CONFIRMED booking with an active payment cannot be cancelled (409 `HOTEL_PAYMENTS_ON_FOLIO`); permissions `hotel.folio.{read,charge,pay}`.
+**Done:** (b788fc0) `FolioService` takes the reservation's `PESSIMISTIC_WRITE` lock before every write, so concurrent payments cannot overpay (`concurrent_payments_cannot_overpay`: one 201, one 409); `FolioMath` holds the balance arithmetic; add endpoints return 201 and voids 200 with the whole `FolioView`; `FolioCharge`/`FolioPayment` change events and audit `FOLIO_CHARGE_ADD/VOID`, `FOLIO_PAYMENT_ADD/VOID` carry line views only. `FolioMathTest` (3), `FolioIT` (15). Verified 2026-10-25.
+
+### H206 — Check-out at zero balance · `DONE` · P0 · (needs H205)
+**Expected:** `POST /reservations/{id}/check-out` finishes a stay and frees the room at once, also before the booked date.
+**Acceptance:** only a CHECKED_IN stay (else 409 `HOTEL_INVALID_STATE`); a non-zero balance is 409 `HOTEL_BALANCE_DUE` with the amount in the detail and nothing changes; afterwards the folio is read-only but complete; permission `hotel.stays.checkout`.
+**Done:** (0bc22e0) `CheckOutService.checkOut` locks the reservation, checks the balance through `FolioService.balance`, sets `CHECKED_OUT` and `checkedOutAt`, records the `Reservation` UPDATE change event and audit `RESERVATION_CHECK_OUT` (before/after views, no identity data); early check-out frees the remaining nights for new bookings. `CheckOutIT` (6). Verified 2026-10-25.
+
+### H207 — Front-desk lists · `DONE` · P1 · (needs H203)
+**Expected:** `GET /front-desk/arrivals`, `/in-house` and `/departures` (optional `?date=`, default hotel-local today), each row a reservation view plus flags, so late arrivals and overstayers do not vanish.
+**Acceptance:** arrivals are CONFIRMED with check-in ≤ date < check-out (`late` when check-in is before the date); in-house are CHECKED_IN (`overdue` when check-out is before today); departures are CHECKED_IN with check-out ≤ date (`overdue` when before it); ordered by room number; a malformed date is 400 `HOTEL_INVALID_QUERY`; permission `hotel.reservations.read`.
+**Done:** (552d5c6) `FrontDeskService` runs one JPQL query per list joining guest and room (no N+1); `QueryDates.optional` treats a blank date as absent. `FrontDeskIT` (7). **End-to-end:** `FullStayIT` (1) chains the whole flow over HTTP: OTA booking (Agoda) → arrivals → check-in of two adults → in-house → OTA prepayment for the room total → minibar charge 85,000 (check-out refused with `HOTEL_BALANCE_DUE`) → cash 85,000 → departures on the check-out date → check-out → the same room is bookable again for the same dates. Full gate on the homelab docker-host: 460 tests (32 hotel unit + 428 foundation), 0 failures, 0 skipped; `docker build server/` ships only `hotel-0.2.0-plugin.zip` in `/app/plugins`. Verified 2026-10-25.
+
+**Not in this slice:** the police stay-registration export (Khai báo lưu trú), tax invoices, rate plans and extra-guest pricing, housekeeping status, a receptionist role (needs role management), hotel screens in the desktop app.
 
 ---
 
@@ -515,7 +558,7 @@ F-EPIC-1 (scaffold) ─► F-EPIC-2 (auth UI) ─► F-EPIC-3 (data) ─► F-EP
 ---
 
 ## Recommended next 5 tickets (in order)
-_Updated 2026-10-23. The backend epics (B-EPIC-1 to B-EPIC-7) and the hotel booking slice (H-EPIC-1) are done on the server, so the critical path runs through desktop auth and the frontend data layer; the hotel screens (F301/F401) and the next hotel slice (check-in/out) follow._
+_Updated 2026-10-23. The backend epics (B-EPIC-1 to B-EPIC-7) and the hotel booking slice (H-EPIC-1) are done on the server, so the critical path runs through desktop auth and the frontend data layer; the hotel screens (F301/F401) follow; the check-in/check-out slice (H-EPIC-2) was built 2026-10-25 on the server._
 1. ~~**D501** — refresh token in the OS keychain (unblocks F202).~~ `DONE`
 2. **F202** — frontend token storage on top of D501: call `restore_session` at startup, stop exposing the refresh token to the webview. ← next (in progress on another branch)
 3. **D102 + D103** — finish the auth client and config/state so login/refresh/logout round-trips cleanly.
@@ -525,8 +568,8 @@ _Updated 2026-10-23. The backend epics (B-EPIC-1 to B-EPIC-7) and the hotel book
 ITs for **T015b** / **T017** verified on the homelab docker-host 2026-10-17 (190/190). Note: the live `crm-server` DB has **0 users** — there is no bootstrap admin, so nobody can log in yet; needs a first-admin seed/CLI ticket.
 
 ## Notes
-- Hotel plugin work was gated on Backend EPIC-1 + EPIC-2 being green; both are, and the booking slice (H-EPIC-1) is built. Next hotel slice: check-in/check-out (needs a reservation to exist — H104) and a receptionist role (needs role management, F602/B-EPIC-2 follow-up).
-- Plugin admins must log in again after a plugin is first installed (permissions reach the JWT at login). If two ZIPs share a plugin id only the first in file-name order loads, so remove old versions when upgrading.
+- Hotel plugin work was gated on Backend EPIC-1 + EPIC-2 being green; both are, and the booking slice (H-EPIC-1) is built. The check-in/check-out slice (H-EPIC-2) is built too. Next hotel work: a receptionist role (needs role management, F602/B-EPIC-2 follow-up; the six `hotel.stays.*`/`hotel.folio.*` permissions are admin-only until then), the police stay-registration export, and the hotel screens.
+- Plugin admins must log in again after a plugin is first installed or upgraded with new permissions (permissions reach the JWT at login; hotel 0.2.0 adds six). If two ZIPs share a plugin id only the first in file-name order loads, so remove old versions when upgrading.
 - Leftovers from the slice: `docker-compose.yml`'s `server-test` service still runs `mvn -B test`, which cannot resolve the hotel ZIP in the reactor — it needs `verify`.
 - The next backend value is finishing platform *contracts*, not more CRUD.
 - Frontend and desktop can proceed in parallel once the auth contract (EPIC-1) is stable.

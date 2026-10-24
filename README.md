@@ -40,7 +40,7 @@ How it behaves at runtime:
 - **URL prefix:** a plugin's controllers are served under `/api/v1/plugins/{route}/…`. `route` is an optional `plugin.yaml` field; it defaults to the last segment of the plugin id (`com.crm.hotel` → `hotel`). Routes of a plugin that is disabled or failed to load return 404.
 - **Deny by default:** every plugin handler method must carry `@PreAuthorize` (on the method or its class). A plugin with an unguarded handler method gets none of its routes and is `LOAD_FAILED`.
 - **Install:** restart-required, no hot reload. Plugin ZIPs are read from the directory in `foundation.plugins.directory` (env `PLUGINS_DIR`, default `plugins`). The hotel ZIP ships inside the server image at `/app/plugins`, so a normal deploy installs it with no manual step.
-- **Permissions:** on load the plugin's `permissions-declared` keys are written to `permissions` and granted to the `admin` role when first inserted (a later removal of a grant survives restarts). Permissions reach a user through the JWT at login, so **an admin must log in again after a plugin is first installed**.
+- **Permissions:** on load the plugin's `permissions-declared` keys are written to `permissions` and granted to the `admin` role when first inserted (a later removal of a grant survives restarts). Permissions reach a user through the JWT at login, so **an admin must log in again after a plugin is first installed, and after an upgrade that adds permissions** (hotel 0.2.0 adds six, below).
 - **Failure isolation:** a ZIP whose package or manifest is invalid (zip-slip entries, missing or malformed `plugin.yaml`, an invalid or reserved `schema`) is rejected with a warning in the server log and is not registered, so there is no `plugin_registry` row for it. Once the manifest parses, a failure in the migration, entity mapping (invalid, out-of-schema or clashing entities), classloader or entry point, child context, routes or permission registration marks the plugin `LOAD_FAILED` with the reason in `plugin_registry.error_message`. The one exception is a plugin whose schema another plugin already uses: `plugin_registry.schema_name` is unique, so it gets no row and its failure is only in the server log. Either way the server still starts with the other plugins.
 - **Upgrades:** if two ZIPs declare the same plugin id, only the first in file-name order is loaded. Remove old versions when upgrading (`hotel-0.9.0.zip` sorts before `hotel-1.0.0.zip`, so the old one would win).
 
@@ -129,7 +129,7 @@ The platform is Vietnamese-first (`vi-VN`): DD/MM/YYYY dates, VND currency (dot-
 
 ## Status
 
-> **Active development** — Foundation platform and plugin runtime complete. Hotel PMS Tier 1: the booking slice (rooms, guests, availability, reservations) is done on the server; check-in/out, folio and the desktop screens are next.
+> **Active development** — Foundation platform and plugin runtime complete. Hotel PMS Tier 1 on the server: the booking slice (rooms, guests, availability, reservations) and the stay slice (check-in, folio, check-out, front-desk lists; plugin 0.2.0) are done; the desktop screens are next.
 
 ### What's working
 
@@ -143,7 +143,10 @@ The platform is Vietnamese-first (`vi-VN`): DD/MM/YYYY dates, VND currency (dot-
 | i18n | Vietnamese default, English toggle (VI/EN string bundles) |
 | Plugin runtime | Per-plugin classloader + Spring child context, routes under `/api/v1/plugins/{route}`, plugin permissions, per-plugin failure isolation |
 | Hotel plugin (server) | Room types and rooms, guests with accent-insensitive search, availability search, create/view/list/cancel reservations; double booking impossible (Postgres exclusion constraint) |
+| Hotel plugin 0.2.0 (server) | Booking source (walk-in, phone, OTA with channel and reference); check-in with one identity record per adult and same-type room swap; same-day undo and identity corrections; folio with extra charges, payments (cash, card, transfer, OTA prepayment) and voids, balance never below zero; check-out only at zero balance; arrivals, in-house and departures lists with late/overdue flags; a checked-in room stays blocked until check-out |
 | Tests | 86 frontend (Vitest + RTL); backend via Testcontainers (see "Run server tests") |
+
+**Hotel 0.2.0 permissions** (new keys, granted to `admin` on first load; there is no receptionist role yet): `hotel.stays.checkin` (check-in, undo check-in, identity corrections), `hotel.stays.checkout`, `hotel.stays.read` (the identity records, which are personal data), `hotel.folio.read`, `hotel.folio.charge` (add and void charges), `hotel.folio.pay` (add and void payments). The front-desk lists use `hotel.reservations.read`. **Admins must log in again after upgrading to receive them.** Upgrading means replacing `hotel-0.1.0-plugin.zip` with `hotel-0.2.0-plugin.zip` (the server image already does); the V2 migration runs at startup and leaves slice-1 reservations as they were.
 
 ## License
 
