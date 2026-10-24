@@ -46,7 +46,7 @@ public final class HotelErrors {
         return new PluginProblem(409, ROOM_NOT_BOOKABLE, detail);
     }
 
-    /** 409: the room already has a confirmed reservation overlapping the stay. */
+    /** 409: the room already has a confirmed or checked-in reservation overlapping the stay. */
     public static PluginProblem roomUnavailable(String detail) {
         return new PluginProblem(409, ROOM_UNAVAILABLE, detail);
     }
