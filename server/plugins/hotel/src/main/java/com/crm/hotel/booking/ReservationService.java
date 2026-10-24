@@ -13,6 +13,7 @@ import com.crm.hotel.domain.Room;
 import com.crm.hotel.domain.RoomType;
 import com.crm.hotel.guest.GuestService;
 import com.crm.hotel.guest.GuestView;
+import com.crm.hotel.repo.FolioPaymentRepository;
 import com.crm.hotel.repo.GuestRepository;
 import com.crm.hotel.repo.ReservationRepository;
 import com.crm.hotel.repo.RoomRepository;
@@ -50,6 +51,7 @@ public class ReservationService {
     private final RoomTypeRepository roomTypes;
     private final GuestRepository guests;
     private final GuestService guestService;
+    private final FolioPaymentRepository folioPayments;
     private final ReservationCodeGenerator codes;
     private final ChangeRecorder changes;
     private final AuditRecorder audit;
@@ -151,8 +153,9 @@ public class ReservationService {
      * stays). The row is locked first, so of two concurrent cancels the second sees the first's result.
      *
      * @throws com.crm.foundation.Plugin.PluginProblem {@code HOTEL_NOT_FOUND} (404),
-     *         {@code HOTEL_ALREADY_CANCELLED} (409) when it is already cancelled, or {@code HOTEL_INVALID_STATE}
-     *         (409) when it is checked in or out (a stay that has begun can't be cancelled)
+     *         {@code HOTEL_ALREADY_CANCELLED} (409) when it is already cancelled, {@code HOTEL_INVALID_STATE}
+     *         (409) when it is checked in or out (a stay that has begun can't be cancelled), or
+     *         {@code HOTEL_PAYMENTS_ON_FOLIO} (409) while the folio has an active payment
      */
     @Transactional
     public ReservationView cancel(UUID id) {
@@ -164,6 +167,11 @@ public class ReservationService {
         if (reservation.getStatus() != ReservationStatus.CONFIRMED) {
             throw HotelErrors.invalidState("Only a confirmed reservation can be cancelled; this one is "
                 + reservation.getStatus());
+        }
+        // Refunds happen outside the system: staff void the payments first. The reservation lock above serializes
+        // this check against folio payments being added.
+        if (folioPayments.existsByReservationIdAndVoidedAtIsNull(id)) {
+            throw HotelErrors.paymentsOnFolio("The folio has payments; void them before cancelling");
         }
         String guestName = guests.findById(reservation.getGuestId()).map(Guest::getFullName).orElse(null);
         String roomNumber = rooms.findById(reservation.getRoomId()).map(Room::getNumber).orElse(null);
