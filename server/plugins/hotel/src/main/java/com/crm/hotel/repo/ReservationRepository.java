@@ -67,4 +67,40 @@ public interface ReservationRepository extends JpaRepository<Reservation, UUID> 
         order by x.checkIn, x.code
         """)
     List<Object[]> findDetailedOverlapping(@Param("from") LocalDate from, @Param("to") LocalDate to);
+
+    /**
+     * Rows of {@code [Reservation, guest full name, room number]} of the confirmed reservations due to arrive on
+     * {@code date}: {@code checkIn <= date < checkOut} (so late arrivals stay listed until their stay would have
+     * ended), by room number.
+     */
+    @Query("""
+        select x, g.fullName, r.number from HotelReservation x, HotelGuest g, HotelRoom r
+        where g.id = x.guestId and r.id = x.roomId
+          and x.status = com.crm.hotel.domain.ReservationStatus.CONFIRMED
+          and x.checkIn <= :date and x.checkOut > :date
+        order by r.number, x.code
+        """)
+    List<Object[]> findDetailedArrivals(@Param("date") LocalDate date);
+
+    /** Rows of {@code [Reservation, guest full name, room number]} of all checked-in stays, by room number. */
+    @Query("""
+        select x, g.fullName, r.number from HotelReservation x, HotelGuest g, HotelRoom r
+        where g.id = x.guestId and r.id = x.roomId
+          and x.status = com.crm.hotel.domain.ReservationStatus.CHECKED_IN
+        order by r.number, x.code
+        """)
+    List<Object[]> findDetailedInHouse();
+
+    /**
+     * Rows of {@code [Reservation, guest full name, room number]} of the checked-in stays due to leave by
+     * {@code date} ({@code checkOut <= date}, overstayers included), by room number.
+     */
+    @Query("""
+        select x, g.fullName, r.number from HotelReservation x, HotelGuest g, HotelRoom r
+        where g.id = x.guestId and r.id = x.roomId
+          and x.status = com.crm.hotel.domain.ReservationStatus.CHECKED_IN
+          and x.checkOut <= :date
+        order by r.number, x.code
+        """)
+    List<Object[]> findDetailedDepartures(@Param("date") LocalDate date);
 }
