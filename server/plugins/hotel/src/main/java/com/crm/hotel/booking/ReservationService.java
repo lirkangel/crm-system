@@ -5,6 +5,7 @@ import com.crm.foundation.Plugin.ChangeOp;
 import com.crm.foundation.Plugin.ChangeRecorder;
 import com.crm.foundation.Plugin.CurrentUser;
 import com.crm.hotel.HotelErrors;
+import com.crm.hotel.domain.BookingSource;
 import com.crm.hotel.domain.Guest;
 import com.crm.hotel.domain.Reservation;
 import com.crm.hotel.domain.ReservationStatus;
@@ -66,7 +67,8 @@ public class ReservationService {
      * Books a room in one transaction: an inline new guest is created only if the booking succeeds.
      *
      * @throws com.crm.foundation.Plugin.PluginProblem {@code HOTEL_INVALID_GUEST} (400) unless exactly one of
-     *         guestId/newGuest is given; {@code HOTEL_NOT_FOUND} (404) for an unknown guest or room;
+     *         guestId/newGuest is given; {@code HOTEL_INVALID_SOURCE} (400) for an OTA booking without a channel or a
+     *         channel on a non-OTA booking; {@code HOTEL_NOT_FOUND} (404) for an unknown guest or room;
      *         {@code HOTEL_INVALID_STAY}/{@code HOTEL_TOO_MANY_GUESTS} (400) from {@link StayPolicy};
      *         {@code HOTEL_ROOM_NOT_BOOKABLE} (409) for a room out of service or of an inactive type;
      *         {@code HOTEL_ROOM_UNAVAILABLE} (409) when a confirmed or checked-in stay of the room overlaps
@@ -75,6 +77,12 @@ public class ReservationService {
     public ReservationView create(CreateReservationRequest request) {
         if ((request.guestId() == null) == (request.newGuest() == null)) {
             throw HotelErrors.invalidGuest("Give exactly one of guestId (an existing guest) or newGuest");
+        }
+        BookingSource source = request.source() == null ? BookingSource.WALK_IN : request.source();
+        if ((source == BookingSource.OTA) != (request.otaChannel() != null)) {
+            throw HotelErrors.invalidSource(source == BookingSource.OTA
+                ? "An OTA booking needs the otaChannel it came through"
+                : "otaChannel is only for OTA bookings");
         }
         Guest existingGuest = request.guestId() == null ? null : guests.findById(request.guestId())
             .orElseThrow(() -> HotelErrors.notFound("Guest not found"));
@@ -116,6 +124,10 @@ public class ReservationService {
         reservation.setNightlyRateGrossVnd(type.getNightlyRateGrossVnd());
         reservation.setTotalGrossVnd(totalGross);
         reservation.setNotes(request.notes() == null || request.notes().isBlank() ? null : request.notes().trim());
+        reservation.setSource(source);
+        reservation.setOtaChannel(request.otaChannel());
+        reservation.setOtaReference(request.otaReference() == null || request.otaReference().isBlank()
+            ? null : request.otaReference().trim());
         reservation.setCreatedBy(currentUser.id().orElse(null));
         reservation.setCreatedAt(now());
         Reservation saved = insert(reservation);

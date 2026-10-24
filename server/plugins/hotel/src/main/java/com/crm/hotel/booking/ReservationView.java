@@ -24,6 +24,11 @@ public record ReservationView(
         String notes,
         Instant createdAt,
         Instant cancelledAt,
+        String source,
+        String otaChannel,
+        String otaReference,
+        Instant checkedInAt,
+        Instant checkedOutAt,
         long version) {
 
     static ReservationView of(Reservation reservation, String guestName, String roomNumber) {
@@ -32,7 +37,10 @@ public record ReservationView(
             reservation.getRoomId(), roomNumber, reservation.getCheckIn(), reservation.getCheckOut(),
             StayPolicy.nights(reservation.getCheckIn(), reservation.getCheckOut()), reservation.getAdults(),
             reservation.getStatus().name(), reservation.getNightlyRateGrossVnd(), reservation.getTotalGrossVnd(),
-            reservation.getNotes(), reservation.getCreatedAt(), reservation.getCancelledAt(), reservation.getVersion());
+            reservation.getNotes(), reservation.getCreatedAt(), reservation.getCancelledAt(),
+            reservation.getSource().name(), reservation.getOtaChannel() == null ? null : reservation.getOtaChannel().name(),
+            reservation.getOtaReference(), reservation.getCheckedInAt(), reservation.getCheckedOutAt(),
+            reservation.getVersion());
     }
 
     /** A {@code [Reservation, guest full name, room number]} row of the repository's detailed queries. */
