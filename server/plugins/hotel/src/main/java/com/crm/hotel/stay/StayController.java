@@ -25,6 +25,7 @@ public class StayController {
     private static final String IF_MATCH = "If-Match";
 
     private final CheckInService checkIns;
+    private final CheckOutService checkOuts;
 
     @PostMapping("/reservations/{id}/check-in")
     @PreAuthorize("hasAuthority('" + HotelPermissions.STAYS_CHECKIN + "')")
@@ -56,5 +57,12 @@ public class StayController {
             @RequestHeader(value = IF_MATCH, required = false) String ifMatch,
             @Valid @RequestBody StayGuestRequest request) {
         return CommonResponse.success(checkIns.correct(id, stayGuestId, request, ifMatch));
+    }
+
+    /** Only a checked-in stay with a zero folio balance; early and late check-outs are both allowed. */
+    @PostMapping("/reservations/{id}/check-out")
+    @PreAuthorize("hasAuthority('" + HotelPermissions.STAYS_CHECKOUT + "')")
+    public CommonResponse<ReservationView> checkOut(@PathVariable("id") UUID id) {
+        return CommonResponse.success(checkOuts.checkOut(id));
     }
 }
