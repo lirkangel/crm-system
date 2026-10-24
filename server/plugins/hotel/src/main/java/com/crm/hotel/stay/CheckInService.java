@@ -5,6 +5,7 @@ import com.crm.foundation.Plugin.ChangeOp;
 import com.crm.foundation.Plugin.ChangeRecorder;
 import com.crm.hotel.HotelConfig;
 import com.crm.hotel.HotelErrors;
+import com.crm.hotel.IfMatch;
 import com.crm.hotel.booking.OverlapGuard;
 import com.crm.hotel.booking.ReservationView;
 import com.crm.hotel.domain.Guest;
@@ -22,7 +23,6 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import lombok.RequiredArgsConstructor;
-import org.springframework.orm.ObjectOptimisticLockingFailureException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -211,7 +211,7 @@ public class CheckInService {
         StayGuest record = stayGuests.findById(stayGuestId)
             .filter(found -> found.getReservationId().equals(reservationId))
             .orElseThrow(() -> HotelErrors.notFound("Stay guest not found"));
-        requireVersion(ifMatch, record.getVersion(), StayGuest.class, stayGuestId);
+        IfMatch.requireVersion(ifMatch, record.getVersion(), StayGuest.class, stayGuestId);
 
         List<String> changedFields = record.changedFields(request);
         if (changedFields.isEmpty()) {
@@ -228,25 +228,6 @@ public class CheckInService {
         changedFields.forEach(fields::add);
         audit.record(RESERVATION, reservationId, AUDIT_CORRECT, null, json(after));
         return StayGuestView.of(saved);
-    }
-
-    /**
-     * Compares the {@code If-Match} version (quoted or bare) with the loaded entity's own, as slice 1 does:
-     * Hibernate ignores a version set on a managed entity, so a stale client is detected here.
-     */
-    private static void requireVersion(String ifMatch, Long current, Class<?> entityType, UUID id) {
-        if (ifMatch == null || ifMatch.isBlank()) {
-            throw HotelErrors.versionRequired("If-Match with the current version is required");
-        }
-        long expected;
-        try {
-            expected = Long.parseLong(ifMatch.trim().replace("\"", ""));
-        } catch (NumberFormatException e) {
-            throw HotelErrors.versionRequired("If-Match must be the numeric version of the resource");
-        }
-        if (current == null || expected != current) {
-            throw new ObjectOptimisticLockingFailureException(entityType, id);
-        }
     }
 
     /** Locks the booked and the target room ({@code FOR NO KEY UPDATE}) in id order, so swaps can't deadlock. */

@@ -3,6 +3,7 @@ package com.crm.hotel.catalog;
 import com.crm.foundation.Plugin.ChangeOp;
 import com.crm.foundation.Plugin.ChangeRecorder;
 import com.crm.hotel.HotelErrors;
+import com.crm.hotel.IfMatch;
 import com.crm.hotel.domain.Room;
 import com.crm.hotel.domain.RoomType;
 import com.crm.hotel.repo.RoomRepository;
@@ -10,7 +11,6 @@ import com.crm.hotel.repo.RoomTypeRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.data.domain.Sort;
-import org.springframework.orm.ObjectOptimisticLockingFailureException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -48,7 +48,7 @@ public class RoomCatalogService {
     @Transactional
     public RoomTypeView updateRoomType(UUID id, RoomTypeRequest request, String ifMatch) {
         RoomType type = roomTypes.findById(id).orElseThrow(() -> HotelErrors.notFound("Room type not found"));
-        requireVersion(ifMatch, type.getVersion(), RoomType.class, id);
+        IfMatch.requireVersion(ifMatch, type.getVersion(), RoomType.class, id);
         apply(type, request);
         RoomType saved = flushUnique(() -> roomTypes.saveAndFlush(type), "room type code " + request.code());
         changes.record("RoomType", saved.getId(), saved.getVersion(), ChangeOp.UPDATE);
@@ -73,7 +73,7 @@ public class RoomCatalogService {
     @Transactional
     public RoomView updateRoom(UUID id, RoomRequest request, String ifMatch) {
         Room room = rooms.findById(id).orElseThrow(() -> HotelErrors.notFound("Room not found"));
-        requireVersion(ifMatch, room.getVersion(), Room.class, id);
+        IfMatch.requireVersion(ifMatch, room.getVersion(), Room.class, id);
         requireRoomType(request.roomTypeId());
         apply(room, request);
         Room saved = flushUnique(() -> rooms.saveAndFlush(room), "room number " + request.number());
@@ -99,26 +99,6 @@ public class RoomCatalogService {
     private void requireRoomType(UUID roomTypeId) {
         if (!roomTypes.existsById(roomTypeId)) {
             throw HotelErrors.notFound("Room type not found");
-        }
-    }
-
-    /**
-     * Compares the {@code If-Match} version with the loaded entity's own: Hibernate
-     * ignores a version set on a managed entity, so a stale client has to be
-     * detected here (409 {@code CONFLICT}, as for a concurrent write at flush time).
-     */
-    private static void requireVersion(String ifMatch, Long current, Class<?> entityType, UUID id) {
-        if (ifMatch == null || ifMatch.isBlank()) {
-            throw HotelErrors.versionRequired("If-Match with the current version is required");
-        }
-        long expected;
-        try {
-            expected = Long.parseLong(ifMatch.trim().replace("\"", ""));
-        } catch (NumberFormatException e) {
-            throw HotelErrors.versionRequired("If-Match must be the numeric version of the resource");
-        }
-        if (current == null || expected != current) {
-            throw new ObjectOptimisticLockingFailureException(entityType, id);
         }
     }
 
