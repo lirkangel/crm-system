@@ -287,6 +287,36 @@ class FolioIT extends HotelITSupport {
     }
 
     @Test
+    void charge_over_the_cap_is_400_validation_error() {
+        String token = adminToken();
+        UUID id = confirmedBooking(token);
+
+        ResponseEntity<String> overCap = charge(token, id, "Absurd", 1_000_000_000_001L);
+        ResponseEntity<String> huge = charge(token, id, "Overflow", Long.MAX_VALUE);
+
+        assertThat(overCap.getStatusCode().value()).as(overCap.getBody()).isEqualTo(400);
+        assertThat(json(overCap).path("code").asText()).isEqualTo("VALIDATION_ERROR");
+        assertThat(huge.getStatusCode().value()).as(huge.getBody()).isEqualTo(400);
+        assertThat(json(huge).path("code").asText()).isEqualTo("VALIDATION_ERROR");
+        assertThat(lineCount("folio_charge", id)).isZero();
+    }
+
+    @Test
+    void payment_over_the_cap_is_400_validation_error() {
+        String token = adminToken();
+        UUID id = confirmedBooking(token);
+
+        ResponseEntity<String> overCap = pay(token, id, "CASH", null, null, 1_000_000_000_001L);
+        ResponseEntity<String> huge = pay(token, id, "CASH", null, null, Long.MAX_VALUE);
+
+        assertThat(overCap.getStatusCode().value()).as(overCap.getBody()).isEqualTo(400);
+        assertThat(json(overCap).path("code").asText()).isEqualTo("VALIDATION_ERROR");
+        assertThat(huge.getStatusCode().value()).as(huge.getBody()).isEqualTo(400);
+        assertThat(json(huge).path("code").asText()).isEqualTo("VALIDATION_ERROR");
+        assertThat(lineCount("folio_payment", id)).isZero();
+    }
+
+    @Test
     void void_needs_a_reason() {
         String token = adminToken();
         UUID id = checkedInStay(token);

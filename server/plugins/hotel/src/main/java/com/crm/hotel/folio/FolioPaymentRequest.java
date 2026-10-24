@@ -1,6 +1,7 @@
 package com.crm.hotel.folio;
 
 import com.crm.hotel.domain.OtaChannel;
+import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Positive;
 import jakarta.validation.constraints.Size;
@@ -14,5 +15,5 @@ public record FolioPaymentRequest(
         @NotNull PaymentMethod method,
         OtaChannel otaChannel,
         @Size(max = 64) String reference,
-        @NotNull @Positive Long amountGrossVnd) {
+        @NotNull @Positive @Max(1_000_000_000_000L) Long amountGrossVnd) {
 }
