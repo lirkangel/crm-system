@@ -34,7 +34,7 @@ import java.util.UUID;
 
 /**
  * Booking, viewing, listing and cancelling reservations. No double booking: the database's
- * {@code reservation_no_overlap} exclusion constraint is the guarantee; the room lock and the
+ * {@code reservation_no_overlap} exclusion constraint (confirmed and checked-in stays) is the guarantee; the room lock and the
  * overlap pre-check only make the common conflict a friendly 409 instead of a constraint error.
  */
 @Service
@@ -69,7 +69,7 @@ public class ReservationService {
      *         guestId/newGuest is given; {@code HOTEL_NOT_FOUND} (404) for an unknown guest or room;
      *         {@code HOTEL_INVALID_STAY}/{@code HOTEL_TOO_MANY_GUESTS} (400) from {@link StayPolicy};
      *         {@code HOTEL_ROOM_NOT_BOOKABLE} (409) for a room out of service or of an inactive type;
-     *         {@code HOTEL_ROOM_UNAVAILABLE} (409) when a confirmed stay of the room overlaps
+     *         {@code HOTEL_ROOM_UNAVAILABLE} (409) when a confirmed or checked-in stay of the room overlaps
      */
     @Transactional
     public ReservationView create(CreateReservationRequest request) {
@@ -89,7 +89,7 @@ public class ReservationService {
         if (!room.isInService() || !type.isActive()) {
             throw HotelErrors.roomNotBookable("The room is out of service or its room type is inactive");
         }
-        if (reservations.countConfirmedOverlaps(room.getId(), checkIn, checkOut) > 0) {
+        if (reservations.countBlockingOverlaps(room.getId(), checkIn, checkOut) > 0) {
             throw HotelErrors.roomUnavailable(UNAVAILABLE);
         }
         long totalGross = StayPolicy.totalGross(type.getNightlyRateGrossVnd(), StayPolicy.nights(checkIn, checkOut));

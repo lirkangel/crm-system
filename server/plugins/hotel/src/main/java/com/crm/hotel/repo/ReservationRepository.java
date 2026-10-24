@@ -14,13 +14,17 @@ import java.util.UUID;
 
 public interface ReservationRepository extends JpaRepository<Reservation, UUID> {
 
-    /** CONFIRMED reservations of the room overlapping {@code [checkIn, checkOut)} (back-to-back stays don't). */
+    /**
+     * Blocking (CONFIRMED or CHECKED_IN) reservations of the room overlapping {@code [checkIn, checkOut)}
+     * (back-to-back stays don't).
+     */
     @Query("""
         select count(x) from HotelReservation x
-        where x.roomId = :roomId and x.status = com.crm.hotel.domain.ReservationStatus.CONFIRMED
+        where x.roomId = :roomId and x.status in (
+              com.crm.hotel.domain.ReservationStatus.CONFIRMED, com.crm.hotel.domain.ReservationStatus.CHECKED_IN)
           and x.checkIn < :checkOut and x.checkOut > :checkIn
         """)
-    long countConfirmedOverlaps(
+    long countBlockingOverlaps(
         @Param("roomId") UUID roomId, @Param("checkIn") LocalDate checkIn, @Param("checkOut") LocalDate checkOut);
 
     /** Next number of the reservation code ({@code hotel.reservation_code_seq}; gaps are harmless). */

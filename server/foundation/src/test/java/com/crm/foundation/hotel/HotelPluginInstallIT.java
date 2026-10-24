@@ -18,13 +18,19 @@ import static org.assertj.core.api.Assertions.assertThat;
 class HotelPluginInstallIT extends HotelITSupport {
 
     private static final List<String> HOTEL_PERMISSIONS = List.of(
+        "hotel.folio.charge",
+        "hotel.folio.pay",
+        "hotel.folio.read",
         "hotel.guests.manage",
         "hotel.guests.read",
         "hotel.reservations.cancel",
         "hotel.reservations.create",
         "hotel.reservations.read",
         "hotel.rooms.manage",
-        "hotel.rooms.read");
+        "hotel.rooms.read",
+        "hotel.stays.checkin",
+        "hotel.stays.checkout",
+        "hotel.stays.read");
 
     @Autowired
     private PluginRegistryService registryService;
@@ -38,7 +44,7 @@ class HotelPluginInstallIT extends HotelITSupport {
 
         assertThat(entry.getState()).as(entry.getErrorMessage()).isEqualTo(PluginState.ACTIVE.name());
         assertThat(entry.getSchemaName()).isEqualTo(HOTEL_SCHEMA);
-        assertThat(entry.getVersion()).isEqualTo("0.1.0");
+        assertThat(entry.getVersion()).isEqualTo("0.2.0");
     }
 
     @Test

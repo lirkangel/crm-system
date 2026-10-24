@@ -18,6 +18,15 @@ public final class HotelErrors {
     public static final String VERSION_REQUIRED = "HOTEL_VERSION_REQUIRED";
     public static final String INVALID_QUERY = "HOTEL_INVALID_QUERY";
     public static final String INVALID_GUEST = "HOTEL_INVALID_GUEST";
+    public static final String ROOM_OCCUPIED = "HOTEL_ROOM_OCCUPIED";
+    public static final String PAYMENTS_ON_FOLIO = "HOTEL_PAYMENTS_ON_FOLIO";
+    public static final String INVALID_STATE = "HOTEL_INVALID_STATE";
+    public static final String NOT_CHECKIN_DAY = "HOTEL_NOT_CHECKIN_DAY";
+    public static final String BALANCE_DUE = "HOTEL_BALANCE_DUE";
+    public static final String OVERPAYMENT = "HOTEL_OVERPAYMENT";
+    public static final String INVALID_ID_DOC = "HOTEL_INVALID_ID_DOC";
+    public static final String INVALID_PAYMENT = "HOTEL_INVALID_PAYMENT";
+    public static final String INVALID_SOURCE = "HOTEL_INVALID_SOURCE";
 
     private HotelErrors() {
     }
@@ -70,5 +79,50 @@ public final class HotelErrors {
     /** 400: guest data failed the hotel's rules (name, phone, email). */
     public static PluginProblem invalidGuest(String detail) {
         return new PluginProblem(400, INVALID_GUEST, detail);
+    }
+
+    /** 409: another stay in the room is checked in (an overstayer), so it can't be given to someone else. */
+    public static PluginProblem roomOccupied(String detail) {
+        return new PluginProblem(409, ROOM_OCCUPIED, detail);
+    }
+
+    /** 409: the reservation still has active payments, so it can't be cancelled. */
+    public static PluginProblem paymentsOnFolio(String detail) {
+        return new PluginProblem(409, PAYMENTS_ON_FOLIO, detail);
+    }
+
+    /** 409: the reservation's status doesn't allow the requested transition or folio change. */
+    public static PluginProblem invalidState(String detail) {
+        return new PluginProblem(409, INVALID_STATE, detail);
+    }
+
+    /** 409: check-in outside {@code [check_in, check_out)} of the hotel-local calendar. */
+    public static PluginProblem notCheckInDay(String detail) {
+        return new PluginProblem(409, NOT_CHECKIN_DAY, detail);
+    }
+
+    /** 409: check-out refused because the folio balance is not zero. */
+    public static PluginProblem balanceDue(String detail) {
+        return new PluginProblem(409, BALANCE_DUE, detail);
+    }
+
+    /** 409: the payment would take the folio balance below zero. */
+    public static PluginProblem overpayment(String detail) {
+        return new PluginProblem(409, OVERPAYMENT, detail);
+    }
+
+    /** 400: an identity record failed validation (blank number or name, birth date, nationality, address). */
+    public static PluginProblem invalidIdDoc(String detail) {
+        return new PluginProblem(400, INVALID_ID_DOC, detail);
+    }
+
+    /** 400: malformed payment or charge (amount, method, OTA channel). */
+    public static PluginProblem invalidPayment(String detail) {
+        return new PluginProblem(400, INVALID_PAYMENT, detail);
+    }
+
+    /** 400: booking source OTA without a channel, or a channel on a non-OTA booking. */
+    public static PluginProblem invalidSource(String detail) {
+        return new PluginProblem(400, INVALID_SOURCE, detail);
     }
 }

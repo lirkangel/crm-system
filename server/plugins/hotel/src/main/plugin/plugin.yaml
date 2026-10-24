@@ -1,5 +1,5 @@
 id: com.crm.hotel
-version: 0.1.0
+version: 0.2.0
 display-name:
   vi: "Khách sạn"
   en: "Hotel"
@@ -13,6 +13,12 @@ permissions-declared:
   - hotel.reservations.read
   - hotel.reservations.create
   - hotel.reservations.cancel
+  - hotel.stays.checkin
+  - hotel.stays.checkout
+  - hotel.stays.read
+  - hotel.folio.read
+  - hotel.folio.charge
+  - hotel.folio.pay
 foundation-services-used:
   - persistence
   - rest

@@ -25,7 +25,7 @@ public class AvailabilityService {
     private final RoomRepository rooms;
 
     /**
-     * In-service rooms of active types that sleep {@code adults} and have no CONFIRMED reservation
+     * In-service rooms of active types that sleep {@code adults} and have no CONFIRMED or CHECKED_IN reservation
      * overlapping {@code [checkIn, checkOut)}, grouped by room type (by code, then room number) in a
      * single query. Types too small for the party are omitted, not an error.
      */

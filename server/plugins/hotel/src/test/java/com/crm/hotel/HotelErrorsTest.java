@@ -25,6 +25,15 @@ class HotelErrorsTest {
         assertProblem(HotelErrors.versionRequired("detail"), 428, "HOTEL_VERSION_REQUIRED");
         assertProblem(HotelErrors.invalidQuery("detail"), 400, "HOTEL_INVALID_QUERY");
         assertProblem(HotelErrors.invalidGuest("detail"), 400, "HOTEL_INVALID_GUEST");
+        assertProblem(HotelErrors.roomOccupied("detail"), 409, "HOTEL_ROOM_OCCUPIED");
+        assertProblem(HotelErrors.paymentsOnFolio("detail"), 409, "HOTEL_PAYMENTS_ON_FOLIO");
+        assertProblem(HotelErrors.invalidState("detail"), 409, "HOTEL_INVALID_STATE");
+        assertProblem(HotelErrors.notCheckInDay("detail"), 409, "HOTEL_NOT_CHECKIN_DAY");
+        assertProblem(HotelErrors.balanceDue("detail"), 409, "HOTEL_BALANCE_DUE");
+        assertProblem(HotelErrors.overpayment("detail"), 409, "HOTEL_OVERPAYMENT");
+        assertProblem(HotelErrors.invalidIdDoc("detail"), 400, "HOTEL_INVALID_ID_DOC");
+        assertProblem(HotelErrors.invalidPayment("detail"), 400, "HOTEL_INVALID_PAYMENT");
+        assertProblem(HotelErrors.invalidSource("detail"), 400, "HOTEL_INVALID_SOURCE");
     }
 
     @Test

@@ -14,7 +14,7 @@ public interface RoomRepository extends JpaRepository<Room, UUID> {
 
     /**
      * Rows of {@code [Room, RoomType]}: in-service rooms of active types with {@code maxGuests >= adults} that
-     * have no CONFIRMED reservation overlapping {@code [checkIn, checkOut)} (existing.checkIn &lt; checkOut and
+     * have no blocking (CONFIRMED or CHECKED_IN) reservation overlapping {@code [checkIn, checkOut)} (existing.checkIn &lt; checkOut and
      * existing.checkOut &gt; checkIn, so back-to-back stays don't overlap), by room type code then room number.
      */
     @Query("""
@@ -22,7 +22,9 @@ public interface RoomRepository extends JpaRepository<Room, UUID> {
         where t.id = r.roomTypeId and r.inService = true and t.active = true and t.maxGuests >= :adults
           and not exists (
               select 1 from HotelReservation x
-              where x.roomId = r.id and x.status = com.crm.hotel.domain.ReservationStatus.CONFIRMED
+              where x.roomId = r.id and x.status in (
+                    com.crm.hotel.domain.ReservationStatus.CONFIRMED,
+                    com.crm.hotel.domain.ReservationStatus.CHECKED_IN)
                 and x.checkIn < :checkOut and x.checkOut > :checkIn)
         order by t.code, r.number
         """)

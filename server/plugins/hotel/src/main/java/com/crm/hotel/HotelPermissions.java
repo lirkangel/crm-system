@@ -10,6 +10,15 @@ public final class HotelPermissions {
     public static final String RESERVATIONS_READ = "hotel.reservations.read";
     public static final String RESERVATIONS_CREATE = "hotel.reservations.create";
     public static final String RESERVATIONS_CANCEL = "hotel.reservations.cancel";
+    public static final String STAYS_CHECKIN = "hotel.stays.checkin";
+    public static final String STAYS_CHECKOUT = "hotel.stays.checkout";
+    /** Identity records are personal data, hence their own permission. */
+    public static final String STAYS_READ = "hotel.stays.read";
+    public static final String FOLIO_READ = "hotel.folio.read";
+    /** Add and void extra charges. */
+    public static final String FOLIO_CHARGE = "hotel.folio.charge";
+    /** Add and void payments. */
+    public static final String FOLIO_PAY = "hotel.folio.pay";
 
     private HotelPermissions() {
     }
