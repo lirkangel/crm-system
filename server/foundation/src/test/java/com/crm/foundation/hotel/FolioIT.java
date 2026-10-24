@@ -5,11 +5,13 @@ import com.crm.foundation.Domain.User;
 import com.crm.foundation.Repository.UserRepository;
 import com.fasterxml.jackson.databind.JsonNode;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.Timeout;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.crypto.bcrypt.BCrypt;
 
 import java.time.LocalDate;
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -17,6 +19,9 @@ import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CyclicBarrier;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -426,24 +431,33 @@ class FolioIT extends HotelITSupport {
     }
 
     @Test
+    @Timeout(60)
     void concurrent_payments_cannot_overpay() throws Exception {
         String token = adminToken();
         UUID id = confirmedBooking(token);
         CyclicBarrier start = new CyclicBarrier(2);
+        ExecutorService pool = Executors.newFixedThreadPool(2);
+        try {
+            List<CompletableFuture<Integer>> attempts = List.of(1, 2).stream()
+                .map(n -> CompletableFuture.supplyAsync(() -> {
+                    try {
+                        start.await(10, TimeUnit.SECONDS);
+                    } catch (Exception e) {
+                        throw new IllegalStateException(e);
+                    }
+                    return pay(token, id, "CARD", null, "slip " + n, ROOM_CHARGE).getStatusCode().value();
+                }, pool).orTimeout(30, TimeUnit.SECONDS))
+                .toList();
+            List<Integer> statuses = new ArrayList<>();
+            for (CompletableFuture<Integer> attempt : attempts) {
+                statuses.add(attempt.get(40, TimeUnit.SECONDS));
+            }
+            statuses.sort(null);
 
-        List<CompletableFuture<Integer>> attempts = List.of(1, 2).stream()
-            .map(n -> CompletableFuture.supplyAsync(() -> {
-                try {
-                    start.await();
-                } catch (Exception e) {
-                    throw new IllegalStateException(e);
-                }
-                return pay(token, id, "CARD", null, "slip " + n, ROOM_CHARGE).getStatusCode().value();
-            }))
-            .toList();
-        List<Integer> statuses = attempts.stream().map(CompletableFuture::join).sorted().toList();
-
-        assertThat(statuses).containsExactly(201, 409);
+            assertThat(statuses).containsExactly(201, 409);
+        } finally {
+            pool.shutdownNow();
+        }
         assertThat(lineCount("folio_payment", id)).isEqualTo(1);
         assertThat(data(get(folio(id), token)).path("balanceGrossVnd").asLong()).isZero();
     }

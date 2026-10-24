@@ -4,6 +4,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import org.junit.jupiter.api.Test;
 import org.springframework.http.ResponseEntity;
 
+import java.time.Instant;
 import java.time.LocalDate;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -63,7 +64,7 @@ class FullStayIT extends HotelITSupport {
         ResponseEntity<String> checkedIn = post(RESERVATIONS + "/" + id + "/check-in", token, checkIn);
         assertThat(checkedIn.getStatusCode().value()).as(checkedIn.getBody()).isEqualTo(200);
         assertThat(data(checkedIn).path("status").asText()).isEqualTo("CHECKED_IN");
-        assertThat(data(checkedIn).path("checkedInAt").isNull()).isFalse();
+        assertThat(Instant.parse(data(checkedIn).path("checkedInAt").textValue())).isNotNull();
 
         // 4. in-house now, no longer an arrival
         ResponseEntity<String> inHouse = get(FRONT_DESK + "/in-house", token);
@@ -111,7 +112,7 @@ class FullStayIT extends HotelITSupport {
         ResponseEntity<String> out = post(RESERVATIONS + "/" + id + "/check-out", token, null);
         assertThat(out.getStatusCode().value()).as(out.getBody()).isEqualTo(200);
         assertThat(data(out).path("status").asText()).isEqualTo("CHECKED_OUT");
-        assertThat(data(out).path("checkedOutAt").isNull()).isFalse();
+        assertThat(Instant.parse(data(out).path("checkedOutAt").textValue())).isNotNull();
         assertThat(entryFor(get(FRONT_DESK + "/in-house", token), id)).isNull();
         assertThat(entryFor(get(FRONT_DESK + "/departures?date=" + checkOut, token), id)).isNull();
 

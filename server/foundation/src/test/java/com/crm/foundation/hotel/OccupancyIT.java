@@ -54,8 +54,10 @@ class OccupancyIT extends HotelITSupport {
 
         assertThat(error).isNotNull();
         assertThat(sqlState(error)).isEqualTo("23P01");
-        assertThat(catchThrowable(() -> seedReservation(room, IN.plusDays(2), IN.plusDays(4), "CHECKED_IN")))
-            .as("two checked-in stays overlapping").isNotNull();
+        Throwable secondError =
+            catchThrowable(() -> seedReservation(room, IN.plusDays(2), IN.plusDays(4), "CHECKED_IN"));
+        assertThat(secondError).as("two checked-in stays overlapping").isNotNull();
+        assertThat(sqlState(secondError)).isEqualTo("23P01");
     }
 
     @Test
