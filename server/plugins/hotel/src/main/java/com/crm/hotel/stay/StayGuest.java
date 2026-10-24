@@ -13,6 +13,9 @@ import org.hibernate.annotations.JdbcTypeCode;
 import org.hibernate.type.SqlTypes;
 
 import java.time.LocalDate;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Objects;
 import java.util.UUID;
 
 /**
@@ -72,6 +75,31 @@ public class StayGuest {
         address = blankToNull(request.address());
         visaNumber = blankToNull(request.visaNumber());
         entryDate = request.entryDate();
+    }
+
+    /**
+     * Names of the fields that applying {@code request} would change, compared after the same normalisation
+     * {@link #apply} does. Names only: the audit log must never see the values.
+     */
+    List<String> changedFields(StayGuestRequest request) {
+        StayGuest next = new StayGuest();
+        next.apply(request);
+        List<String> changed = new ArrayList<>();
+        addIfChanged(changed, "idType", idType, next.idType);
+        addIfChanged(changed, "idNumber", idNumber, next.idNumber);
+        addIfChanged(changed, "fullName", fullName, next.fullName);
+        addIfChanged(changed, "dateOfBirth", dateOfBirth, next.dateOfBirth);
+        addIfChanged(changed, "nationality", nationality, next.nationality);
+        addIfChanged(changed, "address", address, next.address);
+        addIfChanged(changed, "visaNumber", visaNumber, next.visaNumber);
+        addIfChanged(changed, "entryDate", entryDate, next.entryDate);
+        return changed;
+    }
+
+    private static void addIfChanged(List<String> changed, String field, Object current, Object next) {
+        if (!Objects.equals(current, next)) {
+            changed.add(field);
+        }
     }
 
     private static String blankToNull(String text) {

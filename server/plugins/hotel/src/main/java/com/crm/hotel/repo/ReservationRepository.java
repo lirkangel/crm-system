@@ -34,6 +34,13 @@ public interface ReservationRepository extends JpaRepository<Reservation, UUID> 
      */
     boolean existsByRoomIdAndStatusAndIdNot(UUID roomId, ReservationStatus status, UUID id);
 
+    /**
+     * How many folio charges the reservation has, voided ones included (a voided charge is still a folio row).
+     * Native because the folio entities arrive with the folio endpoints.
+     */
+    @Query(value = "select count(*) from hotel.folio_charge where reservation_id = :reservationId", nativeQuery = true)
+    long countFolioCharges(@Param("reservationId") UUID reservationId);
+
     /** Next number of the reservation code ({@code hotel.reservation_code_seq}; gaps are harmless). */
     @Query(value = "select nextval('hotel.reservation_code_seq')", nativeQuery = true)
     long nextCodeNumber();

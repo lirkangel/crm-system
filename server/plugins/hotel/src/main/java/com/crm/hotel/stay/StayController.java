@@ -9,7 +9,9 @@ import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RestController;
 
 import java.util.List;
@@ -19,6 +21,8 @@ import java.util.UUID;
 @RestController
 @RequiredArgsConstructor
 public class StayController {
+
+    private static final String IF_MATCH = "If-Match";
 
     private final CheckInService checkIns;
 
@@ -34,5 +38,23 @@ public class StayController {
     @PreAuthorize("hasAuthority('" + HotelPermissions.STAYS_READ + "')")
     public CommonResponse<List<StayGuestView>> stayGuests(@PathVariable("id") UUID id) {
         return CommonResponse.success(checkIns.stayGuests(id));
+    }
+
+    /** Only on the day of check-in, and only while the folio has no extra charges. */
+    @PostMapping("/reservations/{id}/undo-check-in")
+    @PreAuthorize("hasAuthority('" + HotelPermissions.STAYS_CHECKIN + "')")
+    public CommonResponse<ReservationView> undoCheckIn(@PathVariable("id") UUID id) {
+        return CommonResponse.success(checkIns.undo(id));
+    }
+
+    /** The {@code If-Match} header is optional here so a missing one is the hotel's 428, not a generic 400. */
+    @PutMapping("/reservations/{id}/stay-guests/{stayGuestId}")
+    @PreAuthorize("hasAuthority('" + HotelPermissions.STAYS_CHECKIN + "')")
+    public CommonResponse<StayGuestView> correctStayGuest(
+            @PathVariable("id") UUID id,
+            @PathVariable("stayGuestId") UUID stayGuestId,
+            @RequestHeader(value = IF_MATCH, required = false) String ifMatch,
+            @Valid @RequestBody StayGuestRequest request) {
+        return CommonResponse.success(checkIns.correct(id, stayGuestId, request, ifMatch));
     }
 }

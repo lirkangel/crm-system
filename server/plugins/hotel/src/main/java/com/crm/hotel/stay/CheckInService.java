@@ -3,6 +3,7 @@ package com.crm.hotel.stay;
 import com.crm.foundation.Plugin.AuditRecorder;
 import com.crm.foundation.Plugin.ChangeOp;
 import com.crm.foundation.Plugin.ChangeRecorder;
+import com.crm.hotel.HotelConfig;
 import com.crm.hotel.HotelErrors;
 import com.crm.hotel.booking.OverlapGuard;
 import com.crm.hotel.booking.ReservationView;
@@ -21,6 +22,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import lombok.RequiredArgsConstructor;
+import org.springframework.orm.ObjectOptimisticLockingFailureException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -45,6 +47,8 @@ public class CheckInService {
     static final String RESERVATION = "Reservation";
     static final String STAY_GUEST = "StayGuest";
     static final String AUDIT_CHECK_IN = "RESERVATION_CHECK_IN";
+    static final String AUDIT_CHECK_IN_UNDO = "RESERVATION_CHECK_IN_UNDO";
+    static final String AUDIT_CORRECT = "STAY_GUEST_CORRECT";
 
     // The field name doubles as the bean name, which disambiguates from any Clock in the parent context.
     private final Clock hotelClock;
@@ -134,6 +138,115 @@ public class CheckInService {
         }
         return stayGuests.findByReservationIdOrderByFullNameAscIdAsc(reservationId).stream()
             .map(StayGuestView::of).toList();
+    }
+
+    /**
+     * Takes back a check-in made by mistake: only on the hotel-local day of the check-in and while the folio has no
+     * extra charges (voided ones count). The identity records are deleted and the stay is {@code CONFIRMED} again;
+     * payments stay on the folio. Rooms are untouched (a swap is kept, and nothing new becomes occupied), so the
+     * reservation lock is enough.
+     *
+     * @throws com.crm.foundation.Plugin.PluginProblem {@code HOTEL_NOT_FOUND} (404); {@code HOTEL_INVALID_STATE}
+     *         (409) unless {@code CHECKED_IN}, when the check-in was on an earlier day, or when the folio has charges
+     */
+    @Transactional
+    public ReservationView undo(UUID reservationId) {
+        Reservation reservation = reservations.lockById(reservationId)
+            .orElseThrow(() -> HotelErrors.notFound("Reservation not found"));
+        if (reservation.getStatus() != ReservationStatus.CHECKED_IN) {
+            throw HotelErrors.invalidState("Only a checked-in stay can be undone; this one is " + reservation.getStatus());
+        }
+        if (reservation.getCheckedInAt() == null) {
+            throw HotelErrors.invalidState("Check-in can't be undone: its time was not recorded");
+        }
+        LocalDate checkInDay = LocalDate.ofInstant(reservation.getCheckedInAt(), HotelConfig.HOTEL_ZONE);
+        LocalDate today = CheckInPolicy.today(hotelClock);
+        if (!checkInDay.equals(today)) {
+            throw HotelErrors.invalidState(
+                "Check-in can only be undone on the day it happened (" + checkInDay + "); today is " + today);
+        }
+        if (reservations.countFolioCharges(reservationId) > 0) {
+            throw HotelErrors.invalidState("Check-in can't be undone: the folio already has extra charges");
+        }
+
+        String guestName = guests.findById(reservation.getGuestId()).map(Guest::getFullName).orElse(null);
+        String roomNumber = rooms.findById(reservation.getRoomId()).map(Room::getNumber).orElse(null);
+        String before = json(ReservationView.of(reservation, guestName, roomNumber));
+
+        List<StayGuest> records = stayGuests.findByReservationIdOrderByFullNameAscIdAsc(reservationId);
+        stayGuests.deleteAll(records);
+        stayGuests.flush();
+        // Hibernate doesn't bump the version of a deleted row; the feed's DELETE carries the next one.
+        records.forEach(record -> changes.record(STAY_GUEST, record.getId(), record.getVersion() + 1, ChangeOp.DELETE));
+
+        reservation.setStatus(ReservationStatus.CONFIRMED);
+        reservation.setCheckedInAt(null);
+        Reservation saved = reservations.saveAndFlush(reservation);
+        changes.record(RESERVATION, saved.getId(), saved.getVersion(), ChangeOp.UPDATE);
+
+        ReservationView view = ReservationView.of(saved, guestName, roomNumber);
+        audit.record(RESERVATION, saved.getId(), AUDIT_CHECK_IN_UNDO, before, json(view));
+        return view;
+    }
+
+    /**
+     * Corrects one adult's identity record of a checked-in stay (same rules as at check-in). The audit log gets the
+     * names of the changed fields, never their values. Sending the record unchanged is a no-op.
+     *
+     * @throws com.crm.foundation.Plugin.PluginProblem {@code HOTEL_INVALID_ID_DOC} (400); {@code HOTEL_NOT_FOUND}
+     *         (404) for an unknown reservation, or a stay guest that isn't of this reservation;
+     *         {@code HOTEL_INVALID_STATE} (409) unless {@code CHECKED_IN}; {@code HOTEL_VERSION_REQUIRED} (428)
+     *         without a numeric {@code If-Match}; a stale version is an optimistic-lock failure (409 {@code CONFLICT})
+     */
+    @Transactional
+    public StayGuestView correct(UUID reservationId, UUID stayGuestId, StayGuestRequest request, String ifMatch) {
+        CheckInPolicy.checkIdentity(request, CheckInPolicy.today(hotelClock));
+        Reservation reservation = reservations.lockById(reservationId)
+            .orElseThrow(() -> HotelErrors.notFound("Reservation not found"));
+        if (reservation.getStatus() != ReservationStatus.CHECKED_IN) {
+            throw HotelErrors.invalidState(
+                "Identity records can only be corrected while the stay is checked in; this one is "
+                    + reservation.getStatus());
+        }
+        StayGuest record = stayGuests.findById(stayGuestId)
+            .filter(found -> found.getReservationId().equals(reservationId))
+            .orElseThrow(() -> HotelErrors.notFound("Stay guest not found"));
+        requireVersion(ifMatch, record.getVersion(), StayGuest.class, stayGuestId);
+
+        List<String> changedFields = record.changedFields(request);
+        if (changedFields.isEmpty()) {
+            return StayGuestView.of(record);
+        }
+        record.apply(request);
+        StayGuest saved = stayGuests.saveAndFlush(record);
+        changes.record(STAY_GUEST, saved.getId(), saved.getVersion(), ChangeOp.UPDATE);
+
+        // Field names only: the audit chain is append-only, so no personal data (not even the old value).
+        ObjectNode after = objectMapper.createObjectNode();
+        after.put("stayGuestId", saved.getId().toString());
+        ArrayNode fields = after.putArray("changedFields");
+        changedFields.forEach(fields::add);
+        audit.record(RESERVATION, reservationId, AUDIT_CORRECT, null, json(after));
+        return StayGuestView.of(saved);
+    }
+
+    /**
+     * Compares the {@code If-Match} version (quoted or bare) with the loaded entity's own, as slice 1 does:
+     * Hibernate ignores a version set on a managed entity, so a stale client is detected here.
+     */
+    private static void requireVersion(String ifMatch, Long current, Class<?> entityType, UUID id) {
+        if (ifMatch == null || ifMatch.isBlank()) {
+            throw HotelErrors.versionRequired("If-Match with the current version is required");
+        }
+        long expected;
+        try {
+            expected = Long.parseLong(ifMatch.trim().replace("\"", ""));
+        } catch (NumberFormatException e) {
+            throw HotelErrors.versionRequired("If-Match must be the numeric version of the resource");
+        }
+        if (current == null || expected != current) {
+            throw new ObjectOptimisticLockingFailureException(entityType, id);
+        }
     }
 
     /** Locks the booked and the target room ({@code FOR NO KEY UPDATE}) in id order, so swaps can't deadlock. */
