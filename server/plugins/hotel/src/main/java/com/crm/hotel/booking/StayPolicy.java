@@ -7,7 +7,7 @@ import java.time.temporal.ChronoUnit;
 
 /**
  * The hotel's stay rules and gross pricing. Pure: the caller supplies "today"
- * (hotel-local) so the rules are testable without a clock.
+ * (the business date, see {@link com.crm.hotel.BusinessDay}) so the rules are testable without a clock.
  */
 public final class StayPolicy {
 

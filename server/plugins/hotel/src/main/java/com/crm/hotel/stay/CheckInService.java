@@ -3,7 +3,7 @@ package com.crm.hotel.stay;
 import com.crm.foundation.Plugin.AuditRecorder;
 import com.crm.foundation.Plugin.ChangeOp;
 import com.crm.foundation.Plugin.ChangeRecorder;
-import com.crm.hotel.HotelConfig;
+import com.crm.hotel.BusinessDay;
 import com.crm.hotel.HotelErrors;
 import com.crm.hotel.IfMatch;
 import com.crm.hotel.booking.OverlapGuard;
@@ -52,6 +52,7 @@ public class CheckInService {
 
     // The field name doubles as the bean name, which disambiguates from any Clock in the parent context.
     private final Clock hotelClock;
+    private final BusinessDay businessDay;
     private final ReservationRepository reservations;
     private final RoomRepository rooms;
     private final RoomTypeRepository roomTypes;
@@ -74,13 +75,14 @@ public class CheckInService {
      */
     @Transactional
     public ReservationView checkIn(UUID reservationId, CheckInRequest request) {
-        LocalDate today = CheckInPolicy.today(hotelClock);
-        request.adults().forEach(adult -> CheckInPolicy.checkIdentity(adult, today));
+        LocalDate calendarToday = businessDay.calendarToday();
+        request.adults().forEach(adult -> CheckInPolicy.checkIdentity(adult, calendarToday));
 
         // Lock order: the reservation row, then room rows by id (a swap touches two rooms).
         Reservation reservation = reservations.lockById(reservationId)
             .orElseThrow(() -> HotelErrors.notFound("Reservation not found"));
-        CheckInPolicy.check(reservation.getStatus(), reservation.getCheckIn(), reservation.getCheckOut(), today);
+        CheckInPolicy.check(
+            reservation.getStatus(), reservation.getCheckIn(), reservation.getCheckOut(), businessDay.today());
         UUID bookedRoomId = reservation.getRoomId();
         UUID targetRoomId = request.roomId() == null ? bookedRoomId : request.roomId();
         Map<UUID, Room> locked = lockRooms(bookedRoomId, targetRoomId);
@@ -141,7 +143,7 @@ public class CheckInService {
     }
 
     /**
-     * Takes back a check-in made by mistake: only on the hotel-local day of the check-in and while the folio has no
+     * Takes back a check-in made by mistake: only on the business date of the check-in and while the folio has no
      * extra charges (voided ones count). The identity records are deleted and the stay is {@code CONFIRMED} again;
      * payments stay on the folio. Rooms are untouched (a swap is kept, and nothing new becomes occupied), so the
      * reservation lock is enough.
@@ -159,8 +161,8 @@ public class CheckInService {
         if (reservation.getCheckedInAt() == null) {
             throw HotelErrors.invalidState("Check-in can't be undone: its time was not recorded");
         }
-        LocalDate checkInDay = LocalDate.ofInstant(reservation.getCheckedInAt(), HotelConfig.HOTEL_ZONE);
-        LocalDate today = CheckInPolicy.today(hotelClock);
+        LocalDate checkInDay = businessDay.dateOf(reservation.getCheckedInAt());
+        LocalDate today = businessDay.today();
         if (!checkInDay.equals(today)) {
             throw HotelErrors.invalidState(
                 "Check-in can only be undone on the day it happened (" + checkInDay + "); today is " + today);
@@ -200,7 +202,7 @@ public class CheckInService {
      */
     @Transactional
     public StayGuestView correct(UUID reservationId, UUID stayGuestId, StayGuestRequest request, String ifMatch) {
-        CheckInPolicy.checkIdentity(request, CheckInPolicy.today(hotelClock));
+        CheckInPolicy.checkIdentity(request, businessDay.calendarToday());
         Reservation reservation = reservations.lockById(reservationId)
             .orElseThrow(() -> HotelErrors.notFound("Reservation not found"));
         if (reservation.getStatus() != ReservationStatus.CHECKED_IN) {

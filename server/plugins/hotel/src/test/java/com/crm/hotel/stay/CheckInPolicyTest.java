@@ -1,14 +1,16 @@
 package com.crm.hotel.stay;
 
 import com.crm.foundation.Plugin.PluginProblem;
+import com.crm.hotel.BusinessDay;
 import com.crm.hotel.domain.ReservationStatus;
 import org.junit.jupiter.api.Test;
 
 import java.time.Clock;
 import java.time.Instant;
 import java.time.LocalDate;
+import java.time.LocalDateTime;
+import java.time.LocalTime;
 import java.time.ZoneId;
-import java.time.ZoneOffset;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatCode;
@@ -27,13 +29,15 @@ class CheckInPolicyTest {
         assertThat(problem.code()).isEqualTo(code);
     }
 
-    private static LocalDate today(String instant) {
-        return CheckInPolicy.today(Clock.fixed(Instant.parse(instant), HOTEL_ZONE));
+    /** The business date (06:00 cutoff) at {@code localDateTime}, hotel-local. */
+    private static LocalDate today(String localDateTime) {
+        Instant instant = LocalDateTime.parse(localDateTime).atZone(HOTEL_ZONE).toInstant();
+        return new BusinessDay(Clock.fixed(instant, HOTEL_ZONE), LocalTime.of(6, 0)).today();
     }
 
     @Test
     void checks_in_on_check_in_day() {
-        LocalDate today = today("2026-11-10T03:00:00Z");
+        LocalDate today = today("2026-11-10T10:00");
 
         assertThat(today).isEqualTo(IN);
         assertThatCode(() -> CheckInPolicy.check(ReservationStatus.CONFIRMED, IN, OUT, today))
@@ -78,16 +82,29 @@ class CheckInPolicyTest {
     }
 
     @Test
-    void vietnam_day_starts_before_utc_midnight() {
-        // 23:30 UTC on the 9th is 06:30 on the 10th in Ho Chi Minh City (UTC+7)
-        LocalDate today = today("2026-11-09T23:30:00Z");
+    void midnight_arrival_on_the_check_out_date_still_checks_in() {
+        // a one-night stay of the 10th; the guest arrives at 00:30 on the 11th, the business date is still the 10th
+        LocalDate today = today("2026-11-11T00:30");
 
-        assertThat(today).isEqualTo(LocalDate.of(2026, 11, 10));
-        assertThatCode(() -> CheckInPolicy.check(ReservationStatus.CONFIRMED, IN, OUT, today))
+        assertThat(today).isEqualTo(IN);
+        assertThatCode(() -> CheckInPolicy.check(ReservationStatus.CONFIRMED, IN, IN.plusDays(1), today))
             .doesNotThrowAnyException();
-        // a clock in another zone still gives the hotel-local date
-        assertThat(CheckInPolicy.today(Clock.fixed(Instant.parse("2026-11-09T23:30:00Z"), ZoneOffset.UTC)))
-            .isEqualTo(LocalDate.of(2026, 11, 10));
+    }
+
+    @Test
+    void after_the_cutoff_the_check_out_date_is_not_checkin_day() {
+        LocalDate today = today("2026-11-11T06:30");
+
+        assertThat(today).isEqualTo(IN.plusDays(1));
+        assertThatThrownBy(() -> CheckInPolicy.check(ReservationStatus.CONFIRMED, IN, IN.plusDays(1), today))
+            .satisfies(e -> assertProblem(e, 409, "HOTEL_NOT_CHECKIN_DAY"));
+    }
+
+    @Test
+    void before_the_cutoff_the_check_in_date_has_not_come() {
+        // 05:30 on the 10th is still business date the 9th: too early for a stay starting the 10th
+        assertThatThrownBy(() -> CheckInPolicy.check(ReservationStatus.CONFIRMED, IN, OUT, today("2026-11-10T05:30")))
+            .satisfies(e -> assertProblem(e, 409, "HOTEL_NOT_CHECKIN_DAY"));
     }
 
     @Test

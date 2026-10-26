@@ -24,7 +24,8 @@ public final class OverlapGuard {
     }
 
     /**
-     * Saves and flushes {@code reservation} (an insert, or an update that moves it to another room).
+     * Saves and flushes {@code reservation} (an insert, an update that moves it to another room, or one that
+     * makes it block its room again).
      *
      * @throws com.crm.foundation.Plugin.PluginProblem {@code HOTEL_ROOM_UNAVAILABLE} (409) on a
      *         {@code reservation_no_overlap} violation; other violations propagate

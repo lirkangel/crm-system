@@ -119,7 +119,8 @@ class CheckInIT extends HotelITSupport {
         Map<String, Object> futureEntry = adult("PASSPORT", "Y1234567", "John Smith");
         futureEntry.put("nationality", "GB");
         futureEntry.put("address", null);
-        futureEntry.put("entryDate", today.plusDays(1));
+        // the entry date is checked against the calendar date, which runs a day ahead of the business date before 06:00
+        futureEntry.put("entryDate", today.plusDays(2));
 
         ResponseEntity<String> withoutAddress = checkIn(token, id, List.of(noAddress), null);
         ResponseEntity<String> enteredTomorrow = checkIn(token, id, List.of(futureEntry), null);

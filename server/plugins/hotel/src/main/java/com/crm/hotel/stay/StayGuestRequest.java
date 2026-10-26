@@ -10,7 +10,8 @@ import java.time.LocalDate;
 
 /**
  * One adult's identity record at check-in. Rules across fields ({@link CheckInPolicy#checkIdentity}): a Vietnamese
- * citizen ({@code nationality = VN}) needs an address, and {@code entryDate} is not after today.
+ * citizen ({@code nationality = VN}) needs an address, and {@code entryDate} is not after the hotel-local calendar
+ * date.
  */
 public record StayGuestRequest(
         @NotNull IdDocType idType,

@@ -27,6 +27,7 @@ import java.net.URISyntaxException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.time.ZoneId;
 import java.time.temporal.ChronoUnit;
 import java.util.LinkedHashMap;
@@ -178,9 +179,12 @@ public abstract class HotelITSupport {
         return body;
     }
 
-    /** Hotel-local today (Asia/Ho_Chi_Minh), the date the check-in rules use. */
+    /**
+     * The hotel's business date at the default 06:00 cutoff (Asia/Ho_Chi_Minh): what booking, check-in and the
+     * front-desk lists take as today, so these tests also pass between midnight and the cutoff.
+     */
     protected static LocalDate hotelToday() {
-        return LocalDate.now(ZoneId.of("Asia/Ho_Chi_Minh"));
+        return LocalDateTime.now(ZoneId.of("Asia/Ho_Chi_Minh")).minusHours(6).toLocalDate();
     }
 
     /**

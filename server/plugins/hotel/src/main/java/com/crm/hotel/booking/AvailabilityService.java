@@ -1,5 +1,6 @@
 package com.crm.hotel.booking;
 
+import com.crm.hotel.BusinessDay;
 import com.crm.hotel.domain.Room;
 import com.crm.hotel.domain.RoomType;
 import com.crm.hotel.repo.RoomRepository;
@@ -7,7 +8,6 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.time.Clock;
 import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -20,8 +20,7 @@ import java.util.UUID;
 @RequiredArgsConstructor
 public class AvailabilityService {
 
-    // The field name doubles as the bean name, which disambiguates from any Clock in the parent context.
-    private final Clock hotelClock;
+    private final BusinessDay businessDay;
     private final RoomRepository rooms;
 
     /**
@@ -32,7 +31,7 @@ public class AvailabilityService {
     @Transactional(readOnly = true)
     public AvailabilityView search(LocalDate checkIn, LocalDate checkOut, int adults) {
         // Dates and party size >= 1 are checked here; capacity is a per-type filter below.
-        StayPolicy.check(checkIn, checkOut, adults, Integer.MAX_VALUE, LocalDate.now(hotelClock));
+        StayPolicy.check(checkIn, checkOut, adults, Integer.MAX_VALUE, businessDay.today());
         int nights = StayPolicy.nights(checkIn, checkOut);
 
         Map<UUID, List<AvailableRoom>> roomsByType = new LinkedHashMap<>();

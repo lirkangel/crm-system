@@ -96,7 +96,7 @@ public final class HotelErrors {
         return new PluginProblem(409, INVALID_STATE, detail);
     }
 
-    /** 409: check-in outside {@code [check_in, check_out)} of the hotel-local calendar. */
+    /** 409: check-in while the business date is outside {@code [check_in, check_out)}. */
     public static PluginProblem notCheckInDay(String detail) {
         return new PluginProblem(409, NOT_CHECKIN_DAY, detail);
     }

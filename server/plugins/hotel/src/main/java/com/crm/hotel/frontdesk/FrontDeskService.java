@@ -1,14 +1,13 @@
 package com.crm.hotel.frontdesk;
 
+import com.crm.hotel.BusinessDay;
 import com.crm.hotel.booking.ReservationView;
 import com.crm.hotel.domain.Reservation;
 import com.crm.hotel.repo.ReservationRepository;
-import com.crm.hotel.stay.CheckInPolicy;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.time.Clock;
 import java.time.LocalDate;
 import java.util.List;
 
@@ -20,8 +19,7 @@ import java.util.List;
 @RequiredArgsConstructor
 public class FrontDeskService {
 
-    // The field name doubles as the bean name, which disambiguates from any Clock in the parent context.
-    private final Clock hotelClock;
+    private final BusinessDay businessDay;
     private final ReservationRepository reservations;
 
     /** Confirmed stays with {@code checkIn <= date < checkOut}; {@code late} when {@code checkIn < date}. */
@@ -36,10 +34,10 @@ public class FrontDeskService {
             .toList();
     }
 
-    /** All checked-in stays; {@code overdue} when {@code checkOut < today}. */
+    /** All checked-in stays; {@code overdue} when {@code checkOut < today} (the business date). */
     @Transactional(readOnly = true)
     public List<FrontDeskEntry> inHouse() {
-        LocalDate today = CheckInPolicy.today(hotelClock);
+        LocalDate today = businessDay.today();
         return reservations.findDetailedInHouse().stream()
             .map(row -> {
                 ReservationView view = view(row);
@@ -61,7 +59,7 @@ public class FrontDeskService {
     }
 
     private LocalDate dayOrToday(LocalDate date) {
-        return date != null ? date : CheckInPolicy.today(hotelClock);
+        return date != null ? date : businessDay.today();
     }
 
     private static ReservationView view(Object[] row) {

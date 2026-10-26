@@ -1,5 +1,7 @@
 package com.crm.hotel;
 
+import org.springframework.beans.factory.annotation.Qualifier;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 
@@ -17,5 +19,13 @@ public class HotelConfig {
     @Bean
     Clock hotelClock() {
         return Clock.system(HOTEL_ZONE);
+    }
+
+    /** The cutoff comes from Foundation's environment; a malformed one fails the plugin's start (LOAD_FAILED). */
+    @Bean
+    BusinessDay businessDay(
+            @Qualifier("hotelClock") Clock hotelClock,
+            @Value("${" + BusinessDay.CUTOFF_PROPERTY + ":" + BusinessDay.DEFAULT_CUTOFF + "}") String cutoff) {
+        return new BusinessDay(hotelClock, BusinessDay.parseCutoff(cutoff));
     }
 }

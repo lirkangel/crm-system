@@ -19,7 +19,7 @@ public class FrontDeskController {
     private final FrontDeskService frontDesk;
 
     /**
-     * {@code date} is optional (default: hotel-local today) and textual at the binding level so that a malformed
+     * {@code date} is optional (default: the business date) and textual at the binding level so that a malformed
      * one is the hotel's 400 {@code HOTEL_INVALID_QUERY}, not a generic binding error.
      */
     @GetMapping("/front-desk/arrivals")

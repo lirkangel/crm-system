@@ -4,6 +4,7 @@ import com.crm.foundation.Plugin.AuditRecorder;
 import com.crm.foundation.Plugin.ChangeOp;
 import com.crm.foundation.Plugin.ChangeRecorder;
 import com.crm.foundation.Plugin.CurrentUser;
+import com.crm.hotel.BusinessDay;
 import com.crm.hotel.HotelErrors;
 import com.crm.hotel.domain.BookingSource;
 import com.crm.hotel.domain.Guest;
@@ -46,6 +47,7 @@ public class ReservationService {
 
     // The field name doubles as the bean name, which disambiguates from any Clock in the parent context.
     private final Clock hotelClock;
+    private final BusinessDay businessDay;
     private final ReservationRepository reservations;
     private final RoomRepository rooms;
     private final RoomTypeRepository roomTypes;
@@ -88,7 +90,7 @@ public class ReservationService {
             .orElseThrow(() -> HotelErrors.notFound("Room type not found"));
         LocalDate checkIn = request.checkIn();
         LocalDate checkOut = request.checkOut();
-        StayPolicy.check(checkIn, checkOut, request.adults(), type.getMaxGuests(), LocalDate.now(hotelClock));
+        StayPolicy.check(checkIn, checkOut, request.adults(), type.getMaxGuests(), businessDay.today());
         if (!room.isInService() || !type.isActive()) {
             throw HotelErrors.roomNotBookable("The room is out of service or its room type is inactive");
         }

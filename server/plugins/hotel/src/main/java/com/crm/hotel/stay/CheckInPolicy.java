@@ -1,15 +1,13 @@
 package com.crm.hotel.stay;
 
-import com.crm.hotel.HotelConfig;
 import com.crm.hotel.HotelErrors;
 import com.crm.hotel.domain.ReservationStatus;
 
-import java.time.Clock;
 import java.time.LocalDate;
 
 /**
- * The hotel's check-in rules. Pure: the caller supplies "today" (hotel-local, see {@link #today}) so the rules are
- * testable without a clock.
+ * The hotel's check-in rules. Pure: the caller supplies "today" (see {@link com.crm.hotel.BusinessDay}) so the
+ * rules are testable without a clock.
  */
 public final class CheckInPolicy {
 
@@ -19,14 +17,9 @@ public final class CheckInPolicy {
     private CheckInPolicy() {
     }
 
-    /** The hotel-local date ({@link HotelConfig#HOTEL_ZONE}) at {@code clock}'s instant, whatever its zone. */
-    public static LocalDate today(Clock clock) {
-        return LocalDate.now(clock.withZone(HotelConfig.HOTEL_ZONE));
-    }
-
     /**
-     * Whether a stay of {@code [checkIn, checkOut)} may check in on {@code today}: not early, late arrival is fine,
-     * and never on or after the check-out day.
+     * Whether a stay of {@code [checkIn, checkOut)} may check in on {@code today}, the business date: not early, late
+     * arrival is fine, and never on or after the check-out day.
      *
      * @throws com.crm.foundation.Plugin.PluginProblem {@code HOTEL_INVALID_STATE} (409) unless {@code CONFIRMED}
      *         (reported first); {@code HOTEL_NOT_CHECKIN_DAY} (409) unless {@code checkIn <= today < checkOut}
@@ -43,6 +36,7 @@ public final class CheckInPolicy {
 
     /**
      * The rules of an identity record that span fields (single-field rules are bean validation on the request).
+     * {@code today} is the hotel-local calendar date: an entry date is a real-world date, not a business date.
      *
      * @throws com.crm.foundation.Plugin.PluginProblem {@code HOTEL_INVALID_ID_DOC} (400) for a Vietnamese citizen
      *         without an address or an entry date after {@code today}

@@ -9,7 +9,9 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.crypto.bcrypt.BCrypt;
 
+import java.time.Instant;
 import java.time.LocalDate;
+import java.time.ZoneId;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -18,7 +20,10 @@ import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-/** Check-out over HTTP: zero-balance rule, early check-out, read-only folio afterwards, audit and sync. */
+/**
+ * Check-out over HTTP: zero-balance rule, early check-out, read-only folio afterwards, audit and sync; and its
+ * same-day undo.
+ */
 class CheckOutIT extends HotelITSupport {
 
     private static final String RESERVATIONS = HOTEL_API + "/reservations";
@@ -197,7 +202,169 @@ class CheckOutIT extends HotelITSupport {
         assertThat(checkOut(checker, stay.id()).getStatusCode().value()).isEqualTo(200);
     }
 
+    @Test
+    void undo_check_out_same_day() {
+        String token = adminToken();
+        Stay stay = checkedInStay(token);
+        pay(token, stay.id(), "CASH", null, null, ROOM_CHARGE);
+        JsonNode checkedOut = data(checkOut(token, stay.id()));
+        long versionBefore = checkedOut.path("version").asLong();
+
+        ResponseEntity<String> response = undoCheckOut(token, stay.id());
+
+        assertThat(response.getStatusCode().value()).as(response.getBody()).isEqualTo(200);
+        JsonNode view = data(response);
+        assertThat(view.path("status").asText()).isEqualTo("CHECKED_IN");
+        assertThat(view.path("checkedOutAt").isNull()).isTrue();
+        assertThat(view.path("checkedInAt").asText()).isEqualTo(checkedOut.path("checkedInAt").asText());
+        assertThat(view.path("roomId").asText()).isEqualTo(stay.roomId().toString());
+        assertThat(view.path("version").asLong()).isEqualTo(versionBefore + 1);
+        assertThat(jdbc.queryForObject(
+            "SELECT checked_out_at IS NULL FROM hotel.reservation WHERE id = ?", Boolean.class, stay.id())).isTrue();
+        // the identity records are still there and the folio takes charges again
+        assertThat(data(get(RESERVATIONS + "/" + stay.id() + "/stay-guests", token))).hasSize(1);
+        ResponseEntity<String> lateCharge = charge(token, stay.id(), "Late snack", 30_000);
+        assertThat(lateCharge.getStatusCode().value()).as(lateCharge.getBody()).isEqualTo(201);
+        // the room is blocked again for the rest of the stay
+        LocalDate today = hotelToday();
+        ResponseEntity<String> rebook = post(HOTEL_API + "/reservations", token, reservationBody(
+            null, inlineGuest("Blocked " + tag(), "0944444444"), stay.roomId(), today.plusDays(1), today.plusDays(2), 1));
+        assertThat(rebook.getStatusCode().value()).as(rebook.getBody()).isEqualTo(409);
+        assertThat(json(rebook).path("code").asText()).isEqualTo("HOTEL_ROOM_UNAVAILABLE");
+
+        List<String> feed = jdbc.query(
+            "SELECT entity_type, op, version FROM change_event WHERE plugin_id = ? AND entity_id = ? AND version = ?",
+            (rs, row) -> rs.getString("entity_type") + ":" + rs.getString("op") + ":" + rs.getLong("version"),
+            HOTEL_PLUGIN_ID, stay.id(), versionBefore + 1);
+        assertThat(feed).containsExactly("Reservation:UPDATE:" + (versionBefore + 1));
+
+        Map<String, Object> row = jdbc.queryForMap("""
+            SELECT entity_type, before_json::text AS before, after_json::text AS after
+            FROM audit_event WHERE plugin_id = 'com.crm.hotel' AND entity_id = ? AND op = 'RESERVATION_CHECK_OUT_UNDO'
+            """, stay.id());
+        assertThat(row.get("entity_type")).isEqualTo("Reservation");
+        JsonNode auditBefore = readJson((String) row.get("before"));
+        JsonNode auditAfter = readJson((String) row.get("after"));
+        assertThat(auditBefore.path("status").asText()).isEqualTo("CHECKED_OUT");
+        assertThat(auditBefore.path("checkedOutAt").isNull()).isFalse();
+        assertThat(auditAfter.path("status").asText()).isEqualTo("CHECKED_IN");
+        assertThat(auditAfter.path("checkedOutAt").isNull()).isTrue();
+        assertThat((String) row.get("before") + row.get("after"))
+            .doesNotContain(stay.idNumber()).doesNotContain(stay.idName());
+    }
+
+    @Test
+    void undo_check_out_only_on_the_business_date_of_check_out() {
+        String token = adminToken();
+        Stay stay = checkedInStay(token);
+        pay(token, stay.id(), "CASH", null, null, ROOM_CHARGE);
+        assertThat(checkOut(token, stay.id()).getStatusCode().value()).isEqualTo(200);
+        // noon of the previous business date
+        Instant yesterday = hotelToday().minusDays(1).atTime(12, 0).atZone(ZoneId.of("Asia/Ho_Chi_Minh")).toInstant();
+        jdbc.update("UPDATE hotel.reservation SET checked_out_at = ? WHERE id = ?",
+            java.sql.Timestamp.from(yesterday), stay.id());
+
+        ResponseEntity<String> response = undoCheckOut(token, stay.id());
+
+        assertThat(response.getStatusCode().value()).as(response.getBody()).isEqualTo(409);
+        assertThat(json(response).path("code").asText()).isEqualTo("HOTEL_INVALID_STATE");
+        assertThat(jdbc.queryForObject(
+            "SELECT status FROM hotel.reservation WHERE id = ?", String.class, stay.id())).isEqualTo("CHECKED_OUT");
+        assertThat(jdbc.queryForObject(
+            "SELECT count(*) FROM audit_event WHERE plugin_id = 'com.crm.hotel' AND entity_id = ? AND op = 'RESERVATION_CHECK_OUT_UNDO'",
+            Integer.class, stay.id())).isZero();
+    }
+
+    @Test
+    void only_checked_out_can_be_undone() {
+        String token = adminToken();
+        String tag = tag();
+        UUID room = newRoom(token, "UO" + tag, newRoomType(token, "UO" + tag, 2, 1_000_000, true), true);
+        LocalDate today = hotelToday();
+        UUID confirmed = book(token, room, today, today.plusDays(1), 1);
+        UUID cancelled = book(token, room, today.plusDays(1), today.plusDays(2), 1);
+        assertThat(post(RESERVATIONS + "/" + cancelled + "/cancel", token, null).getStatusCode().value()).isEqualTo(200);
+        Stay checkedIn = checkedInStay(token);
+
+        for (UUID id : List.of(confirmed, cancelled, checkedIn.id())) {
+            ResponseEntity<String> response = undoCheckOut(token, id);
+            assertThat(response.getStatusCode().value()).as(response.getBody()).isEqualTo(409);
+            assertThat(json(response).path("code").asText()).isEqualTo("HOTEL_INVALID_STATE");
+        }
+        ResponseEntity<String> unknown = undoCheckOut(token, UUID.randomUUID());
+        assertThat(unknown.getStatusCode().value()).as(unknown.getBody()).isEqualTo(404);
+        assertThat(json(unknown).path("code").asText()).isEqualTo("HOTEL_NOT_FOUND");
+        assertThat(jdbc.queryForObject(
+            "SELECT status FROM hotel.reservation WHERE id = ?", String.class, checkedIn.id())).isEqualTo("CHECKED_IN");
+    }
+
+    @Test
+    void undo_check_out_refused_while_another_stay_occupies_the_room() {
+        String token = adminToken();
+        String tag = tag();
+        UUID room = newRoom(token, "UO" + tag, newRoomType(token, "UO" + tag, 2, 1_000_000, true), true);
+        LocalDate today = hotelToday();
+        // last night's stay, checked out this morning; its nights don't overlap the next guest's
+        UUID left = seedReservation(room, today.minusDays(1), today, "CHECKED_OUT");
+        jdbc.update("UPDATE hotel.reservation SET checked_in_at = now() - interval '1 hour', checked_out_at = now() "
+            + "WHERE id = ?", left);
+        UUID next = book(token, room, today, today.plusDays(1), 1);
+        Map<String, Object> body = new LinkedHashMap<>();
+        body.put("adults", List.of(adult("CCCD", "079099998888", "Next Guest " + tag)));
+        body.put("roomId", null);
+        assertThat(post(RESERVATIONS + "/" + next + "/check-in", token, body).getStatusCode().value()).isEqualTo(200);
+
+        ResponseEntity<String> response = undoCheckOut(token, left);
+
+        assertThat(response.getStatusCode().value()).as(response.getBody()).isEqualTo(409);
+        assertThat(json(response).path("code").asText()).isEqualTo("HOTEL_ROOM_OCCUPIED");
+        assertThat(jdbc.queryForObject(
+            "SELECT status FROM hotel.reservation WHERE id = ?", String.class, left)).isEqualTo("CHECKED_OUT");
+    }
+
+    @Test
+    void undo_check_out_refused_once_the_freed_nights_are_rebooked() {
+        String token = adminToken();
+        Stay stay = checkedInStay(token);
+        pay(token, stay.id(), "CASH", null, null, ROOM_CHARGE);
+        assertThat(checkOut(token, stay.id()).getStatusCode().value()).isEqualTo(200);
+        LocalDate today = hotelToday();
+        book(token, stay.roomId(), today.plusDays(1), today.plusDays(3), 1);
+
+        ResponseEntity<String> response = undoCheckOut(token, stay.id());
+
+        assertThat(response.getStatusCode().value()).as(response.getBody()).isEqualTo(409);
+        assertThat(json(response).path("code").asText()).isEqualTo("HOTEL_ROOM_UNAVAILABLE");
+        assertThat(jdbc.queryForObject(
+            "SELECT status FROM hotel.reservation WHERE id = ?", String.class, stay.id())).isEqualTo("CHECKED_OUT");
+        assertThat(jdbc.queryForObject(
+            "SELECT checked_out_at IS NOT NULL FROM hotel.reservation WHERE id = ?", Boolean.class, stay.id())).isTrue();
+        assertThat(jdbc.queryForObject(
+            "SELECT count(*) FROM audit_event WHERE plugin_id = 'com.crm.hotel' AND entity_id = ? AND op = 'RESERVATION_CHECK_OUT_UNDO'",
+            Integer.class, stay.id())).isZero();
+    }
+
+    @Test
+    void undo_check_out_permission_403() {
+        String admin = adminToken();
+        Stay stay = checkedInStay(admin);
+        pay(admin, stay.id(), "CASH", null, null, ROOM_CHARGE);
+        assertThat(checkOut(admin, stay.id()).getStatusCode().value()).isEqualTo(200);
+        String checkInOnly = tokenWith("hotel_it_undo_checkout_none", "hotel.stays.checkin", "hotel.reservations.read");
+        String checker = tokenWith("hotel_it_undo_checkout_ok", "hotel.stays.checkout");
+
+        assertThat(undoCheckOut(checkInOnly, stay.id()).getStatusCode().value()).isEqualTo(403);
+        assertThat(undoCheckOut(null, stay.id()).getStatusCode().value()).isEqualTo(401);
+        assertThat(jdbc.queryForObject(
+            "SELECT status FROM hotel.reservation WHERE id = ?", String.class, stay.id())).isEqualTo("CHECKED_OUT");
+        assertThat(undoCheckOut(checker, stay.id()).getStatusCode().value()).isEqualTo(200);
+    }
+
     // --- helpers ---------------------------------------------------------------------------------------------
+
+    private ResponseEntity<String> undoCheckOut(String token, UUID id) {
+        return post(RESERVATIONS + "/" + id + "/undo-check-out", token, null);
+    }
 
     private record Stay(UUID id, UUID roomId, String idNumber, String idName) {
     }

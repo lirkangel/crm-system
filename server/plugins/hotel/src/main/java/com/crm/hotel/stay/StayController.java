@@ -41,7 +41,7 @@ public class StayController {
         return CommonResponse.success(checkIns.stayGuests(id));
     }
 
-    /** Only on the day of check-in, and only while the folio has no extra charges. */
+    /** Only on the business date of check-in, and only while the folio has no extra charges. */
     @PostMapping("/reservations/{id}/undo-check-in")
     @PreAuthorize("hasAuthority('" + HotelPermissions.STAYS_CHECKIN + "')")
     public CommonResponse<ReservationView> undoCheckIn(@PathVariable("id") UUID id) {
@@ -64,5 +64,12 @@ public class StayController {
     @PreAuthorize("hasAuthority('" + HotelPermissions.STAYS_CHECKOUT + "')")
     public CommonResponse<ReservationView> checkOut(@PathVariable("id") UUID id) {
         return CommonResponse.success(checkOuts.checkOut(id));
+    }
+
+    /** Only on the business date of the check-out, and only while the room is still free for the stay. */
+    @PostMapping("/reservations/{id}/undo-check-out")
+    @PreAuthorize("hasAuthority('" + HotelPermissions.STAYS_CHECKOUT + "')")
+    public CommonResponse<ReservationView> undoCheckOut(@PathVariable("id") UUID id) {
+        return CommonResponse.success(checkOuts.undo(id));
     }
 }
