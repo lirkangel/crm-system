@@ -1,17 +1,20 @@
 package com.crm.hotel.scan;
 
+import com.crm.foundation.Plugin.AuditRecorder;
 import com.crm.hotel.BusinessDay;
 import com.crm.hotel.HotelErrors;
 import com.crm.hotel.domain.Reservation;
 import com.crm.hotel.repo.IdScanRepository;
 import com.crm.hotel.repo.ReservationRepository;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
+import java.time.Instant;
 import java.util.Collection;
 import java.util.Optional;
 import java.util.UUID;
@@ -20,17 +23,20 @@ import java.util.UUID;
  * Upload of a CCCD scan: the QR is decoded and parsed outside any transaction (no lock held while decoding), then
  * {@link IdScanStore} stores the downscaled image in one short transaction.
  */
+@Slf4j
 @Service
 @RequiredArgsConstructor
 public class IdScanService {
 
     static final int MAX_BYTES = 10 * 1024 * 1024;
+    static final String AUDIT_PURGE = "ID_SCAN_PURGE";
 
     private final BusinessDay businessDay;
     private final ReservationRepository reservations;
     private final IdScanStore store;
     private final IdScanRepository scans;
     private final ScanPipeline pipeline;
+    private final AuditRecorder audit;
 
     public record UploadResult(IdScanView view, boolean created) {
     }
@@ -90,7 +96,10 @@ public class IdScanService {
         }
         // Delete first (flushed), so the UNIQUE(stay_guest_id) can't trip when the scan is linked
         scans.deleteLinkedToExcept(stayGuestId, scanId);
-        scans.linkTo(scanId, stayGuestId);
+        if (scans.linkTo(scanId, stayGuestId) != 1) {
+            // The retention purge takes no reservation lock: the scan was deleted since it was read
+            throw HotelErrors.scanMismatch("The scan no longer exists");
+        }
         return true;
     }
 
@@ -100,6 +109,23 @@ public class IdScanService {
         if (!stayGuestIds.isEmpty()) {
             scans.deleteLinkedToAny(stayGuestIds);
         }
+    }
+
+    /**
+     * Deletes every scan uploaded before {@code cutoff}, in one bulk statement in its own transaction (no entity is
+     * loaded, so no image bytes are read). Audited as {@code ID_SCAN_PURGE} (count only) when anything was deleted;
+     * a system job, so there is no user or IP.
+     *
+     * @return the number of deleted scans
+     */
+    @Transactional
+    public int purgeOlderThan(Instant cutoff) {
+        int count = scans.deleteUploadedBefore(cutoff);
+        if (count > 0) {
+            audit.record(IdScanStore.ID_SCAN, null, AUDIT_PURGE, null, "{\"count\": " + count + "}");
+            log.info("Purged {} ID scan(s)", count);
+        }
+        return count;
     }
 
     /** The image linked to this stay guest of this reservation, if any. */

@@ -7,10 +7,15 @@ import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
+import java.time.Instant;
 import java.util.Collection;
 import java.util.Optional;
 import java.util.UUID;
 
+/**
+ * The {@code IdScan} entity carries the image bytes eagerly, so production code must never load it: use the
+ * projections and bulk queries below, never {@code findAll}, {@code findById} or {@code delete(entity)}.
+ */
 public interface IdScanRepository extends JpaRepository<IdScan, UUID> {
 
     long countByReservationId(UUID reservationId);
@@ -49,4 +54,9 @@ public interface IdScanRepository extends JpaRepository<IdScan, UUID> {
     @Modifying(flushAutomatically = true)
     @Query("delete from HotelIdScan x where x.stayGuestId in :stayGuestIds")
     int deleteLinkedToAny(@Param("stayGuestIds") Collection<UUID> stayGuestIds);
+
+    /** The retention purge: one bulk delete, flushing first; returns the number of deleted scans. */
+    @Modifying(flushAutomatically = true)
+    @Query("delete from HotelIdScan x where x.uploadedAt < :cutoff")
+    int deleteUploadedBefore(@Param("cutoff") Instant cutoff);
 }

@@ -202,6 +202,22 @@ class IdScanLinkIT extends HotelITSupport {
     }
 
     @Test
+    void check_in_with_scan_purged_meanwhile_is_409_and_saves_nothing() {
+        String token = adminToken();
+        UUID id = booked(token, 1);
+        UUID scan = upload(token, id, "079090200013", "NGUYEN MUOI BA");
+        // the hourly purge deletes the row between the upload and the check-in (a future cutoff catches it)
+        assertThat(purgeScansOlderThan(java.time.Instant.now().plusSeconds(3600))).isGreaterThanOrEqualTo(1);
+
+        ResponseEntity<String> response = checkIn(token, id, List.of(adultWithScan("079090200013", "Nguyen Muoi Ba", scan)));
+
+        assertThat(response.getStatusCode().value()).as(response.getBody()).isEqualTo(409);
+        assertThat(json(response).path("code").asText()).isEqualTo("HOTEL_SCAN_MISMATCH");
+        assertThat(status(id)).isEqualTo("CONFIRMED");
+        assertThat(stayGuestIds(id)).isEmpty();
+    }
+
+    @Test
     void check_in_without_scan_still_works() {
         String token = adminToken();
         UUID id = booked(token, 1);

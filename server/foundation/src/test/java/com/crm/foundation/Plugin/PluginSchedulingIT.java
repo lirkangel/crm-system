@@ -38,6 +38,7 @@ class PluginSchedulingIT {
 
     private static final String PLUGIN_ID = "com.crm.sched";
     private static final String COUNTER = "crm.it.sched.ticks";
+    private static final String THREAD = "crm.it.sched.thread";
 
     @Autowired
     private PluginHost host;
@@ -66,13 +67,14 @@ class PluginSchedulingIT {
                 public class Ticker {
                     @Scheduled(fixedDelay = 100)
                     public void tick() {
+                        System.setProperty("%s", Thread.currentThread().getName());
                         synchronized (System.class) {
                             int n = Integer.parseInt(System.getProperty("%s", "0"));
                             System.setProperty("%s", String.valueOf(n + 1));
                         }
                     }
                 }
-                """.formatted(COUNTER, COUNTER))
+                """.formatted(THREAD, COUNTER, COUNTER))
             .buildTo(pluginDir.resolve("sched.zip"));
         registry.add("foundation.plugins.directory", pluginDir::toString);
     }
@@ -96,6 +98,14 @@ class PluginSchedulingIT {
     @Order(1)
     void scheduled_method_in_plugin_runs() throws InterruptedException {
         assertThat(awaitTicksAtLeast(3, 5_000)).as("ticks after 5 s: %d", ticks()).isTrue();
+    }
+
+    @Test
+    @Order(1)
+    void scheduled_method_runs_on_foundations_shared_scheduler() throws InterruptedException {
+        assertThat(awaitTicksAtLeast(1, 5_000)).isTrue();
+
+        assertThat(System.getProperty(THREAD)).startsWith("scheduling-");
     }
 
     @Test

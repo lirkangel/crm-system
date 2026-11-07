@@ -39,6 +39,11 @@ spring:
       max-file-size: 10MB         # CCCD scans and other plugin uploads
       max-request-size: 11MB
 
+  task:
+    scheduling:
+      pool:
+        size: 2                   # ChainVerifier and plugin jobs (e.g. the hotel's scan purge) must not share one thread
+
   thymeleaf:
     cache: false                  # disable in dev; enable in prod via profile
 

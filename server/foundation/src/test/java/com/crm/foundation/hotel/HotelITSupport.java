@@ -1,6 +1,7 @@
 package com.crm.foundation.hotel;
 
 import com.crm.foundation.Domain.User;
+import com.crm.foundation.Plugin.PluginHost;
 import com.crm.foundation.Repository.RoleRepository;
 import com.crm.foundation.Repository.UserRepository;
 import com.crm.foundation.config.TestContainersConfig;
@@ -25,7 +26,10 @@ import org.springframework.test.context.DynamicPropertySource;
 import java.io.IOException;
 import java.net.URISyntaxException;
 import java.nio.file.Files;
+import java.lang.reflect.InvocationTargetException;
+import java.lang.reflect.Method;
 import java.nio.file.Path;
+import java.time.Instant;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.ZoneId;
@@ -70,6 +74,9 @@ public abstract class HotelITSupport {
     private UserRepository userRepository;
 
     @Autowired
+    private PluginHost pluginHost;
+
+    @Autowired
     private RoleRepository roleRepository;
 
     /** Points the plugin host at the directory holding only the packaged hotel ZIP. */
@@ -95,6 +102,26 @@ public abstract class HotelITSupport {
             return dir;
         } catch (URISyntaxException | IOException e) {
             throw new IllegalStateException("hotel plugin directory target/test-plugins is not usable", e);
+        }
+    }
+
+    /**
+     * Calls the hotel's {@code IdScanService.purgeOlderThan(cutoff)} in the plugin's own context (its classes are
+     * invisible here, so by reflection) and returns the number of deleted scans.
+     */
+    protected int purgeScansOlderThan(Instant cutoff) {
+        try {
+            Method running = PluginHost.class.getDeclaredMethod("runningContext", String.class);
+            running.setAccessible(true);
+            org.springframework.context.ConfigurableApplicationContext context =
+                ((java.util.Optional<org.springframework.context.ConfigurableApplicationContext>)
+                    running.invoke(pluginHost, HOTEL_PLUGIN_ID)).orElseThrow();
+            Object service = context.getBean("idScanService");
+            return (int) service.getClass().getMethod("purgeOlderThan", Instant.class).invoke(service, cutoff);
+        } catch (InvocationTargetException e) {
+            throw new IllegalStateException(e.getCause());
+        } catch (ReflectiveOperationException e) {
+            throw new IllegalStateException(e);
         }
     }
 
