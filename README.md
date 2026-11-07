@@ -129,7 +129,7 @@ The platform is Vietnamese-first (`vi-VN`): DD/MM/YYYY dates, VND currency (dot-
 
 ## Status
 
-> **Active development** — Foundation platform and plugin runtime complete. Hotel PMS Tier 1 on the server: the booking slice (rooms, guests, availability, reservations) and the stay slice (check-in, folio, check-out, front-desk lists; plugin 0.2.0) are done; the desktop screens are next.
+> **Active development** — Foundation platform and plugin runtime complete. Hotel PMS Tier 1 on the server: the booking slice (rooms, guests, availability, reservations) and the stay slice (check-in, folio, check-out, front-desk lists; plugin 0.2.0) and the CCCD scan (plugin 0.3.0) are done; the desktop screens are next.
 
 ### What's working
 
@@ -147,6 +147,17 @@ The platform is Vietnamese-first (`vi-VN`): DD/MM/YYYY dates, VND currency (dot-
 | Tests | 86 frontend (Vitest + RTL); backend via Testcontainers (see "Run server tests") |
 
 **Hotel 0.2.0 permissions** (new keys, granted to `admin` on first load; there is no receptionist role yet): `hotel.stays.checkin` (check-in, undo check-in, identity corrections), `hotel.stays.checkout`, `hotel.stays.read` (the identity records, which are personal data), `hotel.folio.read`, `hotel.folio.charge` (add and void charges), `hotel.folio.pay` (add and void payments). The front-desk lists use `hotel.reservations.read`. **Admins must log in again after upgrading to receive them.** Upgrading means replacing `hotel-0.1.0-plugin.zip` with `hotel-0.2.0-plugin.zip` (the server image already does); the V2 migration runs at startup and leaves slice-1 reservations as they were.
+
+### CCCD scan (hotel 0.3.0)
+
+At check-in, staff upload a photo of the guest's CCCD. The server decodes the QR code, returns the identity fields to pre-fill (`idType` CCCD, `nationality` VN), stores the photo in Postgres (table `hotel.id_scan`, JPEG, long edge at most 1600 px) and links it to the guest's identity record.
+
+- **Retention:** a photo is deleted 30 days after upload (hourly job, on the hour, Asia/Ho_Chi_Minh). A stay longer than 30 days loses the photo but keeps the confirmed identity fields. Undo check-in deletes the linked photos at once.
+- **Backups:** if Postgres backups are added, they must keep 30 days or less, or deleted photos live on in them.
+- **Privacy:** photos, QR text and decoded values are never written to the audit log, the logs or the change feed (audit holds only the size, and the purge count).
+- **Endpoints and permissions:** `POST /api/v1/plugins/hotel/reservations/{id}/id-scans` (multipart `image`; `hotel.stays.checkin`; 201 new, 200 duplicate); `GET .../reservations/{id}/stay-guests/{stayGuestId}/id-scan` (`hotel.stays.read`); `StayGuestRequest.idScanId` (optional) links a scan on check-in or correction (`hotel.stays.checkin`). No new permission keys.
+- **Clients** should check that a photo is 10 MB or less before uploading; larger uploads are refused with 413.
+- **Plugin ZIPs** may now bundle non-Spring third-party libraries in `lib/` (the hotel ZIP carries `zxing-core` and `zxing-javase`).
 
 ## License
 

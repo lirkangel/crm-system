@@ -318,6 +318,37 @@ F-EPIC-1 (scaffold) ─► F-EPIC-2 (auth UI) ─► F-EPIC-3 (data) ─► F-EP
 
 **Not in this slice:** the police stay-registration export (Khai báo lưu trú), tax invoices, rate plans and extra-guest pricing, housekeeping status, a receptionist role (needs role management), hotel screens in the desktop app.
 
+## H-EPIC-3 — CCCD scan
+*Goal: at check-in a receptionist uploads a photo of the guest's CCCD; the server reads the QR code, pre-fills the identity fields, keeps the photo against the identity record and deletes it 30 days after upload. Server side only; the desktop upload screen comes with F301/F401.*
+*Spec: `2026-11-07-hotel-cccd-scan-design.md` — design doc kept locally (docs/superpowers is git-ignored). Plugin version 0.3.0 (migration `V3__hotel_id_scan.sql`, table `hotel.id_scan`); no new permission keys (`hotel.stays.checkin` uploads and links, `hotel.stays.read` views the image). The hotel ZIP's `lib/` now also holds `zxing-core` and `zxing-javase` (3.5.3).*
+
+### H301 — Plugin scheduling and large uploads · `DONE` · P0 · (needs B-EPIC-7)
+**Expected:** a plugin's Spring child context can run `@Scheduled` jobs, and the server accepts a 10 MB image upload.
+**Acceptance:** multipart limits 10 MB per file / 11 MB per request, `server.tomcat.max-swallow-size` 12 MB, `spring.task.scheduling.pool.size` 2; an upload over the limit is 413 problem code `PAYLOAD_TOO_LARGE`.
+**Done:** (86aa419) Foundation settings above and scheduling support in plugin child contexts. Verified 2026-11-07.
+
+### H302 — CCCD QR parsing and image decoding · `DONE` · P0 · (needs H301)
+**Expected:** a JPEG or PNG is decoded for its QR code and the text is parsed into identity fields.
+**Acceptance:** the QR text has exactly 7 pipe-separated fields `idNumber|oldIdNumber|fullName|dateOfBirth(ddMMyyyy)|sex|address|issueDate(ddMMyyyy)`, valid only if `idNumber` is 12 digits, both dates parse and are not in the future, `fullName` is non-blank; the result carries `idType = CCCD`, `nationality = VN`; image decode memory and time are bounded and each upload is decoded once.
+**Done:** (f7c2c44, d5b0b33, 8d1a977) `CccdQrParser`, `QrDecoder` and `ImageNormalizer` (stored as JPEG, long edge at most 1600 px) behind `ScanPipeline`, with the bundled zxing jars. `CccdQrParserTest`, `QrDecoderTest`, `ImageNormalizerTest`, `ScanPipelineTest`. Verified 2026-11-07.
+
+### H303 — Scan upload · `DONE` · P0 · (needs H302)
+**Expected:** `POST /reservations/{id}/id-scans` (multipart `image`, `hotel.stays.checkin`) stores the photo and returns the parsed fields.
+**Acceptance:** 201 for a new scan, 200 for the same image bytes (sha256) on the same reservation; JPEG/PNG by magic bytes, at most 10 MB; at most 20 scans per reservation; errors `HOTEL_SCAN_UNREADABLE` 400, `HOTEL_SCAN_UNSUPPORTED` 415 (type) or 413 (size), `HOTEL_SCAN_LIMIT` 409, `HOTEL_SCAN_BUSY` 503; unreadable and unsupported uploads are not stored; the response carries `Cache-Control: no-store`; audit `ID_SCAN_UPLOAD` holds the size only, never the image, the QR text or a decoded value.
+**Done:** (2c4a035) `IdScanService` under the reservation lock, `HotelIdScan` entity, `V3__hotel_id_scan.sql`. `IdScanServiceTest`, `IdScanUploadIT`. Verified 2026-11-07.
+
+### H304 — Link to identity records and view · `DONE` · P0 · (needs H303, H203)
+**Expected:** `StayGuestRequest.idScanId` links a scan to a stay guest; `GET /reservations/{id}/stay-guests/{stayGuestId}/id-scan` returns the image (`hotel.stays.read`).
+**Acceptance:** `idScanId` is optional; an unknown scan, a scan of another reservation, one already linked to another guest, or one scan given to two adults is 409 `HOTEL_SCAN_MISMATCH`; replacing a stay guest's scan deletes the old one in the same transaction; undo check-in deletes the linked scans at once; the image response carries `Cache-Control: no-store`; the image never appears in audit, logs or the change feed.
+**Done:** (01449b9) linking in `CheckInService`/`StayController`, image view endpoint. `IdScanLinkIT`. Verified 2026-11-07.
+
+### H305 — 30-day purge · `DONE` · P1 · (needs H303)
+**Expected:** a scan is deleted 30 days after upload, whether or not it is linked; a stay guest keeps the confirmed fields.
+**Acceptance:** rows with `uploaded_at < now - 30 days` are deleted by a job that runs hourly on the hour (`0 0 * * * *`, zone Asia/Ho_Chi_Minh); audit `ID_SCAN_PURGE` (entity id null, `{"count": n}`) is written only when n > 0.
+**Done:** (8ff4c30) `IdScanPurgeJob` on the plugin scheduler. `IdScanPurgeJobTest`, `IdScanPurgeIT`. Verified 2026-11-07.
+
+**Not in this slice:** passport/MRZ scanning, OCR of the front of the card, the desktop upload screen, per-guest retention settings.
+
 ---
 
 # FRONTEND (React — `desktop/src/`)
