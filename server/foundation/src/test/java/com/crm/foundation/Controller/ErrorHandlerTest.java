@@ -44,6 +44,18 @@ class ErrorHandlerTest {
     }
 
     @Test
+    void max_upload_size_is_413_payload_too_large() {
+        ResponseEntity<ProblemDetail> response = handler.handleMaxUploadSize(
+            new org.springframework.web.multipart.MaxUploadSizeExceededException(10L * 1024 * 1024));
+        ProblemDetail problem = response.getBody();
+
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.PAYLOAD_TOO_LARGE);
+        assertProblemBasics(problem, 413, "urn:problem-type:request-rejected");
+        assertThat(problem.getProperties().get("code")).isEqualTo("PAYLOAD_TOO_LARGE");
+        assertThat(problem.getDetail()).doesNotContain("10485760");
+    }
+
+    @Test
     void validation_problem_carries_field_details() throws NoSuchMethodException {
         BeanPropertyBindingResult binding = new BeanPropertyBindingResult(new Object(), "loginRequest");
         binding.rejectValue(null, "NotBlank", "must not be blank");

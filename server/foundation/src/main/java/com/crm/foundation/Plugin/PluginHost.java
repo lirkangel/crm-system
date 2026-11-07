@@ -14,6 +14,7 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 
 /**
  * Late plugin phase (design 6.1), run once the application context is up.
@@ -123,6 +124,12 @@ public class PluginHost implements ApplicationRunner, DisposableBean {
             closeQuietly(manifest.id(), child);
             markLoadFailedQuietly(manifest.id(), reason(e));
         }
+    }
+
+    /** The child context of a running plugin; for tests and diagnostics. */
+    Optional<ConfigurableApplicationContext> runningContext(String pluginId) {
+        RunningPlugin plugin = running.get(pluginId);
+        return plugin == null ? Optional.empty() : Optional.of(plugin.context());
     }
 
     /** Stops running plugins (reverse start order) before the parent context goes away. */

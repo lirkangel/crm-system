@@ -25,6 +25,7 @@ import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 import org.springframework.web.context.request.async.AsyncRequestNotUsableException;
+import org.springframework.web.multipart.MaxUploadSizeExceededException;
 import org.springframework.web.servlet.NoHandlerFoundException;
 import org.springframework.web.servlet.resource.NoResourceFoundException;
 
@@ -119,6 +120,13 @@ public class ErrorHandler {
         return ResponseEntity.status(status)
             .headers(response.getHeaders())
             .body(problem(status, type, status.name(), detail));
+    }
+
+    /** Multipart upload over {@code spring.servlet.multipart.max-file-size}/{@code max-request-size}. */
+    @ExceptionHandler(MaxUploadSizeExceededException.class)
+    public ResponseEntity<ProblemDetail> handleMaxUploadSize(MaxUploadSizeExceededException ex) {
+        return ResponseEntity.status(HttpStatus.PAYLOAD_TOO_LARGE).body(problem(
+            HttpStatus.PAYLOAD_TOO_LARGE, TYPE_REQUEST_REJECTED, "PAYLOAD_TOO_LARGE", "Upload is too large"));
     }
 
     @ExceptionHandler(BadRequestException.class)
