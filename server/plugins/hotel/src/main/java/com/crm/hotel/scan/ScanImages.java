@@ -1,8 +1,10 @@
 package com.crm.hotel.scan;
 
 import javax.imageio.ImageIO;
+import javax.imageio.ImageReadParam;
 import javax.imageio.ImageReader;
 import javax.imageio.stream.ImageInputStream;
+import javax.imageio.stream.MemoryCacheImageInputStream;
 import java.awt.Graphics2D;
 import java.awt.RenderingHints;
 import java.awt.image.BufferedImage;
@@ -14,14 +16,21 @@ import java.util.Iterator;
 final class ScanImages {
 
     /** Decompression-bomb guard: a 10 MB PNG can expand enormously. */
-    private static final long MAX_PIXELS = 100_000_000L;
+    private static final long MAX_PIXELS = 50_000_000L;
+
+    private static final int STORE_LONG_EDGE = 1600;
 
     private ScanImages() {
     }
 
-    /** Decodes JPEG/PNG bytes; throws IllegalArgumentException when unreadable or absurdly large. */
-    static BufferedImage read(byte[] bytes) {
-        try (ImageInputStream in = ImageIO.createImageInputStream(new ByteArrayInputStream(bytes))) {
+    /**
+     * Decodes JPEG/PNG bytes with source subsampling so the decoded long edge is at most {@code maxLongEdge}
+     * (the full-resolution raster is never built). Throws IllegalArgumentException when unreadable or
+     * declared larger than {@link #MAX_PIXELS}.
+     */
+    static BufferedImage readBounded(byte[] bytes, int maxLongEdge) {
+        // memory-backed stream: no temp file is written
+        try (ImageInputStream in = new MemoryCacheImageInputStream(new ByteArrayInputStream(bytes))) {
             Iterator<ImageReader> readers = ImageIO.getImageReaders(in);
             if (!readers.hasNext()) {
                 throw new IllegalArgumentException("Unreadable image");
@@ -29,10 +38,20 @@ final class ScanImages {
             ImageReader reader = readers.next();
             try {
                 reader.setInput(in, true, true);
-                if ((long) reader.getWidth(0) * reader.getHeight(0) > MAX_PIXELS) {
+                int w = reader.getWidth(0);
+                int h = reader.getHeight(0);
+                if ((long) w * h > MAX_PIXELS) {
                     throw new IllegalArgumentException("Image too large");
                 }
-                BufferedImage image = reader.read(0);
+                int longEdge = Math.max(w, h);
+                int sub = Math.max(1, (longEdge + maxLongEdge - 1) / maxLongEdge);
+                if (sub > 1 && longEdge / sub < STORE_LONG_EDGE) {
+                    // subsampling would leave less than the 1600 px we store; accept a slightly larger raster
+                    sub--;
+                }
+                ImageReadParam param = reader.getDefaultReadParam();
+                param.setSourceSubsampling(sub, sub, 0, 0);
+                BufferedImage image = reader.read(0, param);
                 if (image == null) {
                     throw new IllegalArgumentException("Unreadable image");
                 }
@@ -40,10 +59,9 @@ final class ScanImages {
             } finally {
                 reader.dispose();
             }
+        } catch (IllegalArgumentException e) {
+            throw e;
         } catch (IOException | RuntimeException e) {
-            if (e instanceof IllegalArgumentException iae) {
-                throw iae;
-            }
             throw new IllegalArgumentException("Unreadable image");
         }
     }

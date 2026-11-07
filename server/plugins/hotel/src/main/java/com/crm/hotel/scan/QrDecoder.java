@@ -10,49 +10,107 @@ import com.google.zxing.client.j2se.BufferedImageLuminanceSource;
 import com.google.zxing.common.HybridBinarizer;
 
 import java.awt.image.BufferedImage;
+import java.time.Duration;
+import java.util.ArrayList;
 import java.util.EnumMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.concurrent.Semaphore;
+import java.util.concurrent.TimeUnit;
+import java.util.function.LongSupplier;
 
-/** Finds and decodes a QR code in a photo. Never throws on bad input and never logs decoded text. */
+/**
+ * Finds and decodes a QR code in a photo. Memory and time are bounded: the image is decoded subsampled
+ * (long edge at most 2400 px), the cheapest passes run first, at most two decodes run concurrently and a
+ * wall-clock deadline ends the search. Never logs decoded text; returns empty on bad input.
+ */
 public final class QrDecoder {
 
-    private static final int[] LONG_EDGES = {1600, 800};
+    static final int DECODE_LONG_EDGE = 2400;
+    private static final int[] SCALES = {1600, DECODE_LONG_EDGE, 800};
+    private static final Duration DEFAULT_TIMEOUT = Duration.ofSeconds(4);
+    private static final Semaphore PERMITS = new Semaphore(2);
 
     private QrDecoder() {
     }
 
+    /** @throws ScanBusyException when no decode slot frees up within 5 seconds */
     public static Optional<String> decode(byte[] image) {
-        BufferedImage source;
+        return decode(image, DEFAULT_TIMEOUT, System::nanoTime);
+    }
+
+    static Optional<String> decode(byte[] image, Duration timeout, LongSupplier nanoClock) {
+        boolean acquired;
         try {
-            source = ScanImages.read(image);
-        } catch (RuntimeException e) {
-            return Optional.empty();
+            acquired = PERMITS.tryAcquire(5, TimeUnit.SECONDS);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw new ScanBusyException();
+        }
+        if (!acquired) {
+            throw new ScanBusyException();
         }
         try {
-            Optional<String> found = tryAllRotations(ScanImages.toRgbFitting(source, Integer.MAX_VALUE));
-            for (int i = 0; found.isEmpty() && i < LONG_EDGES.length; i++) {
-                if (Math.max(source.getWidth(), source.getHeight()) > LONG_EDGES[i]) {
-                    found = tryAllRotations(ScanImages.toRgbFitting(source, LONG_EDGES[i]));
-                }
-            }
-            return found;
-        } catch (RuntimeException e) {
-            return Optional.empty();
+            long deadline = nanoClock.getAsLong() + timeout.toNanos();
+            return search(image, deadline, nanoClock);
+        } finally {
+            PERMITS.release();
         }
     }
 
-    private static Optional<String> tryAllRotations(BufferedImage image) {
-        BufferedImage current = image;
-        for (int turn = 0; turn < 4; turn++) {
-            Optional<String> text = tryDecode(current);
-            if (text.isPresent()) {
-                return text;
-            }
-            current = rotate90(current);
+    private static Optional<String> search(byte[] image, long deadline, LongSupplier clock) {
+        BufferedImage source;
+        try {
+            source = ScanImages.readBounded(image, DECODE_LONG_EDGE);
+        } catch (RuntimeException e) {
+            return Optional.empty();
         }
-        return Optional.empty();
+        try {
+            int longEdge = Math.max(source.getWidth(), source.getHeight());
+            // distinct scales (bounded original = its own long edge), in the order 1600, original, 800
+            List<Integer> edges = new ArrayList<>();
+            for (int scale : SCALES) {
+                int edge = scale == DECODE_LONG_EDGE ? longEdge : scale;
+                if ((scale == DECODE_LONG_EDGE || edge < longEdge) && !edges.contains(edge)) {
+                    edges.add(edge);
+                }
+            }
+            List<BufferedImage> copies = new ArrayList<>();
+            // pass 1: upright at each scale
+            for (int edge : edges) {
+                if (clock.getAsLong() > deadline) {
+                    return Optional.empty();
+                }
+                BufferedImage copy = ScanImages.toRgbFitting(source, edge);
+                copies.add(copy);
+                Optional<String> text = tryDecode(copy);
+                if (text.isPresent()) {
+                    return text;
+                }
+            }
+            // pass 2: rotations, only at 1600 and at the bounded original (never at 800)
+            for (int i = 0; i < edges.size(); i++) {
+                int edge = edges.get(i);
+                if (edge != 1600 && edge != longEdge) {
+                    continue;
+                }
+                BufferedImage current = copies.get(i);
+                for (int turn = 1; turn < 4; turn++) {
+                    if (clock.getAsLong() > deadline) {
+                        return Optional.empty();
+                    }
+                    current = rotate90(current);
+                    Optional<String> text = tryDecode(current);
+                    if (text.isPresent()) {
+                        return text;
+                    }
+                }
+            }
+            return Optional.empty();
+        } catch (RuntimeException e) {
+            return Optional.empty();
+        }
     }
 
     private static Optional<String> tryDecode(BufferedImage image) {

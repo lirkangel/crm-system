@@ -59,8 +59,8 @@ class HotelPluginInstallIT extends HotelITSupport {
 
         assertThat(jars).hasSize(3);
         assertThat(jars).anyMatch(name -> name.matches("lib/hotel-.+\\.jar"));
-        assertThat(jars).anyMatch(name -> name.matches("lib/core-3\\.5\\.3\\.jar"));
-        assertThat(jars).anyMatch(name -> name.matches("lib/javase-3\\.5\\.3\\.jar"));
+        assertThat(jars).anyMatch(name -> name.matches("lib/zxing-core-3\\.5\\.3\\.jar"));
+        assertThat(jars).anyMatch(name -> name.matches("lib/zxing-javase-3\\.5\\.3\\.jar"));
     }
 
     @Test

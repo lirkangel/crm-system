@@ -58,4 +58,41 @@ class ImageNormalizerTest {
         assertThatThrownBy(() -> ImageNormalizer.toStoredJpeg(new byte[] {1, 2, 3}))
             .isInstanceOf(IllegalArgumentException.class);
     }
+
+    @Test
+    void rejects_over_50mp_without_decoding() throws Exception {
+        // signature + IHDR declaring 10000x6000 (60 MP); a few dozen bytes, no raster behind it
+        ByteArrayOutputStream bytes = new ByteArrayOutputStream();
+        java.io.DataOutputStream out = new java.io.DataOutputStream(bytes);
+        out.write(new byte[] {(byte) 0x89, 'P', 'N', 'G', 0x0D, 0x0A, 0x1A, 0x0A});
+        ByteArrayOutputStream ihdr = new ByteArrayOutputStream();
+        java.io.DataOutputStream data = new java.io.DataOutputStream(ihdr);
+        data.write(new byte[] {'I', 'H', 'D', 'R'});
+        data.writeInt(10000);
+        data.writeInt(6000);
+        data.write(new byte[] {8, 2, 0, 0, 0});
+        java.util.zip.CRC32 crc = new java.util.zip.CRC32();
+        crc.update(ihdr.toByteArray());
+        out.writeInt(13);
+        out.write(ihdr.toByteArray());
+        out.writeInt((int) crc.getValue());
+
+        assertThatThrownBy(() -> ImageNormalizer.toStoredJpeg(bytes.toByteArray()))
+            .isInstanceOf(IllegalArgumentException.class)
+            .hasMessageContaining("too large");
+    }
+
+    @Test
+    void flattens_alpha_png_to_white() throws Exception {
+        BufferedImage image = new BufferedImage(200, 100, BufferedImage.TYPE_INT_ARGB); // fully transparent
+        ByteArrayOutputStream png = new ByteArrayOutputStream();
+        ImageIO.write(image, "png", png);
+
+        BufferedImage out = ImageIO.read(new ByteArrayInputStream(ImageNormalizer.toStoredJpeg(png.toByteArray())));
+
+        int rgb = out.getRGB(100, 50);
+        assertThat((rgb >> 16) & 0xFF).isGreaterThan(240);
+        assertThat((rgb >> 8) & 0xFF).isGreaterThan(240);
+        assertThat(rgb & 0xFF).isGreaterThan(240);
+    }
 }

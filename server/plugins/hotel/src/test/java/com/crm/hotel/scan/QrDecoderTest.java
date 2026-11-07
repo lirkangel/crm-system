@@ -113,4 +113,29 @@ class QrDecoderTest {
         assertThat(ImageFormat.detect(new byte[] {(byte) 0xFF, (byte) 0xD8})).isEmpty();
         assertThat(ImageFormat.detect(new byte[0])).isEmpty();
     }
+
+    @Test
+    void decodes_utf8_payload_without_eci() throws Exception {
+        // zxing's writer emits UTF-8 bytes without an ECI segment for the Vietnamese sample
+        assertThat(QrDecoder.decode(encode(qr(TEXT, 500), "png"))).contains(TEXT);
+    }
+
+    @Test
+    void blank_photo_gives_up_within_deadline() throws Exception {
+        byte[] jpeg = encode(photoWithQr(new BufferedImage(1, 1, BufferedImage.TYPE_INT_RGB)), "jpg");
+        long start = System.nanoTime();
+
+        assertThat(QrDecoder.decode(jpeg)).isEmpty();
+
+        assertThat(java.time.Duration.ofNanos(System.nanoTime() - start)).isLessThan(java.time.Duration.ofSeconds(5));
+    }
+
+    @Test
+    void expired_deadline_returns_empty_before_any_pass() throws Exception {
+        byte[] png = encode(qr(TEXT, 400), "png");
+        long[] now = {0};
+        java.util.function.LongSupplier clock = () -> now[0]++ * 10_000_000_000L; // each read advances 10 s
+
+        assertThat(QrDecoder.decode(png, java.time.Duration.ofSeconds(4), clock)).isEmpty();
+    }
 }

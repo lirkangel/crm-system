@@ -80,4 +80,16 @@ class CccdQrParserTest {
 
         assertThat(parsed).isEmpty();
     }
+
+    @Test
+    void rejects_trailing_pipe() {
+        assertThat(CccdQrParser.parse(VALID + "|", TODAY)).isEmpty();
+    }
+
+    @Test
+    void toString_is_redacted() {
+        String text = CccdQrParser.parse(VALID, TODAY).orElseThrow().toString();
+
+        assertThat(text).doesNotContain("079203012345", "Nguyễn", "Lê Lợi", "285123456", "1990");
+    }
 }

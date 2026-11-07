@@ -22,6 +22,7 @@
     <dependencySets>
         <dependencySet>
             <outputDirectory>lib</outputDirectory>
+            <outputFileNameMapping>zxing-${artifact.artifactId}-${artifact.version}.${artifact.extension}</outputFileNameMapping>
             <useProjectArtifact>false</useProjectArtifact>
             <useTransitiveDependencies>true</useTransitiveDependencies>
             <scope>runtime</scope>

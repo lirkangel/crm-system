@@ -13,6 +13,8 @@ import java.io.IOException;
 public final class ImageNormalizer {
 
     static final int MAX_LONG_EDGE = 1600;
+    /** Decode bound: bigger sources are subsampled while reading, then scaled to 1600 for storage. */
+    static final int DECODE_LONG_EDGE = 2400;
     private static final float QUALITY = 0.8f;
 
     private ImageNormalizer() {
@@ -20,7 +22,7 @@ public final class ImageNormalizer {
 
     /** @throws IllegalArgumentException when the bytes are not a readable image */
     public static byte[] toStoredJpeg(byte[] image) {
-        BufferedImage fitted = ScanImages.toRgbFitting(ScanImages.read(image), MAX_LONG_EDGE);
+        BufferedImage fitted = ScanImages.toRgbFitting(ScanImages.readBounded(image, DECODE_LONG_EDGE), MAX_LONG_EDGE);
         ImageWriter writer = ImageIO.getImageWritersByFormatName("jpeg").next();
         try {
             ImageWriteParam param = writer.getDefaultWriteParam();
