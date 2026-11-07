@@ -35,6 +35,8 @@ F-EPIC-1 (scaffold) ─► F-EPIC-2 (auth UI) ─► F-EPIC-3 (data) ─► F-EP
 
 > **State (2026-10-26):** the business date (H208) and undo check-out (H209) close the two front-desk gaps the slice 2 review found. Full gate: 477 tests (436 foundation + 41 hotel unit), 0 failures, 0 skipped.
 
+> **State (2026-11-07):** the CCCD scan (H-EPIC-3, plugin 0.3.0) is done on the server. Full gate: 538 tests (467 foundation + 71 hotel unit), 0 failures, 0 skipped.
+
 ## B-EPIC-1 — Identity & Auth
 *Goal: a usable, rotation-safe token contract.*
 
@@ -334,7 +336,7 @@ F-EPIC-1 (scaffold) ─► F-EPIC-2 (auth UI) ─► F-EPIC-3 (data) ─► F-EP
 
 ### H303 — Scan upload · `DONE` · P0 · (needs H302)
 **Expected:** `POST /reservations/{id}/id-scans` (multipart `image`, `hotel.stays.checkin`) stores the photo and returns the parsed fields.
-**Acceptance:** 201 for a new scan, 200 for the same image bytes (sha256) on the same reservation; JPEG/PNG by magic bytes, at most 10 MB; at most 20 scans per reservation; errors `HOTEL_SCAN_UNREADABLE` 400, `HOTEL_SCAN_UNSUPPORTED` 415 (type) or 413 (size), `HOTEL_SCAN_LIMIT` 409, `HOTEL_SCAN_BUSY` 503; unreadable and unsupported uploads are not stored; the response carries `Cache-Control: no-store`; audit `ID_SCAN_UPLOAD` holds the size only, never the image, the QR text or a decoded value.
+**Acceptance:** 201 for a new scan, 200 for the same image bytes (sha256) on the same reservation; JPEG/PNG by magic bytes, at most 10 MB; at most 20 scans per reservation; errors `HOTEL_SCAN_UNREADABLE` 400, `HOTEL_SCAN_UNSUPPORTED` 415 (type), `HOTEL_SCAN_LIMIT` 409, `HOTEL_SCAN_BUSY` 503; an upload over 10 MB over HTTP is refused by Foundation first as 413 `PAYLOAD_TOO_LARGE` (the plugin keeps its own `HOTEL_SCAN_UNSUPPORTED` 413 size check as a second line); unreadable and unsupported uploads are not stored; the response carries `Cache-Control: no-store`; audit `ID_SCAN_UPLOAD` holds the size only, never the image, the QR text or a decoded value.
 **Done:** (2c4a035) `IdScanService` under the reservation lock, `HotelIdScan` entity, `V3__hotel_id_scan.sql`. `IdScanServiceTest`, `IdScanUploadIT`. Verified 2026-11-07.
 
 ### H304 — Link to identity records and view · `DONE` · P0 · (needs H303, H203)

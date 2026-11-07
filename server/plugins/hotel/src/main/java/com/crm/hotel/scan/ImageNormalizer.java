@@ -20,9 +20,9 @@ public final class ImageNormalizer {
     private ImageNormalizer() {
     }
 
-    /** @throws IllegalArgumentException when the bytes are not a readable image */
-    public static byte[] toStoredJpeg(byte[] image) {
-        return encode(ScanImages.readBounded(image, DECODE_LONG_EDGE));
+    /** Test seam only (decodes outside the decode permit); production goes through {@link ScanPipeline}. */
+    static byte[] toStoredJpeg(byte[] image) {
+        return encode(ScanImages.flatten(ScanImages.readBounded(image, DECODE_LONG_EDGE, MAX_LONG_EDGE)));
     }
 
     /** Encodes an already decoded raster (long edge bounded by the caller) as the stored JPEG. */

@@ -59,7 +59,7 @@ public class IdScanService {
         ScanPipeline.Processed processed;
         try {
             processed = pipeline.process(bytes).orElseThrow(
-                () -> HotelErrors.scanUnreadable("No QR code found: photograph the back of the card"));
+                () -> HotelErrors.scanUnreadable("No QR code found: photograph the side of the card that has the QR code"));
         } catch (ScanBusyException e) {
             throw HotelErrors.scanBusy("The scanner is busy, try again in a moment");
         }

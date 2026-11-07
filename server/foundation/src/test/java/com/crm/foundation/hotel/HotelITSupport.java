@@ -1,6 +1,7 @@
 package com.crm.foundation.hotel;
 
 import com.crm.foundation.Domain.User;
+import com.crm.foundation.Plugin.PluginContexts;
 import com.crm.foundation.Plugin.PluginHost;
 import com.crm.foundation.Repository.RoleRepository;
 import com.crm.foundation.Repository.UserRepository;
@@ -12,6 +13,7 @@ import org.junit.jupiter.api.condition.EnabledIf;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.web.client.TestRestTemplate;
+import org.springframework.context.ConfigurableApplicationContext;
 import org.springframework.context.annotation.Import;
 import org.springframework.http.HttpEntity;
 import org.springframework.http.HttpHeaders;
@@ -25,9 +27,8 @@ import org.springframework.test.context.DynamicPropertySource;
 
 import java.io.IOException;
 import java.net.URISyntaxException;
-import java.nio.file.Files;
 import java.lang.reflect.InvocationTargetException;
-import java.lang.reflect.Method;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Instant;
 import java.time.LocalDate;
@@ -110,12 +111,8 @@ public abstract class HotelITSupport {
      * invisible here, so by reflection) and returns the number of deleted scans.
      */
     protected int purgeScansOlderThan(Instant cutoff) {
+        ConfigurableApplicationContext context = PluginContexts.running(pluginHost, HOTEL_PLUGIN_ID);
         try {
-            Method running = PluginHost.class.getDeclaredMethod("runningContext", String.class);
-            running.setAccessible(true);
-            org.springframework.context.ConfigurableApplicationContext context =
-                ((java.util.Optional<org.springframework.context.ConfigurableApplicationContext>)
-                    running.invoke(pluginHost, HOTEL_PLUGIN_ID)).orElseThrow();
             Object service = context.getBean("idScanService");
             return (int) service.getClass().getMethod("purgeOlderThan", Instant.class).invoke(service, cutoff);
         } catch (InvocationTargetException e) {

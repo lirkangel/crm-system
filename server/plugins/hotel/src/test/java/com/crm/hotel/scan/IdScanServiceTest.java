@@ -1,9 +1,11 @@
 package com.crm.hotel.scan;
 
+import com.crm.foundation.Plugin.AuditRecorder;
 import com.crm.foundation.Plugin.PluginProblem;
 import com.crm.hotel.BusinessDay;
 import com.crm.hotel.domain.Reservation;
 import com.crm.hotel.domain.ReservationStatus;
+import com.crm.hotel.repo.IdScanRepository;
 import com.crm.hotel.repo.ReservationRepository;
 import org.junit.jupiter.api.Test;
 
@@ -25,8 +27,8 @@ class IdScanServiceTest {
     private final IdScanStore store = mock(IdScanStore.class);
     private final ScanPipeline pipeline = mock(ScanPipeline.class);
     private final IdScanService service = new IdScanService(
-        new BusinessDay(Clock.systemUTC(), LocalTime.of(6, 0)), reservations, store, mock(com.crm.hotel.repo.IdScanRepository.class), pipeline,
-        mock(com.crm.foundation.Plugin.AuditRecorder.class));
+        new BusinessDay(Clock.systemUTC(), LocalTime.of(6, 0)), reservations, store, mock(IdScanRepository.class), pipeline,
+        mock(AuditRecorder.class));
     private final UUID id = UUID.randomUUID();
 
     private void confirmed() {

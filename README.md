@@ -154,6 +154,7 @@ At check-in, staff upload a photo of the guest's CCCD. The server decodes the QR
 
 - **Retention:** a photo is deleted 30 days after upload (hourly job, on the hour, Asia/Ho_Chi_Minh). A stay longer than 30 days loses the photo but keeps the confirmed identity fields. Undo check-in deletes the linked photos at once.
 - **Backups:** if Postgres backups are added, they must keep 30 days or less, or deleted photos live on in them.
+- **Purge availability:** the purge runs only while the hotel plugin is active; if it is disabled or fails to load, photos are not deleted until it runs again.
 - **Privacy:** photos, QR text and decoded values are never written to the audit log, the logs or the change feed (audit holds only the size, and the purge count).
 - **Endpoints and permissions:** `POST /api/v1/plugins/hotel/reservations/{id}/id-scans` (multipart `image`; `hotel.stays.checkin`; 201 new, 200 duplicate); `GET .../reservations/{id}/stay-guests/{stayGuestId}/id-scan` (`hotel.stays.read`); `StayGuestRequest.idScanId` (optional) links a scan on check-in or correction (`hotel.stays.checkin`). No new permission keys.
 - **Clients** should check that a photo is 10 MB or less before uploading; larger uploads are refused with 413.

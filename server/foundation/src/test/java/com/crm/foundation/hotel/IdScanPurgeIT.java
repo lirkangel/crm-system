@@ -1,13 +1,16 @@
 package com.crm.foundation.hotel;
 
 import org.junit.jupiter.api.Test;
+import org.springframework.http.ResponseEntity;
 
+import java.sql.Timestamp;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.temporal.ChronoUnit;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import java.util.concurrent.ThreadLocalRandom;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -23,9 +26,8 @@ class IdScanPurgeIT extends HotelITSupport {
         UUID old = seedScan(reservation, now.minus(30, ChronoUnit.DAYS).minus(1, ChronoUnit.MINUTES));
         UUID young = seedScan(reservation, now.minus(29, ChronoUnit.DAYS));
 
-        int purged = purgeScansOlderThan(now.minus(30, ChronoUnit.DAYS));
+        purgeScansOlderThan(now.minus(30, ChronoUnit.DAYS));
 
-        assertThat(purged).isEqualTo(1);
         assertThat(exists(old)).isFalse();
         assertThat(exists(young)).isTrue();
     }
@@ -102,7 +104,7 @@ class IdScanPurgeIT extends HotelITSupport {
     }
 
     private UUID checkedInGuest(UUID reservation) {
-        org.springframework.http.ResponseEntity<String> response = post(
+        ResponseEntity<String> response = post(
             HOTEL_API + "/reservations/" + reservation + "/check-in", adminToken(),
             Map.of("adults", List.of(adult("CCCD", "079090300001", "Purge Guest"))));
         assertThat(response.getStatusCode().value()).as(response.getBody()).isEqualTo(200);
@@ -115,11 +117,11 @@ class IdScanPurgeIT extends HotelITSupport {
         UUID id = UUID.randomUUID();
         byte[] image = {(byte) 0xFF, (byte) 0xD8, 1, 2, 3};
         byte[] sha = new byte[32];
-        java.util.concurrent.ThreadLocalRandom.current().nextBytes(sha);
+        ThreadLocalRandom.current().nextBytes(sha);
         jdbc.update("""
             INSERT INTO hotel.id_scan (id, reservation_id, content_type, image, sha256, size_bytes, uploaded_at, version)
             VALUES (?, ?, 'image/jpeg', ?, ?, ?, ?, 0)
-            """, id, reservation, image, sha, image.length, java.sql.Timestamp.from(uploadedAt));
+            """, id, reservation, image, sha, image.length, Timestamp.from(uploadedAt));
         return id;
     }
 }

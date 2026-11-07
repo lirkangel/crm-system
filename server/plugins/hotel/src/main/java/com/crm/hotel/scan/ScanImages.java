@@ -5,12 +5,14 @@ import javax.imageio.ImageReadParam;
 import javax.imageio.ImageReader;
 import javax.imageio.stream.ImageInputStream;
 import javax.imageio.stream.MemoryCacheImageInputStream;
+import java.awt.Color;
 import java.awt.Graphics2D;
 import java.awt.RenderingHints;
 import java.awt.image.BufferedImage;
 import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.util.Iterator;
+import java.util.concurrent.atomic.AtomicInteger;
 
 /** Shared decoding and scaling helpers for the QR decoder and the normaliser. */
 final class ScanImages {
@@ -18,20 +20,19 @@ final class ScanImages {
     /** Decompression-bomb guard: a 10 MB PNG can expand enormously. */
     private static final long MAX_PIXELS = 50_000_000L;
 
-    private static final int STORE_LONG_EDGE = 1600;
-
     /** Number of image decodes since start (a seam for the "decode once" test). */
-    static final java.util.concurrent.atomic.AtomicInteger READS = new java.util.concurrent.atomic.AtomicInteger();
+    static final AtomicInteger READS = new AtomicInteger();
 
     private ScanImages() {
     }
 
     /**
      * Decodes JPEG/PNG bytes with source subsampling so the decoded long edge is at most {@code maxLongEdge}
-     * (the full-resolution raster is never built). Throws IllegalArgumentException when unreadable or
+     * (the full-resolution raster is never built), but never subsampled below {@code minLongEdge} (the size the
+     * caller still needs, so a smaller bound than the caller's own is not honoured at its expense). Throws IllegalArgumentException when unreadable or
      * declared larger than {@link #MAX_PIXELS}.
      */
-    static BufferedImage readBounded(byte[] bytes, int maxLongEdge) {
+    static BufferedImage readBounded(byte[] bytes, int maxLongEdge, int minLongEdge) {
         READS.incrementAndGet();
         // memory-backed stream: no temp file is written
         try (ImageInputStream in = new MemoryCacheImageInputStream(new ByteArrayInputStream(bytes))) {
@@ -49,8 +50,8 @@ final class ScanImages {
                 }
                 int longEdge = Math.max(w, h);
                 int sub = Math.max(1, (longEdge + maxLongEdge - 1) / maxLongEdge);
-                if (sub > 1 && longEdge / sub < STORE_LONG_EDGE) {
-                    // subsampling would leave less than the 1600 px we store; accept a slightly larger raster
+                if (sub > 1 && longEdge / sub < minLongEdge) {
+                    // subsampling would leave less than the caller needs; accept a slightly larger raster
                     sub--;
                 }
                 ImageReadParam param = reader.getDefaultReadParam();
@@ -93,7 +94,8 @@ final class ScanImages {
         return current;
     }
 
-    private static BufferedImage flatten(BufferedImage src) {
+    /** The image as opaque INT_RGB (alpha flattened onto white); the same instance when it already is. */
+    static BufferedImage flatten(BufferedImage src) {
         if (src.getType() == BufferedImage.TYPE_INT_RGB) {
             return src;
         }
@@ -106,7 +108,7 @@ final class ScanImages {
         try {
             g.setRenderingHint(RenderingHints.KEY_INTERPOLATION, RenderingHints.VALUE_INTERPOLATION_BILINEAR);
             g.setRenderingHint(RenderingHints.KEY_RENDERING, RenderingHints.VALUE_RENDER_QUALITY);
-            g.setColor(java.awt.Color.WHITE);
+            g.setColor(Color.WHITE);
             g.fillRect(0, 0, w, h);
             g.drawImage(src, 0, 0, w, h, null);
         } finally {

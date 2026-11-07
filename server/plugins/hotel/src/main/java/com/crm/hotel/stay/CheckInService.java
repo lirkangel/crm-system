@@ -33,7 +33,7 @@ import java.time.LocalDate;
 import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.HashMap;
-import java.util.HashSet;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -81,7 +81,7 @@ public class CheckInService {
     public ReservationView checkIn(UUID reservationId, CheckInRequest request) {
         LocalDate calendarToday = businessDay.calendarToday();
         request.adults().forEach(adult -> CheckInPolicy.checkIdentity(adult, calendarToday));
-        Set<UUID> scanIds = new HashSet<>();
+        Set<UUID> scanIds = new LinkedHashSet<>();
         for (StayGuestRequest adult : request.adults()) {
             if (adult.idScanId() != null && !scanIds.add(adult.idScanId())) {
                 throw HotelErrors.scanMismatch("One scan can only belong to one adult");

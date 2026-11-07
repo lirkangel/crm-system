@@ -26,10 +26,15 @@ import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
 import java.time.LocalDate;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
+import java.util.concurrent.CyclicBarrier;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -243,14 +248,23 @@ class IdScanUploadIT extends HotelITSupport {
         UUID id = confirmed(token);
         byte[] image = CccdQrImages.jpeg(CccdQrImages.payload());
 
-        java.util.concurrent.ExecutorService pool = java.util.concurrent.Executors.newFixedThreadPool(4);
+        // build every request body first, then release all threads together
+        List<HttpEntity<MultiValueMap<String, Object>>> requests = new ArrayList<>();
+        for (int i = 0; i < 4; i++) {
+            requests.add(multipart(token, image));
+        }
+        CyclicBarrier start = new CyclicBarrier(requests.size());
+        ExecutorService pool = Executors.newFixedThreadPool(requests.size());
         try {
-            List<java.util.concurrent.Future<ResponseEntity<String>>> calls = new java.util.ArrayList<>();
-            for (int i = 0; i < 4; i++) {
-                calls.add(pool.submit(() -> upload(token, id, image)));
+            List<Future<ResponseEntity<String>>> calls = new ArrayList<>();
+            for (HttpEntity<MultiValueMap<String, Object>> request : requests) {
+                calls.add(pool.submit(() -> {
+                    start.await();
+                    return send(id, request);
+                }));
             }
-            List<Integer> statuses = new java.util.ArrayList<>();
-            for (java.util.concurrent.Future<ResponseEntity<String>> call : calls) {
+            List<Integer> statuses = new ArrayList<>();
+            for (Future<ResponseEntity<String>> call : calls) {
                 statuses.add(call.get().getStatusCode().value());
             }
             assertThat(statuses).containsExactlyInAnyOrder(201, 200, 200, 200);
@@ -290,6 +304,10 @@ class IdScanUploadIT extends HotelITSupport {
     }
 
     private ResponseEntity<String> upload(String token, UUID reservationId, byte[] bytes) {
+        return send(reservationId, multipart(token, bytes));
+    }
+
+    private HttpEntity<MultiValueMap<String, Object>> multipart(String token, byte[] bytes) {
         MultiValueMap<String, Object> body = new LinkedMultiValueMap<>();
         body.add("image", new ByteArrayResource(bytes) {
             @Override
@@ -300,8 +318,11 @@ class IdScanUploadIT extends HotelITSupport {
         HttpHeaders headers = new HttpHeaders();
         headers.setBearerAuth(token);
         headers.setContentType(MediaType.MULTIPART_FORM_DATA);
-        return rest.postForEntity(
-            RESERVATIONS + "/" + reservationId + "/id-scans", new HttpEntity<>(body, headers), String.class);
+        return new HttpEntity<>(body, headers);
+    }
+
+    private ResponseEntity<String> send(UUID reservationId, HttpEntity<MultiValueMap<String, Object>> request) {
+        return rest.postForEntity(RESERVATIONS + "/" + reservationId + "/id-scans", request, String.class);
     }
 
     /**

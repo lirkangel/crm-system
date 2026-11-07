@@ -35,8 +35,8 @@ public final class QrDecoder {
     private QrDecoder() {
     }
 
-    /** @throws ScanBusyException when no decode slot frees up within 5 seconds */
-    public static Optional<String> decode(byte[] image) {
+    /** Test seam: still under the permit and deadline, but production goes through {@link ScanPipeline}. */
+    static Optional<String> decode(byte[] image) {
         return decode(image, DEFAULT_TIMEOUT, System::nanoTime);
     }
 
@@ -74,7 +74,8 @@ public final class QrDecoder {
             byte[] image, long deadline, LongSupplier clock, boolean withJpeg) {
         BufferedImage source;
         try {
-            source = ScanImages.readBounded(image, DECODE_LONG_EDGE);
+            // flatten once: every scaling step, rotation and the stored JPEG reuse this single INT_RGB raster
+            source = ScanImages.flatten(ScanImages.readBounded(image, DECODE_LONG_EDGE, ImageNormalizer.MAX_LONG_EDGE));
         } catch (RuntimeException e) {
             return Optional.empty();
         }
