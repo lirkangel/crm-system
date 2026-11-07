@@ -18,6 +18,7 @@ import com.crm.hotel.repo.ReservationRepository;
 import com.crm.hotel.repo.RoomRepository;
 import com.crm.hotel.repo.RoomTypeRepository;
 import com.crm.hotel.repo.StayGuestRepository;
+import com.crm.hotel.scan.IdScanService;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
@@ -32,8 +33,10 @@ import java.time.LocalDate;
 import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 
 /**
@@ -61,6 +64,7 @@ public class CheckInService {
     private final ChangeRecorder changes;
     private final AuditRecorder audit;
     private final ObjectMapper objectMapper;
+    private final IdScanService scans;
 
     /**
      * Checks a reservation in, in one transaction.
@@ -77,6 +81,12 @@ public class CheckInService {
     public ReservationView checkIn(UUID reservationId, CheckInRequest request) {
         LocalDate calendarToday = businessDay.calendarToday();
         request.adults().forEach(adult -> CheckInPolicy.checkIdentity(adult, calendarToday));
+        Set<UUID> scanIds = new HashSet<>();
+        for (StayGuestRequest adult : request.adults()) {
+            if (adult.idScanId() != null && !scanIds.add(adult.idScanId())) {
+                throw HotelErrors.scanMismatch("One scan can only belong to one adult");
+            }
+        }
 
         // Lock order: the reservation row, then room rows by id (a swap touches two rooms).
         Reservation reservation = reservations.lockById(reservationId)
@@ -121,6 +131,13 @@ public class CheckInService {
         List<StayGuest> savedRecords = stayGuests.saveAllAndFlush(records);
         savedRecords.forEach(
             record -> changes.record(STAY_GUEST, record.getId(), record.getVersion(), ChangeOp.CREATE));
+        // saveAllAndFlush keeps the order of the request
+        for (int i = 0; i < savedRecords.size(); i++) {
+            UUID scanId = request.adults().get(i).idScanId();
+            if (scanId != null) {
+                scans.link(saved.getId(), scanId, savedRecords.get(i).getId());
+            }
+        }
 
         ReservationView view = ReservationView.of(saved, guestName, target.getNumber());
         // Only the count and ids of the identity records: the audit chain is append-only, so no personal data.
@@ -128,6 +145,10 @@ public class CheckInService {
         after.put("adults", savedRecords.size());
         ArrayNode ids = after.putArray("stayGuestIds");
         savedRecords.forEach(record -> ids.add(record.getId().toString()));
+        if (!scanIds.isEmpty()) {
+            ArrayNode linkedScans = after.putArray("idScanIds");
+            scanIds.forEach(scanId -> linkedScans.add(scanId.toString()));
+        }
         audit.record(RESERVATION, saved.getId(), AUDIT_CHECK_IN, before, json(after));
         return view;
     }
@@ -176,6 +197,8 @@ public class CheckInService {
         String before = json(ReservationView.of(reservation, guestName, roomNumber));
 
         List<StayGuest> records = stayGuests.findByReservationIdOrderByFullNameAscIdAsc(reservationId);
+        // The scans' FK to the stay guests has no ON DELETE: they go first
+        scans.unlinkAndDelete(records.stream().map(StayGuest::getId).toList());
         stayGuests.deleteAll(records);
         stayGuests.flush();
         // Hibernate doesn't bump the version of a deleted row; the feed's DELETE carries the next one.
@@ -216,7 +239,14 @@ public class CheckInService {
         IfMatch.requireVersion(ifMatch, record.getVersion(), StayGuest.class, stayGuestId);
 
         List<String> changedFields = record.changedFields(request);
+        // A different scan replaces the current one (null keeps it, the same id is a no-op)
+        boolean scanLinked = request.idScanId() != null
+            && scans.link(reservationId, request.idScanId(), stayGuestId);
         if (changedFields.isEmpty()) {
+            if (scanLinked) {
+                audit.record(RESERVATION, reservationId, AUDIT_CORRECT, null,
+                    json(correctionAfter(stayGuestId, changedFields, request.idScanId())));
+            }
             return StayGuestView.of(record);
         }
         record.apply(request);
@@ -224,12 +254,20 @@ public class CheckInService {
         changes.record(STAY_GUEST, saved.getId(), saved.getVersion(), ChangeOp.UPDATE);
 
         // Field names only: the audit chain is append-only, so no personal data (not even the old value).
+        audit.record(RESERVATION, reservationId, AUDIT_CORRECT, null,
+            json(correctionAfter(saved.getId(), changedFields, scanLinked ? request.idScanId() : null)));
+        return StayGuestView.of(saved);
+    }
+
+    private ObjectNode correctionAfter(UUID stayGuestId, List<String> changedFields, UUID linkedScanId) {
         ObjectNode after = objectMapper.createObjectNode();
-        after.put("stayGuestId", saved.getId().toString());
+        after.put("stayGuestId", stayGuestId.toString());
         ArrayNode fields = after.putArray("changedFields");
         changedFields.forEach(fields::add);
-        audit.record(RESERVATION, reservationId, AUDIT_CORRECT, null, json(after));
-        return StayGuestView.of(saved);
+        if (linkedScanId != null) {
+            after.put("idScanId", linkedScanId.toString());
+        }
+        return after;
     }
 
     /** Locks the booked and the target room ({@code FOR NO KEY UPDATE}) in id order, so swaps can't deadlock. */

@@ -9,6 +9,7 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestPart;
@@ -40,5 +41,18 @@ public class IdScanController {
         return ResponseEntity.status(result.created() ? HttpStatus.CREATED : HttpStatus.OK)
             .cacheControl(CacheControl.noStore())
             .body(CommonResponse.success(result.view()));
+    }
+
+    /** The stored (downscaled) image of the scan linked to an adult's identity record: personal data, never cached. */
+    @GetMapping("/reservations/{id}/stay-guests/{stayGuestId}/id-scan")
+    @PreAuthorize("hasAuthority('" + HotelPermissions.STAYS_READ + "')")
+    public ResponseEntity<byte[]> image(
+            @PathVariable("id") UUID id, @PathVariable("stayGuestId") UUID stayGuestId) {
+        StoredImage image = scans.image(id, stayGuestId)
+            .orElseThrow(() -> HotelErrors.notFound("No scan for this guest"));
+        return ResponseEntity.ok()
+            .contentType(MediaType.parseMediaType(image.contentType()))
+            .cacheControl(CacheControl.noStore())
+            .body(image.bytes());
     }
 }

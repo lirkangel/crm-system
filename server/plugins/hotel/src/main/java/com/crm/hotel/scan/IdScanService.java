@@ -3,12 +3,17 @@ package com.crm.hotel.scan;
 import com.crm.hotel.BusinessDay;
 import com.crm.hotel.HotelErrors;
 import com.crm.hotel.domain.Reservation;
+import com.crm.hotel.repo.IdScanRepository;
 import com.crm.hotel.repo.ReservationRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Propagation;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
+import java.util.Collection;
+import java.util.Optional;
 import java.util.UUID;
 
 /**
@@ -24,6 +29,7 @@ public class IdScanService {
     private final BusinessDay businessDay;
     private final ReservationRepository reservations;
     private final IdScanStore store;
+    private final IdScanRepository scans;
     private final ScanPipeline pipeline;
 
     public record UploadResult(IdScanView view, boolean created) {
@@ -57,6 +63,49 @@ public class IdScanService {
 
         IdScanStore.StoreResult stored = store.store(reservationId, sha256(bytes), "image/jpeg", jpeg);
         return new UploadResult(new IdScanView(stored.scanId(), ScanFields.of(data)), stored.created());
+    }
+
+    /**
+     * Links a scan to a stay guest, inside the caller's check-in / correction transaction (the reservation is
+     * already locked and the stay guest row already flushed). Any other scan the stay guest had is deleted first, so
+     * a correction replaces its scan; linking the scan it already has is a no-op.
+     *
+     * @return whether the link changed
+     *
+     * @throws com.crm.foundation.Plugin.PluginProblem {@code HOTEL_SCAN_MISMATCH} (409) for an unknown scan, one of
+     *         another reservation, or one already linked to another stay guest
+     */
+    @Transactional(propagation = Propagation.MANDATORY)
+    public boolean link(UUID reservationId, UUID scanId, UUID stayGuestId) {
+        IdScanRepository.Link scan = scans.findLinkById(scanId)
+            .orElseThrow(() -> HotelErrors.scanMismatch("The scan does not belong to this stay"));
+        if (!scan.getReservationId().equals(reservationId)) {
+            throw HotelErrors.scanMismatch("The scan does not belong to this stay");
+        }
+        if (scan.getStayGuestId() != null) {
+            if (scan.getStayGuestId().equals(stayGuestId)) {
+                return false;
+            }
+            throw HotelErrors.scanMismatch("The scan is already linked to another guest");
+        }
+        // Delete first (flushed), so the UNIQUE(stay_guest_id) can't trip when the scan is linked
+        scans.deleteLinkedToExcept(stayGuestId, scanId);
+        scans.linkTo(scanId, stayGuestId);
+        return true;
+    }
+
+    /** Deletes the scans linked to these stay guests, before the stay guests themselves are deleted (plain FK). */
+    @Transactional(propagation = Propagation.MANDATORY)
+    public void unlinkAndDelete(Collection<UUID> stayGuestIds) {
+        if (!stayGuestIds.isEmpty()) {
+            scans.deleteLinkedToAny(stayGuestIds);
+        }
+    }
+
+    /** The image linked to this stay guest of this reservation, if any. */
+    @Transactional(readOnly = true)
+    public Optional<StoredImage> image(UUID reservationId, UUID stayGuestId) {
+        return scans.findImage(reservationId, stayGuestId);
     }
 
     static void requireOpen(Reservation reservation) {

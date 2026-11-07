@@ -25,7 +25,7 @@ class IdScanServiceTest {
     private final IdScanStore store = mock(IdScanStore.class);
     private final ScanPipeline pipeline = mock(ScanPipeline.class);
     private final IdScanService service = new IdScanService(
-        new BusinessDay(Clock.systemUTC(), LocalTime.of(6, 0)), reservations, store, pipeline);
+        new BusinessDay(Clock.systemUTC(), LocalTime.of(6, 0)), reservations, store, mock(com.crm.hotel.repo.IdScanRepository.class), pipeline);
     private final UUID id = UUID.randomUUID();
 
     private void confirmed() {

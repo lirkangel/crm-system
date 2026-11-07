@@ -7,6 +7,7 @@ import jakarta.validation.constraints.Pattern;
 import jakarta.validation.constraints.Size;
 
 import java.time.LocalDate;
+import java.util.UUID;
 
 /**
  * One adult's identity record at check-in. Rules across fields ({@link CheckInPolicy#checkIdentity}): a Vietnamese
@@ -21,5 +22,13 @@ public record StayGuestRequest(
         @NotNull @Pattern(regexp = "[A-Z]{2}") String nationality,
         @Size(max = 500) String address,
         @Size(max = 32) String visaNumber,
-        LocalDate entryDate) {
+        LocalDate entryDate,
+        /** A scan uploaded for this reservation ({@code POST /id-scans}) to keep with the identity record. */
+        UUID idScanId) {
+
+    /** Without a scan. */
+    public StayGuestRequest(IdDocType idType, String idNumber, String fullName, LocalDate dateOfBirth,
+            String nationality, String address, String visaNumber, LocalDate entryDate) {
+        this(idType, idNumber, fullName, dateOfBirth, nationality, address, visaNumber, entryDate, null);
+    }
 }
