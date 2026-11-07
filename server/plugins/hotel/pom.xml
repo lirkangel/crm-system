@@ -20,7 +20,6 @@
     <properties>
         <!-- The plugin's own version: must match "version" in src/main/plugin/plugin.yaml; names the ZIP -->
         <hotel.plugin.version>0.3.0</hotel.plugin.version>
-        <zxing.version>3.5.3</zxing.version>
     </properties>
 
     <!--

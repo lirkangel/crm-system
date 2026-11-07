@@ -44,6 +44,9 @@ spring:
 
 server:
   port: ${SERVER_PORT:8080}
+  tomcat:
+    # Drain a just-over-limit upload (max-request-size 11MB) so the client receives the 413 problem instead of a reset
+    max-swallow-size: 12MB
   error:
     # Error-page bodies (sendError, filter exceptions) never echo exception messages to clients
     include-message: never

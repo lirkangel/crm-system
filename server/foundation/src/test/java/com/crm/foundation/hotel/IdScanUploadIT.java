@@ -237,6 +237,50 @@ class IdScanUploadIT extends HotelITSupport {
         assertThat(readJson(after).size()).isEqualTo(1);
     }
 
+    @Test
+    void parallel_uploads_of_the_same_image_store_one_scan() throws Exception {
+        String token = adminToken();
+        UUID id = confirmed(token);
+        byte[] image = CccdQrImages.jpeg(CccdQrImages.payload());
+
+        java.util.concurrent.ExecutorService pool = java.util.concurrent.Executors.newFixedThreadPool(4);
+        try {
+            List<java.util.concurrent.Future<ResponseEntity<String>>> calls = new java.util.ArrayList<>();
+            for (int i = 0; i < 4; i++) {
+                calls.add(pool.submit(() -> upload(token, id, image)));
+            }
+            List<Integer> statuses = new java.util.ArrayList<>();
+            for (java.util.concurrent.Future<ResponseEntity<String>> call : calls) {
+                statuses.add(call.get().getStatusCode().value());
+            }
+            assertThat(statuses).containsExactlyInAnyOrder(201, 200, 200, 200);
+        } finally {
+            pool.shutdownNow();
+        }
+        assertThat(scanCount(id)).isEqualTo(1);
+        UUID scanId = jdbc.queryForObject("SELECT id FROM hotel.id_scan WHERE reservation_id = ?", UUID.class, id);
+        assertThat(jdbc.queryForObject(
+            "SELECT count(*) FROM audit_event WHERE plugin_id = 'com.crm.hotel' AND op = 'ID_SCAN_UPLOAD' "
+                + "AND entity_id = ?", Integer.class, scanId)).isEqualTo(1);
+    }
+
+    @Test
+    void missing_image_part_is_400_and_stores_nothing() {
+        String token = adminToken();
+        UUID id = confirmed(token);
+        MultiValueMap<String, Object> body = new LinkedMultiValueMap<>();
+        body.add("other", "x");
+        HttpHeaders headers = new HttpHeaders();
+        headers.setBearerAuth(token);
+        headers.setContentType(MediaType.MULTIPART_FORM_DATA);
+
+        ResponseEntity<String> response = rest.postForEntity(
+            RESERVATIONS + "/" + id + "/id-scans", new HttpEntity<>(body, headers), String.class);
+
+        assertThat(response.getStatusCode().value()).as(response.getBody()).isEqualTo(400);
+        assertThat(scanCount(id)).isZero();
+    }
+
     // ── helpers ──────────────────────────────────────────────────────────────────────────────────
 
     private UUID confirmed(String token) {

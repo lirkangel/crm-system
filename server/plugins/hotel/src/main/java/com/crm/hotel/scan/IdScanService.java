@@ -24,6 +24,7 @@ public class IdScanService {
     private final BusinessDay businessDay;
     private final ReservationRepository reservations;
     private final IdScanStore store;
+    private final ScanPipeline pipeline;
 
     public record UploadResult(IdScanView view, boolean created) {
     }
@@ -43,21 +44,16 @@ public class IdScanService {
         if (ImageFormat.detect(bytes).isEmpty()) {
             throw HotelErrors.scanUnsupportedType("Only JPEG and PNG images are accepted");
         }
-        String text;
+        ScanPipeline.Processed processed;
         try {
-            text = QrDecoder.decode(bytes).orElseThrow(
+            processed = pipeline.process(bytes).orElseThrow(
                 () -> HotelErrors.scanUnreadable("No QR code found: photograph the back of the card"));
         } catch (ScanBusyException e) {
             throw HotelErrors.scanBusy("The scanner is busy, try again in a moment");
         }
-        CccdData data = CccdQrParser.parse(text, businessDay.today()).orElseThrow(
+        CccdData data = CccdQrParser.parse(processed.qrText(), businessDay.today()).orElseThrow(
             () -> HotelErrors.scanUnreadable("The QR code is not a citizen ID card's"));
-        byte[] jpeg;
-        try {
-            jpeg = ImageNormalizer.toStoredJpeg(bytes);
-        } catch (IllegalArgumentException e) {
-            throw HotelErrors.scanUnreadable("The image could not be read");
-        }
+        byte[] jpeg = processed.storedJpeg();
 
         IdScanStore.StoreResult stored = store.store(reservationId, sha256(bytes), "image/jpeg", jpeg);
         return new UploadResult(new IdScanView(stored.scanId(), ScanFields.of(data)), stored.created());

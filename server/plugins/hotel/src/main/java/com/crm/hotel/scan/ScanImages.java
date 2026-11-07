@@ -20,6 +20,9 @@ final class ScanImages {
 
     private static final int STORE_LONG_EDGE = 1600;
 
+    /** Number of image decodes since start (a seam for the "decode once" test). */
+    static final java.util.concurrent.atomic.AtomicInteger READS = new java.util.concurrent.atomic.AtomicInteger();
+
     private ScanImages() {
     }
 
@@ -29,6 +32,7 @@ final class ScanImages {
      * declared larger than {@link #MAX_PIXELS}.
      */
     static BufferedImage readBounded(byte[] bytes, int maxLongEdge) {
+        READS.incrementAndGet();
         // memory-backed stream: no temp file is written
         try (ImageInputStream in = new MemoryCacheImageInputStream(new ByteArrayInputStream(bytes))) {
             Iterator<ImageReader> readers = ImageIO.getImageReaders(in);

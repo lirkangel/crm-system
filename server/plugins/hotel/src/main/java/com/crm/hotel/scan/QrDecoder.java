@@ -41,6 +41,17 @@ public final class QrDecoder {
     }
 
     static Optional<String> decode(byte[] image, Duration timeout, LongSupplier nanoClock) {
+        return run(image, timeout, nanoClock, false).map(ScanPipeline.Processed::qrText);
+    }
+
+    /**
+     * Decodes the image once, under a decode permit and the deadline: finds the QR code and, when {@code withJpeg}
+     * and a code was found, encodes the stored JPEG from the same raster. Empty when there is no readable QR.
+     *
+     * @throws ScanBusyException when no decode slot frees up within 5 seconds
+     */
+    static Optional<ScanPipeline.Processed> run(
+            byte[] image, Duration timeout, LongSupplier nanoClock, boolean withJpeg) {
         boolean acquired;
         try {
             acquired = PERMITS.tryAcquire(5, TimeUnit.SECONDS);
@@ -53,13 +64,14 @@ public final class QrDecoder {
         }
         try {
             long deadline = nanoClock.getAsLong() + timeout.toNanos();
-            return search(image, deadline, nanoClock);
+            return search(image, deadline, nanoClock, withJpeg);
         } finally {
             PERMITS.release();
         }
     }
 
-    private static Optional<String> search(byte[] image, long deadline, LongSupplier clock) {
+    private static Optional<ScanPipeline.Processed> search(
+            byte[] image, long deadline, LongSupplier clock, boolean withJpeg) {
         BufferedImage source;
         try {
             source = ScanImages.readBounded(image, DECODE_LONG_EDGE);
@@ -86,7 +98,7 @@ public final class QrDecoder {
                 copies.add(copy);
                 Optional<String> text = tryDecode(copy);
                 if (text.isPresent()) {
-                    return text;
+                    return processed(text.get(), source, withJpeg);
                 }
             }
             // pass 2: rotations, only at 1600 and at the bounded original (never at 800)
@@ -103,7 +115,7 @@ public final class QrDecoder {
                     current = rotate90(current);
                     Optional<String> text = tryDecode(current);
                     if (text.isPresent()) {
-                        return text;
+                        return processed(text.get(), source, withJpeg);
                     }
                 }
             }
@@ -111,6 +123,10 @@ public final class QrDecoder {
         } catch (RuntimeException e) {
             return Optional.empty();
         }
+    }
+
+    private static Optional<ScanPipeline.Processed> processed(String text, BufferedImage source, boolean withJpeg) {
+        return Optional.of(new ScanPipeline.Processed(text, withJpeg ? ImageNormalizer.encode(source) : null));
     }
 
     private static Optional<String> tryDecode(BufferedImage image) {

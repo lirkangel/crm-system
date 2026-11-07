@@ -22,7 +22,12 @@ public final class ImageNormalizer {
 
     /** @throws IllegalArgumentException when the bytes are not a readable image */
     public static byte[] toStoredJpeg(byte[] image) {
-        BufferedImage fitted = ScanImages.toRgbFitting(ScanImages.readBounded(image, DECODE_LONG_EDGE), MAX_LONG_EDGE);
+        return encode(ScanImages.readBounded(image, DECODE_LONG_EDGE));
+    }
+
+    /** Encodes an already decoded raster (long edge bounded by the caller) as the stored JPEG. */
+    static byte[] encode(BufferedImage source) {
+        BufferedImage fitted = ScanImages.toRgbFitting(source, MAX_LONG_EDGE);
         ImageWriter writer = ImageIO.getImageWritersByFormatName("jpeg").next();
         try {
             ImageWriteParam param = writer.getDefaultWriteParam();
