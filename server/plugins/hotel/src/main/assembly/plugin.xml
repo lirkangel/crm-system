@@ -18,6 +18,18 @@
             <outputDirectory>lib</outputDirectory>
         </file>
     </files>
+    <!-- Only ZXing travels in lib/: Spring, JPA, Jakarta and plugin-api come from the host classloader -->
+    <dependencySets>
+        <dependencySet>
+            <outputDirectory>lib</outputDirectory>
+            <useProjectArtifact>false</useProjectArtifact>
+            <useTransitiveDependencies>true</useTransitiveDependencies>
+            <scope>runtime</scope>
+            <includes>
+                <include>com.google.zxing:*</include>
+            </includes>
+        </dependencySet>
+    </dependencySets>
     <fileSets>
         <fileSet>
             <directory>src/main/plugin/db</directory>

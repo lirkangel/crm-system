@@ -19,7 +19,8 @@
 
     <properties>
         <!-- The plugin's own version: must match "version" in src/main/plugin/plugin.yaml; names the ZIP -->
-        <hotel.plugin.version>0.2.0</hotel.plugin.version>
+        <hotel.plugin.version>0.3.0</hotel.plugin.version>
+        <zxing.version>3.5.3</zxing.version>
     </properties>
 
     <!--
@@ -58,6 +59,28 @@
             <groupId>org.projectlombok</groupId>
             <artifactId>lombok</artifactId>
             <scope>provided</scope>
+        </dependency>
+
+        <!-- QR decoding: the only runtime libraries bundled into the plugin ZIP's lib/ (see assembly) -->
+        <dependency>
+            <groupId>com.google.zxing</groupId>
+            <artifactId>core</artifactId>
+            <version>${zxing.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>com.google.zxing</groupId>
+            <artifactId>javase</artifactId>
+            <version>${zxing.version}</version>
+            <exclusions>
+                <exclusion>
+                    <groupId>com.beust</groupId>
+                    <artifactId>jcommander</artifactId>
+                </exclusion>
+                <exclusion>
+                    <groupId>com.github.jai-imageio</groupId>
+                    <artifactId>jai-imageio-core</artifactId>
+                </exclusion>
+            </exclusions>
         </dependency>
 
         <dependency>

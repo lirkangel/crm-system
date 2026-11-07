@@ -44,7 +44,23 @@ class HotelPluginInstallIT extends HotelITSupport {
 
         assertThat(entry.getState()).as(entry.getErrorMessage()).isEqualTo(PluginState.ACTIVE.name());
         assertThat(entry.getSchemaName()).isEqualTo(HOTEL_SCHEMA);
-        assertThat(entry.getVersion()).isEqualTo("0.2.0");
+        assertThat(entry.getVersion()).isEqualTo("0.3.0");
+    }
+
+    @Test
+    void hotel_zip_lib_holds_hotel_and_zxing_only() throws Exception {
+        List<String> jars = new ArrayList<>();
+        try (java.util.zip.ZipFile zip = new java.util.zip.ZipFile(
+            hotelPluginDirectory().resolve("hotel-plugin.zip").toFile())) {
+            zip.stream().map(java.util.zip.ZipEntry::getName)
+                .filter(name -> name.startsWith("lib/") && !name.equals("lib/"))
+                .forEach(jars::add);
+        }
+
+        assertThat(jars).hasSize(3);
+        assertThat(jars).anyMatch(name -> name.matches("lib/hotel-.+\\.jar"));
+        assertThat(jars).anyMatch(name -> name.matches("lib/core-3\\.5\\.3\\.jar"));
+        assertThat(jars).anyMatch(name -> name.matches("lib/javase-3\\.5\\.3\\.jar"));
     }
 
     @Test
