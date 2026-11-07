@@ -34,6 +34,12 @@ class HotelErrorsTest {
         assertProblem(HotelErrors.invalidIdDoc("detail"), 400, "HOTEL_INVALID_ID_DOC");
         assertProblem(HotelErrors.invalidPayment("detail"), 400, "HOTEL_INVALID_PAYMENT");
         assertProblem(HotelErrors.invalidSource("detail"), 400, "HOTEL_INVALID_SOURCE");
+        assertProblem(HotelErrors.scanUnreadable("detail"), 400, "HOTEL_SCAN_UNREADABLE");
+        assertProblem(HotelErrors.scanUnsupportedType("detail"), 415, "HOTEL_SCAN_UNSUPPORTED");
+        assertProblem(HotelErrors.scanTooLarge("detail"), 413, "HOTEL_SCAN_UNSUPPORTED");
+        assertProblem(HotelErrors.scanMismatch("detail"), 409, "HOTEL_SCAN_MISMATCH");
+        assertProblem(HotelErrors.scanLimit("detail"), 409, "HOTEL_SCAN_LIMIT");
+        assertProblem(HotelErrors.scanBusy("detail"), 503, "HOTEL_SCAN_BUSY");
     }
 
     @Test

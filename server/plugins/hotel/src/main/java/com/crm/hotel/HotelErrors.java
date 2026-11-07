@@ -27,6 +27,11 @@ public final class HotelErrors {
     public static final String INVALID_ID_DOC = "HOTEL_INVALID_ID_DOC";
     public static final String INVALID_PAYMENT = "HOTEL_INVALID_PAYMENT";
     public static final String INVALID_SOURCE = "HOTEL_INVALID_SOURCE";
+    public static final String SCAN_UNREADABLE = "HOTEL_SCAN_UNREADABLE";
+    public static final String SCAN_UNSUPPORTED = "HOTEL_SCAN_UNSUPPORTED";
+    public static final String SCAN_MISMATCH = "HOTEL_SCAN_MISMATCH";
+    public static final String SCAN_LIMIT = "HOTEL_SCAN_LIMIT";
+    public static final String SCAN_BUSY = "HOTEL_SCAN_BUSY";
 
     private HotelErrors() {
     }
@@ -124,5 +129,35 @@ public final class HotelErrors {
     /** 400: booking source OTA without a channel, or a channel on a non-OTA booking. */
     public static PluginProblem invalidSource(String detail) {
         return new PluginProblem(400, INVALID_SOURCE, detail);
+    }
+
+    /** 400: the upload is not a readable image, or its QR code is missing or not a CCCD's. */
+    public static PluginProblem scanUnreadable(String detail) {
+        return new PluginProblem(400, SCAN_UNREADABLE, detail);
+    }
+
+    /** 415: the upload is neither JPEG nor PNG. */
+    public static PluginProblem scanUnsupportedType(String detail) {
+        return new PluginProblem(415, SCAN_UNSUPPORTED, detail);
+    }
+
+    /** 413: the upload is over 10 MB (same code as the type error, as the client's remedy is the same: retake). */
+    public static PluginProblem scanTooLarge(String detail) {
+        return new PluginProblem(413, SCAN_UNSUPPORTED, detail);
+    }
+
+    /** 409: the scan does not match the identity record it is linked to. */
+    public static PluginProblem scanMismatch(String detail) {
+        return new PluginProblem(409, SCAN_MISMATCH, detail);
+    }
+
+    /** 409: the reservation already holds the maximum number of scans. */
+    public static PluginProblem scanLimit(String detail) {
+        return new PluginProblem(409, SCAN_LIMIT, detail);
+    }
+
+    /** 503: too many QR decodes are running; retry shortly. */
+    public static PluginProblem scanBusy(String detail) {
+        return new PluginProblem(503, SCAN_BUSY, detail);
     }
 }

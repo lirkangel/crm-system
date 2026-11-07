@@ -74,7 +74,7 @@ class HotelPluginInstallIT extends HotelITSupport {
 
         assertThat(hotelEntities).containsExactly(
             "HotelFolioCharge=FolioCharge", "HotelFolioPayment=FolioPayment", "HotelGuest=Guest",
-            "HotelReservation=Reservation", "HotelRoom=Room", "HotelRoomType=RoomType", "HotelStayGuest=StayGuest");
+            "HotelIdScan=IdScan", "HotelReservation=Reservation", "HotelRoom=Room", "HotelRoomType=RoomType", "HotelStayGuest=StayGuest");
     }
 
     @Test

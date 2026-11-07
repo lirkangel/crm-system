@@ -48,7 +48,7 @@ class HotelUpgradeIT extends HotelITSupport {
             insertReservation(confirmed, "UP-1", guest, room, "2030-01-10", "2030-01-12", "CONFIRMED");
             insertReservation(cancelled, "UP-2", guest, room, "2030-01-10", "2030-01-12", "CANCELLED");
 
-            Flyway v2 = flyway(scripts).load();
+            Flyway v2 = flyway(scripts).target("2").load();
             v2.migrate();
 
             assertThat(v2.info().current().getVersion().getVersion()).isEqualTo("2");
