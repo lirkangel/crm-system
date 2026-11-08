@@ -1,5 +1,5 @@
--- CCCD scans: the downscaled photo of the back of a citizen ID card, kept only until the identity record is
--- verified or the retention period (30 days) ends. Personal data: never written to the audit log or change feed.
+-- CCCD scans: the downscaled photo of the QR side of a citizen ID card, deleted 30 days after upload (hourly
+-- purge) or when its identity record is undone or replaced. Personal data: never in the audit log or change feed.
 -- Flyway runs this with the plugin schema ("hotel") as its default schema.
 
 CREATE TABLE id_scan (

@@ -12,7 +12,7 @@ import java.time.Instant;
 import java.util.UUID;
 
 /**
- * The stored (downscaled JPEG) photo of the back of a CCCD. Personal data: never logged, never in the audit log or
+ * The stored (downscaled JPEG) photo of the QR side of a CCCD. Personal data: never logged, never in the audit log or
  * the change feed.
  */
 @Entity(name = "HotelIdScan")

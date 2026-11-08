@@ -28,7 +28,8 @@ class IdScanPurgeJob {
         try {
             scans.purgeOlderThan(hotelClock.instant().minus(RETENTION_DAYS, ChronoUnit.DAYS));
         } catch (RuntimeException e) {
-            // Never let the scheduler see it (the next hour retries); the message could carry data, so only the trace
+            // Never let the scheduler see it (the next hour retries). The bulk delete binds only the cutoff, so the
+            // logged exception carries no personal data.
             log.error("ID scan purge failed", e);
         }
     }

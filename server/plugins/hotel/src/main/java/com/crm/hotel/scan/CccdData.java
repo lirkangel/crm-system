@@ -2,7 +2,7 @@ package com.crm.hotel.scan;
 
 import java.time.LocalDate;
 
-/** Identity fields decoded from the QR code on the back of a Vietnamese CCCD. Never log an instance. */
+/** Identity fields decoded from the QR code of a Vietnamese CCCD. Never log an instance. */
 public record CccdData(
     String idNumber,
     String oldIdNumber,
