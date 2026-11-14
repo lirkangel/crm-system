@@ -1,0 +1,69 @@
+# Rendered by the image entrypoint (envsubst over CRM_SERVER_URL, CRM_PUBLIC_PROXY_SECRET, REAL_IP_FROM).
+# This is the only internet-facing piece: it serves the page and proxies the public check-in API, nothing else.
+
+server {
+    listen 8080 default_server;
+    server_name _;
+    server_tokens off;
+
+    # Only the tunnel connector may name the client (CF-Connecting-IP); anyone else's header is ignored.
+    set_real_ip_from ${REAL_IP_FROM};
+    real_ip_header CF-Connecting-IP;
+    real_ip_recursive off;
+
+    root /usr/share/nginx/html;
+    index index.html;
+
+    include /etc/nginx/snippets/security-headers.conf;
+
+    # The one proxied API. ^~ beats every regex location, and the URI is normalised before matching,
+    # so /public/../reservations never reaches this block.
+    location ^~ /api/v1/plugins/hotel/public/ {
+        limit_except GET POST DELETE { deny all; }
+        client_max_body_size 11m;
+        access_log off;
+
+        proxy_pass ${CRM_SERVER_URL};
+        proxy_http_version 1.1;
+        proxy_set_header Host $proxy_host;
+        # Set explicitly so nothing the client sent can pass through.
+        proxy_set_header X-Guest-Proxy-Secret "${CRM_PUBLIC_PROXY_SECRET}";
+        proxy_set_header X-Client-IP $remote_addr;
+        proxy_set_header X-Forwarded-For "";
+        proxy_set_header X-Real-IP "";
+        proxy_set_header CF-Connecting-IP "";
+
+        # The server's replies carry no cookies and no duplicates of the headers set here.
+        proxy_hide_header Set-Cookie;
+        proxy_hide_header X-Robots-Tag;
+        proxy_hide_header Referrer-Policy;
+        proxy_hide_header X-Content-Type-Options;
+        proxy_hide_header Content-Security-Policy;
+        proxy_hide_header Permissions-Policy;
+        include /etc/nginx/snippets/security-headers.conf;
+    }
+
+    # The bare prefix would otherwise get nginx's slash-adding 301.
+    location = /api/v1/plugins/hotel/public {
+        return 404;
+    }
+
+    # Everything else under /api (staff API, auth, actuator under /api, ...) does not exist here.
+    location ^~ /api {
+        return 404;
+    }
+
+    # Hashed build output: cache for a year. A missing asset is a 404, never the SPA page.
+    location ^~ /assets/ {
+        try_files $uri =404;
+        add_header Cache-Control "public, max-age=31536000, immutable" always;
+        include /etc/nginx/snippets/security-headers.conf;
+    }
+
+    # The SPA shell and every client route: never cached, so a new build is picked up at once.
+    location / {
+        try_files $uri /index.html;
+        add_header Cache-Control "no-store" always;
+        include /etc/nginx/snippets/security-headers.conf;
+    }
+}
