@@ -10,6 +10,7 @@ import {
   type ScanResult,
   type Summary,
 } from "@/api/checkin";
+import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { AdultStep } from "@/screens/AdultStep";
 import { Closed } from "@/screens/Closed";
 import { Invalid } from "@/screens/Invalid";
@@ -144,7 +145,9 @@ export default function App() {
           {t("lang.switch")}
         </button>
       </header>
-      <main>{body}</main>
+      <ErrorBoundary>
+        <main>{body}</main>
+      </ErrorBoundary>
     </div>
   );
 }

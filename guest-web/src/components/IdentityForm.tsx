@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { ApiError, type Identity } from "@/api/checkin";
 import { countries } from "@/lib/countries";
@@ -17,7 +17,13 @@ function Field({ id, label, children }: { id: string; label: string; children: R
   );
 }
 
-const today = () => new Date().toISOString().slice(0, 10);
+const pad = (n: number) => String(n).padStart(2, "0");
+/** Local calendar date as yyyy-mm-dd, {@code daysAgo} days back (not UTC: a late-evening guest is still "today"). */
+const localDate = (daysAgo = 0) => {
+  const d = new Date();
+  d.setDate(d.getDate() - daysAgo);
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+};
 
 /**
  * The editable identity fields plus consent and Send. Client hints mirror the server's rules (a Vietnamese citizen
@@ -46,6 +52,7 @@ export function IdentityForm({
   });
   const [consent, setConsent] = useState(false);
   const [busy, setBusy] = useState(false);
+  const inFlight = useRef(false);
   const [error, setError] = useState<string | null>(null);
   const list = useMemo(() => countries(i18n.language), [i18n.language]);
   const set = (k: keyof typeof v) => (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) =>
@@ -63,7 +70,8 @@ export function IdentityForm({
 
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
-    if (!canSend) return;
+    if (!canSend || inFlight.current) return;
+    inFlight.current = true;
     setBusy(true);
     setError(null);
     try {
@@ -81,20 +89,21 @@ export function IdentityForm({
     } catch (err) {
       setError(err instanceof ApiError ? err.messageKey : "common.error");
       setBusy(false);
+    } finally {
+      inFlight.current = false;
     }
   }
 
-  const req = (ok: boolean) => ({ required: true, "aria-invalid": !ok && undefined });
   return (
     <form onSubmit={onSubmit} className="space-y-4" noValidate>
       <Field id="f-idNumber" label={t("field.idNumber")}>
-        <input id="f-idNumber" className={input} value={v.idNumber} onChange={set("idNumber")} maxLength={32} autoComplete="off" {...req(true)} />
+        <input id="f-idNumber" className={input} value={v.idNumber} onChange={set("idNumber")} maxLength={32} autoComplete="off" required />
       </Field>
       <Field id="f-fullName" label={t("field.fullName")}>
-        <input id="f-fullName" className={input} value={v.fullName} onChange={set("fullName")} maxLength={200} autoComplete="off" {...req(true)} />
+        <input id="f-fullName" className={input} value={v.fullName} onChange={set("fullName")} maxLength={200} autoComplete="off" required />
       </Field>
       <Field id="f-dob" label={t("field.dateOfBirth")}>
-        <input id="f-dob" type="date" className={input} value={v.dateOfBirth} onChange={set("dateOfBirth")} max={today()} {...req(true)} />
+        <input id="f-dob" type="date" className={input} value={v.dateOfBirth} onChange={set("dateOfBirth")} max={localDate(1)} required />
       </Field>
       <Field id="f-nat" label={t("field.nationality")}>
         <select id="f-nat" className={input} value={v.nationality} onChange={set("nationality")} required>
@@ -117,7 +126,7 @@ export function IdentityForm({
             <input id="f-visa" className={input} value={v.visaNumber} onChange={set("visaNumber")} maxLength={32} autoComplete="off" required={!isVn} />
           </Field>
           <Field id="f-entry" label={t("field.entryDate")}>
-            <input id="f-entry" type="date" className={input} value={v.entryDate} onChange={set("entryDate")} max={today()} required={!isVn} />
+            <input id="f-entry" type="date" className={input} value={v.entryDate} onChange={set("entryDate")} max={localDate()} required={!isVn} />
           </Field>
         </>
       )}

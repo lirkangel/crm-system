@@ -36,19 +36,31 @@ describe("toUploadJpeg", () => {
     const blob = await toUploadJpeg(file);
 
     expect(cib).toHaveBeenCalledWith(file, { imageOrientation: "from-image" });
-    expect(canvas().width).toBe(2400);
-    expect(canvas().height).toBe(1800);
     expect(drawImage).toHaveBeenCalledWith(expect.anything(), 0, 0, 2400, 1800);
     expect(blob.type).toBe("image/jpeg");
     expect(await blob.text()).toBe("image/jpeg@0.85");
+    expect(close).toHaveBeenCalled();
+    expect(canvas().width).toBe(0);
+    expect(canvas().height).toBe(0);
+  });
+
+  it("downscales a portrait 1200x4000 to 720x2400", async () => {
+    vi.stubGlobal("createImageBitmap", vi.fn().mockResolvedValue({ width: 1200, height: 4000, close }));
+    await toUploadJpeg(new File(["x"], "p.jpg"));
+    expect(drawImage).toHaveBeenCalledWith(expect.anything(), 0, 0, 720, 2400);
+  });
+
+  it("rejects when there is no 2d context", async () => {
+    vi.stubGlobal("createImageBitmap", vi.fn().mockResolvedValue({ width: 10, height: 10, close }));
+    getContext.mockImplementation((() => null) as never);
+    await expect(toUploadJpeg(new File(["x"], "p.jpg"))).rejects.toBeInstanceOf(UndecodablePhotoError);
     expect(close).toHaveBeenCalled();
   });
 
   it("does not upscale a small photo", async () => {
     vi.stubGlobal("createImageBitmap", vi.fn().mockResolvedValue({ width: 800, height: 1200, close }));
     await toUploadJpeg(new File(["x"], "p.jpg"));
-    expect(canvas().width).toBe(800);
-    expect(canvas().height).toBe(1200);
+    expect(drawImage).toHaveBeenCalledWith(expect.anything(), 0, 0, 800, 1200);
   });
 
   it("rejects an undecodable photo", async () => {

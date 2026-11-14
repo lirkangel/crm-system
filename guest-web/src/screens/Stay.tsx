@@ -68,7 +68,7 @@ export function Stay({
           onClick={onAdd}
           className="min-h-12 w-full rounded-lg bg-blue-700 px-4 text-base font-semibold text-white"
         >
-          {t("stay.add")}
+          {count >= summary.adults ? t("stay.addAnother") : t("stay.add")}
         </button>
       )}
     </section>

@@ -18,6 +18,7 @@
     "submitted": "Submitted ({{count}}/{{adults}})",
     "none": "No guest has been submitted yet.",
     "add": "Add an adult",
+    "addAnother": "Add another guest",
     "remove": "Remove",
     "removeAria": "Remove {{name}}"
   },

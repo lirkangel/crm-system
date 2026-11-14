@@ -18,6 +18,7 @@
     "submitted": "Đã gửi ({{count}}/{{adults}})",
     "none": "Chưa có khách nào được gửi.",
     "add": "Thêm khách",
+    "addAnother": "Thêm khách khác",
     "remove": "Xóa",
     "removeAria": "Xóa {{name}}"
   },

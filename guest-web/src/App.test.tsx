@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import i18n from "@/i18n";
+import { ErrorBoundary } from "@/components/ErrorBoundary";
 import App from "./App";
 import { resetToken } from "@/api/checkin";
 
@@ -102,6 +103,16 @@ describe("App", () => {
     render(<App />);
     await userEvent.click(await screen.findByRole("button", { name: i18n.t("stay.add") }));
     await userEvent.click(screen.getByRole("button", { name: i18n.t("adult.noCccd") }));
+  }
+
+  async function fillPassport() {
+    await userEvent.type(screen.getByLabelText(i18n.t("field.idNumber")), "B1234567");
+    await userEvent.type(screen.getByLabelText(i18n.t("field.fullName")), "JOHN SMITH");
+    await userEvent.type(screen.getByLabelText(i18n.t("field.dateOfBirth")), "1985-03-02");
+    await userEvent.selectOptions(screen.getByLabelText(i18n.t("field.nationality")), "US");
+    await userEvent.type(screen.getByLabelText(i18n.t("field.visaNumber")), "V99");
+    await userEvent.type(screen.getByLabelText(i18n.t("field.entryDate")), "2026-11-01");
+    await userEvent.click(screen.getByLabelText(i18n.t("consent.label")));
   }
 
   it("send_disabled_until_consent", async () => {
@@ -208,5 +219,136 @@ describe("App", () => {
     await userEvent.click(screen.getByRole("button", { name: "English" }));
     expect(await screen.findByRole("button", { name: "Add an adult" })).toBeInTheDocument();
     expect(document.documentElement.lang).toBe("en");
+  });
+
+  it("add_button_relabels_after_expected_adults", async () => {
+    const g = (id: string) => ({ id, maskedName: id, documentType: "CCCD" });
+    serve(() => ok({ ...summary, adults: 1, maxGuests: 2, guests: [g("a")] }));
+    const { unmount } = render(<App />);
+    expect(await screen.findByRole("button", { name: i18n.t("stay.addAnother") })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: i18n.t("stay.add") })).toBeNull();
+    unmount();
+    serve(() => ok({ ...summary, adults: 1, maxGuests: 2, guests: [g("a"), g("b")] }));
+    render(<App />);
+    await screen.findByText("b");
+    expect(screen.queryByRole("button", { name: /^Thêm khách/ })).toBeNull();
+  });
+
+  it("date_limits_use_local_dates", async () => {
+    const env = (globalThis as unknown as { process: { env: Record<string, string | undefined> } }).process.env;
+    const tz = env.TZ;
+    env.TZ = "Asia/Ho_Chi_Minh"; // 23:30+07:00 is still 2026-11-14 locally (it is 16:30 UTC)
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date("2026-11-14T23:30:00+07:00"));
+    try {
+      await openPassport();
+      expect(screen.getByLabelText(i18n.t("field.entryDate"))).toHaveAttribute("max", "2026-11-14");
+      expect(screen.getByLabelText(i18n.t("field.dateOfBirth"))).toHaveAttribute("max", "2026-11-13");
+    } finally {
+      vi.useRealTimers();
+      if (tz === undefined) delete env.TZ;
+      else env.TZ = tz;
+    }
+  });
+
+  it("submit_body_and_token_header", async () => {
+    mockToJpeg.mockResolvedValue(new Blob(["jpg"], { type: "image/jpeg" }));
+    serve(() => ok(summary));
+    render(<App />);
+    await userEvent.click(await screen.findByRole("button", { name: i18n.t("stay.add") }));
+    fetchMock.mockImplementation(async (url: string, init?: RequestInit) => {
+      if (String(url).endsWith("/id-scans")) return ok({ scanId: "s9", fields: scanFields }, 201);
+      if (String(url).endsWith("/guests") && init?.method === "POST") return ok({ id: "g3", maskedName: "x", documentType: "CCCD" }, 201);
+      return ok(summary);
+    });
+    await userEvent.upload(screen.getByLabelText(i18n.t("adult.takePhoto")), new File(["x"], "p.jpg", { type: "image/jpeg" }));
+    await userEvent.click(await screen.findByLabelText(i18n.t("consent.label")));
+    await userEvent.click(screen.getByRole("button", { name: i18n.t("action.send") }));
+    await waitFor(() => expect(calls("POST", "/guests")).toHaveLength(1));
+    const body = JSON.parse(calls("POST", "/guests")[0][1].body);
+    expect(body.consent).toBe(true);
+    expect(body.identity.idScanId).toBe("s9");
+    // DELETE
+    await userEvent.click(await screen.findByRole("button", { name: /Xóa/ }));
+    await waitFor(() => expect(calls("DELETE", "/guests/g1")).toHaveLength(1));
+    for (const [, init] of fetchMock.mock.calls) {
+      expect(init.headers["X-Checkin-Token"]).toBe("tok-123");
+    }
+    expect(calls("GET", "/public/checkin").length).toBeGreaterThan(0);
+    expect(calls("POST", "/id-scans")).toHaveLength(1);
+  });
+
+  it("network_failure_on_load_and_submit_does_not_crash", async () => {
+    fetchMock.mockRejectedValue(new TypeError("offline"));
+    const { unmount } = render(<App />);
+    expect(await screen.findByText(i18n.t("common.error"))).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: i18n.t("common.retry") })).toBeInTheDocument();
+    unmount();
+
+    await openPassport();
+    fetchMock.mockRejectedValue(new TypeError("offline"));
+    await fillPassport();
+    await userEvent.click(screen.getByRole("button", { name: i18n.t("action.send") }));
+    expect(await screen.findByRole("alert")).toHaveTextContent(i18n.t("common.error"));
+    expect(screen.getByRole("button", { name: i18n.t("action.send") })).toBeEnabled();
+  });
+
+  it("unreadable_then_successful_upload", async () => {
+    mockToJpeg.mockResolvedValue(new Blob(["jpg"], { type: "image/jpeg" }));
+    serve(() => ok(summary));
+    render(<App />);
+    await userEvent.click(await screen.findByRole("button", { name: i18n.t("stay.add") }));
+    let n = 0;
+    fetchMock.mockImplementation(async () =>
+      n++ === 0 ? problem(400, "HOTEL_SCAN_UNREADABLE") : ok({ scanId: "s2", fields: scanFields }, 201),
+    );
+    const input = screen.getByLabelText(i18n.t("adult.takePhoto"));
+    const file = new File(["x"], "p.jpg", { type: "image/jpeg" });
+    await userEvent.upload(input, file);
+    expect(await screen.findByText(i18n.t("scan.unreadable"))).toBeInTheDocument();
+    await userEvent.upload(screen.getByLabelText(i18n.t("adult.takePhoto")), file);
+    expect(await screen.findByDisplayValue("NGUYEN VAN A")).toBeInTheDocument();
+  });
+
+  it.each([
+    [404, "HOTEL_NOT_FOUND", "invalid"],
+    [409, "HOTEL_CHECKIN_CLOSED", "closed"],
+  ])("submit_%i_shows_screen", async (status, code, key) => {
+    await openPassport();
+    fetchMock.mockImplementation(async () => problem(status, code));
+    await fillPassport();
+    await userEvent.click(screen.getByRole("button", { name: i18n.t("action.send") }));
+    expect(await screen.findByText(i18n.t(key))).toBeInTheDocument();
+  });
+
+  it("double_tap_sends_once", async () => {
+    await openPassport();
+    let release!: () => void;
+    fetchMock.mockImplementation(
+      (url: string, init?: RequestInit) =>
+        new Promise((res) => {
+          release = () =>
+            res(String(url).endsWith("/guests") && init?.method === "POST" ? ok({ id: "z", maskedName: "z", documentType: "PASSPORT" }, 201) : ok(summary));
+        }),
+    );
+    await fillPassport();
+    const send = screen.getByRole("button", { name: i18n.t("action.send") });
+    await userEvent.dblClick(send);
+    expect(calls("POST", "/guests")).toHaveLength(1);
+    release();
+  });
+
+  it("error_boundary_renders_failed_view", () => {
+    const Boom = () => {
+      throw new Error("boom");
+    };
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    render(
+      <ErrorBoundary>
+        <Boom />
+      </ErrorBoundary>,
+    );
+    expect(screen.getByRole("alert")).toHaveTextContent(i18n.t("common.error"));
+    expect(screen.getByRole("button", { name: i18n.t("common.retry") })).toBeInTheDocument();
   });
 });

@@ -43,7 +43,7 @@ export function AdultStep({
     <section className="space-y-4">
       <h2 className="text-lg font-semibold">{t("adult.title")}</h2>
       <p className="text-sm text-slate-700">{t("adult.hint")}</p>
-      <label className="flex min-h-12 w-full cursor-pointer items-center justify-center rounded-lg bg-blue-700 px-4 text-base font-semibold text-white has-[:disabled]:bg-slate-400">
+      <label className="flex min-h-12 w-full cursor-pointer items-center justify-center rounded-lg bg-blue-700 px-4 text-base font-semibold text-white has-[:disabled]:bg-slate-400 focus-within:ring-4 focus-within:ring-blue-300 focus-within:ring-offset-2">
         {busy ? t("adult.reading") : t("adult.takePhoto")}
         <input type="file" accept="image/*" capture="environment" className="sr-only" disabled={busy} onChange={onFile} />
       </label>
