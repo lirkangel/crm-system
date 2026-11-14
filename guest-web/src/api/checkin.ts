@@ -1,5 +1,5 @@
 import { messageKey } from "@/lib/problem";
-import { readToken } from "@/lib/token";
+import { claimLink, resetLink } from "@/lib/token";
 
 const BASE = "/api/v1/plugins/hotel/public/checkin";
 
@@ -62,12 +62,13 @@ let token: string | null = null;
 
 /** Takes the token from the URL fragment the first time; later calls keep the one already held. */
 export function bootstrapToken(location: Location): boolean {
-  const t = readToken(location);
-  if (t) token = t;
+  const link = claimLink(location);
+  if (link?.kind === "hotel") token = link.token;
   return token !== null;
 }
 export function resetToken(): void {
   token = null;
+  resetLink();
 }
 
 async function call<T>(path: string, init: RequestInit = {}): Promise<{ status: number; data: T }> {

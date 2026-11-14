@@ -1,6 +1,11 @@
 {
-  "app": { "title": "Online check-in", "docTitle": "Pre-arrival registration" },
-  "lang": { "switch": "Tiếng Việt" },
+  "app": {
+    "title": "Online check-in",
+    "docTitle": "Pre-arrival registration"
+  },
+  "lang": {
+    "switch": "Tiếng Việt"
+  },
   "common": {
     "busy": "The system is busy. Please try again in a few minutes.",
     "error": "Something went wrong. Please try again.",
@@ -23,8 +28,14 @@
     "removeAria": "Remove {{name}}",
     "removeConfirm": "Remove this guest's details and photo?"
   },
-  "guests": { "alreadySent": "Already sent — remove it to change the details" },
-  "docType": { "CCCD": "CCCD", "PASSPORT": "Passport", "OTHER": "Other" },
+  "guests": {
+    "alreadySent": "Already sent — remove it to change the details"
+  },
+  "docType": {
+    "CCCD": "CCCD",
+    "PASSPORT": "Passport",
+    "OTHER": "Other"
+  },
   "identity": {
     "invalidDoc": "Check the document details",
     "invalid": "Some details are missing or invalid"
@@ -33,7 +44,9 @@
     "title": "All details received",
     "text": "Thank you. The hotel has the details of all {{adults}} adults. See you at the front desk."
   },
-  "adults": { "full": "This booking already has the maximum number of guests." },
+  "adults": {
+    "full": "This booking already has the maximum number of guests."
+  },
   "adult": {
     "title": "One adult's identity",
     "takePhoto": "Take a photo of the CCCD",
@@ -69,5 +82,92 @@
     "label": "I have read and agree to the above",
     "text": "We collect your identity details (name, date of birth, document number, nationality, address) and the photo of your CCCD. Purpose: registering your stay with the police, as required by law. The CCCD photo is deleted within 30 days. By sending, you confirm that you may send the details of the other adults on this booking."
   },
-  "action": { "send": "Send", "sending": "Sending…" }
+  "action": {
+    "send": "Send",
+    "sending": "Sending…"
+  },
+  "dental": {
+    "title": "Pre-visit questionnaire",
+    "docTitle": "Pre-visit questionnaire",
+    "start": "Start",
+    "next": "Continue",
+    "back": "Back",
+    "invalidTitle": "Invalid link",
+    "invalid": "This link couldn't be opened. Open it again from the clinic's message; if it still fails, contact the clinic.",
+    "closedTitle": "Questionnaire closed",
+    "closed": "The clinic has closed the pre-visit questionnaire for this appointment. Please fill it in when you arrive.",
+    "phone": "Phone number",
+    "phoneHint": "A mobile number the clinic can reach you on.",
+    "parentName": "Parent's full name",
+    "parentPhone": "Parent's phone number",
+    "takePhoto": "Take a photo of the CCCD",
+    "summary": {
+      "title": "Your appointment",
+      "dentist": "Dentist",
+      "patient": "Patient",
+      "submitted": "You already sent the questionnaire for this appointment. You can send it again to replace it.",
+      "hint": "Please answer a few short questions so the clinic can prepare before you arrive.",
+      "update": "Update my answers"
+    },
+    "dob": {
+      "title": "Is this your date of birth?",
+      "hint": "You have filled this in at the clinic before. Enter your date of birth to pre-fill your allergies, medicines and reason from last time.",
+      "label": "Date of birth to check",
+      "check": "Check",
+      "skip": "Start fresh",
+      "locked": "Your earlier answers can't be filled in. Please answer from scratch."
+    },
+    "identity": {
+      "title": "Patient details",
+      "childHint": "The patient is under 14: enter a parent's name and phone number. The child's ID is optional.",
+      "orType": "Or type the details below."
+    },
+    "allergies": {
+      "title": "Do you have any allergies?",
+      "hint": "Please choose one answer.",
+      "none": "No allergies",
+      "some": "I have allergies"
+    },
+    "allergy": {
+      "PENICILLIN": "Penicillin",
+      "OTHER_ANTIBIOTIC": "Other antibiotics",
+      "LOCAL_ANAESTHETIC": "Local anaesthetic",
+      "LATEX": "Latex",
+      "OTHER": "Other",
+      "otherText": "Describe the other allergy"
+    },
+    "medicines": {
+      "title": "Are you taking any medicines?",
+      "hint": "Please choose one answer.",
+      "none": "No medicines",
+      "some": "I take medicines",
+      "text": "Medicine names and doses"
+    },
+    "reason": {
+      "title": "Reason for the visit",
+      "CHECKUP": "Check-up",
+      "PAIN": "Pain or discomfort",
+      "CLEANING": "Cleaning",
+      "OTHER": "Another reason",
+      "text": "Describe the reason",
+      "textOptional": "Anything else (optional)"
+    },
+    "consent": {
+      "title": "Confirm",
+      "label": "I have read and agree to the above",
+      "text": "We collect your identity details (name, date of birth, document number, nationality, address), your phone number, the photo of your CCCD and the health information you give (allergies, medicines, reason for the visit). Health information is sensitive data. Purpose: preparing and carrying out your visit. The CCCD photo is deleted within 30 days. By sending, you confirm the details are yours (or those of a child in your care) and agree to the clinic handling them as described."
+    },
+    "done": {
+      "title": "Answers received",
+      "text": "Thank you. The clinic has your details. See you at the clinic."
+    },
+    "err": {
+      "mismatch": "That date doesn't match. Please try again or start fresh.",
+      "mismatchLeft": "That date doesn't match. You have {{count}} attempts left.",
+      "locked": "No more attempts left. Please answer from scratch.",
+      "badForm": "Some answers are missing or invalid. Please check them.",
+      "scanUnreadable": "The photo could not be read. Please retake it clearly or type the details.",
+      "scanLimit": "Too many photos sent. Please type the details or contact the clinic."
+    }
+  }
 }

@@ -1,6 +1,11 @@
 {
-  "app": { "title": "Check-in trực tuyến", "docTitle": "Khai báo lưu trú trước" },
-  "lang": { "switch": "English" },
+  "app": {
+    "title": "Check-in trực tuyến",
+    "docTitle": "Khai báo lưu trú trước"
+  },
+  "lang": {
+    "switch": "English"
+  },
   "common": {
     "busy": "Hệ thống đang bận, vui lòng thử lại sau ít phút.",
     "error": "Có lỗi xảy ra. Vui lòng thử lại.",
@@ -23,8 +28,14 @@
     "removeAria": "Xóa {{name}}",
     "removeConfirm": "Xóa thông tin và ảnh của khách này?"
   },
-  "guests": { "alreadySent": "Đã gửi trước đó. Hãy xóa mục đã gửi nếu muốn đổi thông tin." },
-  "docType": { "CCCD": "CCCD", "PASSPORT": "Hộ chiếu", "OTHER": "Khác" },
+  "guests": {
+    "alreadySent": "Đã gửi trước đó. Hãy xóa mục đã gửi nếu muốn đổi thông tin."
+  },
+  "docType": {
+    "CCCD": "CCCD",
+    "PASSPORT": "Hộ chiếu",
+    "OTHER": "Khác"
+  },
   "identity": {
     "invalidDoc": "Vui lòng kiểm tra lại thông tin giấy tờ.",
     "invalid": "Một số thông tin còn thiếu hoặc không hợp lệ."
@@ -33,7 +44,9 @@
     "title": "Đã đủ thông tin",
     "text": "Cảm ơn bạn. Khách sạn đã nhận đủ thông tin của {{adults}} người lớn. Hẹn gặp bạn tại quầy lễ tân."
   },
-  "adults": { "full": "Đặt phòng này đã đủ số khách tối đa." },
+  "adults": {
+    "full": "Đặt phòng này đã đủ số khách tối đa."
+  },
   "adult": {
     "title": "Giấy tờ của một người lớn",
     "takePhoto": "Chụp ảnh CCCD",
@@ -69,5 +82,92 @@
     "label": "Tôi đã đọc và đồng ý với nội dung trên",
     "text": "Chúng tôi thu thập thông tin giấy tờ tùy thân của bạn (họ tên, ngày sinh, số giấy tờ, quốc tịch, địa chỉ) và ảnh CCCD. Mục đích: đăng ký lưu trú với cơ quan công an theo quy định của pháp luật. Ảnh CCCD sẽ được xóa trong vòng 30 ngày. Bằng việc gửi, bạn xác nhận bạn có quyền gửi thông tin của những người lớn khác trong đặt phòng này."
   },
-  "action": { "send": "Gửi", "sending": "Đang gửi…" }
+  "action": {
+    "send": "Gửi",
+    "sending": "Đang gửi…"
+  },
+  "dental": {
+    "title": "Khai báo trước khi khám",
+    "docTitle": "Khai báo trước khi khám",
+    "start": "Bắt đầu",
+    "next": "Tiếp tục",
+    "back": "Quay lại",
+    "invalidTitle": "Liên kết không hợp lệ",
+    "invalid": "Không mở được liên kết. Hãy mở lại liên kết từ tin nhắn của phòng khám; nếu vẫn lỗi, vui lòng liên hệ phòng khám.",
+    "closedTitle": "Đã đóng khai báo",
+    "closed": "Phòng khám đã đóng việc khai báo trước cho lịch hẹn này. Vui lòng khai báo khi đến khám.",
+    "phone": "Số điện thoại",
+    "phoneHint": "Số di động để phòng khám liên hệ khi cần.",
+    "parentName": "Họ tên phụ huynh",
+    "parentPhone": "Số điện thoại phụ huynh",
+    "takePhoto": "Chụp ảnh CCCD",
+    "summary": {
+      "title": "Lịch hẹn của bạn",
+      "dentist": "Bác sĩ",
+      "patient": "Người khám",
+      "submitted": "Bạn đã gửi khai báo cho lịch hẹn này. Có thể gửi lại để thay thế.",
+      "hint": "Vui lòng khai báo vài câu hỏi ngắn để phòng khám chuẩn bị trước khi bạn đến.",
+      "update": "Cập nhật khai báo"
+    },
+    "dob": {
+      "title": "Đây có phải ngày sinh của bạn?",
+      "hint": "Bạn từng khai báo tại phòng khám. Nhập ngày sinh để điền sẵn dị ứng, thuốc đang dùng và lý do khám lần trước.",
+      "label": "Ngày sinh để kiểm tra",
+      "check": "Kiểm tra",
+      "skip": "Khai báo mới",
+      "locked": "Không thể điền sẵn từ lần trước. Vui lòng khai báo từ đầu."
+    },
+    "identity": {
+      "title": "Thông tin người khám",
+      "childHint": "Người khám dưới 14 tuổi: nhập họ tên và số điện thoại của phụ huynh. Giấy tờ của trẻ không bắt buộc.",
+      "orType": "Hoặc nhập thông tin bên dưới."
+    },
+    "allergies": {
+      "title": "Bạn có dị ứng không?",
+      "hint": "Bắt buộc chọn một đáp án.",
+      "none": "Không dị ứng",
+      "some": "Có dị ứng"
+    },
+    "allergy": {
+      "PENICILLIN": "Penicillin",
+      "OTHER_ANTIBIOTIC": "Kháng sinh khác",
+      "LOCAL_ANAESTHETIC": "Thuốc tê",
+      "LATEX": "Latex (cao su)",
+      "OTHER": "Khác",
+      "otherText": "Mô tả dị ứng khác"
+    },
+    "medicines": {
+      "title": "Bạn đang dùng thuốc nào không?",
+      "hint": "Bắt buộc chọn một đáp án.",
+      "none": "Không dùng thuốc",
+      "some": "Có dùng thuốc",
+      "text": "Tên thuốc và liều dùng"
+    },
+    "reason": {
+      "title": "Lý do khám",
+      "CHECKUP": "Khám tổng quát",
+      "PAIN": "Đau hoặc khó chịu",
+      "CLEANING": "Lấy cao răng",
+      "OTHER": "Lý do khác",
+      "text": "Mô tả lý do",
+      "textOptional": "Ghi chú thêm (không bắt buộc)"
+    },
+    "consent": {
+      "title": "Xác nhận",
+      "label": "Tôi đã đọc và đồng ý với nội dung trên",
+      "text": "Chúng tôi thu thập thông tin nhận dạng của bạn (họ tên, ngày sinh, số giấy tờ, quốc tịch, địa chỉ), số điện thoại, ảnh CCCD và thông tin sức khỏe bạn khai (dị ứng, thuốc đang dùng, lý do khám). Thông tin sức khỏe là dữ liệu nhạy cảm. Mục đích: chuẩn bị và phục vụ buổi khám của bạn. Ảnh CCCD được xóa trong vòng 30 ngày. Khi gửi, bạn xác nhận thông tin là của bạn (hoặc của trẻ do bạn giám hộ) và đồng ý cho phòng khám xử lý như trên."
+    },
+    "done": {
+      "title": "Đã nhận khai báo",
+      "text": "Cảm ơn bạn. Phòng khám đã nhận thông tin. Hẹn gặp bạn tại phòng khám."
+    },
+    "err": {
+      "mismatch": "Ngày này không khớp. Vui lòng thử lại hoặc khai báo mới.",
+      "mismatchLeft": "Ngày này không khớp. Bạn còn {{count}} lần thử.",
+      "locked": "Đã hết lượt kiểm tra. Vui lòng khai báo từ đầu.",
+      "badForm": "Một số câu trả lời còn thiếu hoặc không hợp lệ. Vui lòng kiểm tra lại.",
+      "scanUnreadable": "Không đọc được ảnh. Vui lòng chụp lại rõ nét hoặc nhập thông tin.",
+      "scanLimit": "Đã gửi quá nhiều ảnh. Vui lòng nhập thông tin hoặc liên hệ phòng khám."
+    }
+  }
 }
