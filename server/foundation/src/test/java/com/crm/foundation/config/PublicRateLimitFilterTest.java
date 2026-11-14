@@ -158,7 +158,7 @@ class PublicRateLimitFilterTest {
         PublicRateLimitFilter filter = filter(1, "");
 
         for (String path : new String[] {"/api/v1/plugins/hotel/%70ublic/checkin/stay",
-            "/api/v1/plugins/h%6Ftel/public/checkin/stay", "/api/v1/plugins/hotel/%50ublic/x".replace("%50", "%70")}) {
+            "/api/v1/plugins/h%6Ftel/public/checkin/stay", "/api/v1/plugins/%68otel/public/x"}) {
             MockHttpServletResponse response = call(filter, request(path, "10.0.0.5", null, null));
             assertThat(response.getStatus()).as(path).isEqualTo(400);
             assertThat(response.getContentType()).isEqualTo("application/problem+json");
@@ -203,5 +203,49 @@ class PublicRateLimitFilterTest {
         assertThatThrownBy(() -> filter(0, ""))
             .isInstanceOf(IllegalStateException.class)
             .hasMessageContaining("crm.public.rate-limit-per-minute must be at least 1");
+    }
+
+    @Test
+    void client_ip_hostname_like_values_never_resolve() throws Exception {
+        PublicRateLimitFilter filter = filter(1, "proxy-secret");
+
+        for (String value : new String[] {"zzz:1", "host:1", "example.com", "a:b", "[nope]:1"}) {
+            long start = System.nanoTime();
+            assertThat(call(filter, request(PUBLIC_PATH, "10.0.0.5", value, "proxy-secret")).getStatus())
+                .as(value).isEqualTo(200);
+            // opaque key: the same string again is the same bucket
+            assertThat(call(filter, request(PUBLIC_PATH, "10.0.0.5", value, "proxy-secret")).getStatus())
+                .as(value).isEqualTo(429);
+            assertThat(Duration.ofNanos(System.nanoTime() - start)).as(value).isLessThan(Duration.ofSeconds(1));
+        }
+        assertThat(PublicRateLimitFilter.normalize("zzz:1")).isEqualTo("zzz:1");
+        assertThat(PublicRateLimitFilter.normalize("example.com")).isEqualTo("example.com");
+    }
+
+    @Test
+    void ipv4_mapped_ipv6_shares_ipv4_bucket() throws Exception {
+        PublicRateLimitFilter filter = filter(1, "");
+
+        assertThat(call(filter, request(PUBLIC_PATH, "1.2.3.4", null, null)).getStatus()).isEqualTo(200);
+        assertThat(call(filter, request(PUBLIC_PATH, "::ffff:1.2.3.4", null, null)).getStatus()).isEqualTo(429);
+        assertThat(PublicRateLimitFilter.normalize("[2001:db8::1]")).isEqualTo(PublicRateLimitFilter.normalize("2001:db8:0:0:1:2:3:4"));
+    }
+
+    @Test
+    void proxy_fallback_warns_once_a_minute() throws Exception {
+        int[] warnings = {0};
+        PublicRateLimitFilter filter = new PublicRateLimitFilter(100, "proxy-secret", MAPPER, clock) {
+            @Override
+            protected void logProxyWarning() {
+                warnings[0]++;
+            }
+        };
+
+        call(filter, request(PUBLIC_PATH, "10.0.0.5", null, "proxy-secret"));
+        call(filter, request(PUBLIC_PATH, "10.0.0.5", " ", "proxy-secret"));
+        assertThat(warnings[0]).isEqualTo(1);
+        clock.advance(Duration.ofSeconds(61));
+        call(filter, request(PUBLIC_PATH, "10.0.0.5", null, "proxy-secret"));
+        assertThat(warnings[0]).isEqualTo(2);
     }
 }

@@ -79,6 +79,13 @@ class PluginPublicRouteIT {
                 return "pong";
             }
             """);
+        buildPlugin(pluginDir.resolve("pubpath.zip"), "com.crm.pubpath", "pubpath", "demo.pubpath", """
+            @GetMapping("/{name}")
+            @PreAuthorize("hasAuthority('x.y')")
+            public String named(@org.springframework.web.bind.annotation.PathVariable("name") String name) {
+                return name;
+            }
+            """);
         buildPlugin(pluginDir.resolve("pubboth.zip"), BOTH_PLUGIN_ID, "pubboth", "demo.pubboth", "", """
             @GetMapping("/public/ping")
             @PublicEndpoint
@@ -251,6 +258,16 @@ class PluginPublicRouteIT {
             assertThat(response.getHeaders().getContentType()).as(path + " " + response.getBody()).isEqualTo(MediaType.APPLICATION_PROBLEM_JSON);
             assertThat(objectMapper.readTree(response.getBody()).path("code").asText()).isEqualTo("BAD_REQUEST");
         }
+    }
+
+    @Test
+    void encoded_first_segment_of_guarded_route_is_not_rejected() {
+        HttpHeaders headers = new HttpHeaders();
+        ResponseEntity<String> response = rest.exchange(
+            java.net.URI.create(rest.getRootUri() + "/api/v1/plugins/pubpath/a%20b"), HttpMethod.GET,
+            new HttpEntity<>(headers), String.class);
+
+        assertThat(response.getStatusCode().value()).as(response.getBody()).isEqualTo(401);
     }
 
     @Test

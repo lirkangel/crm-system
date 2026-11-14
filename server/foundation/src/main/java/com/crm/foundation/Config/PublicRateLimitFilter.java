@@ -12,11 +12,10 @@ import org.springframework.http.HttpStatus;
 import org.springframework.lang.NonNull;
 import org.springframework.stereotype.Component;
 import org.springframework.web.filter.OncePerRequestFilter;
+import org.springframework.web.util.UriUtils;
 
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
-import java.net.InetAddress;
-import java.net.UnknownHostException;
 import java.security.MessageDigest;
 import java.time.Clock;
 import java.util.Iterator;
@@ -56,7 +55,7 @@ public class PublicRateLimitFilter extends OncePerRequestFilter {
     static final long IDLE_EVICTION_MILLIS = 10 * 60_000;
     static final int MAX_KEYS = 10_000;
     private static final int MAX_CLIENT_IP_LENGTH = 64;
-    /** Raw path segments that must not be percent-encoded: api, v1, plugins, route, public. */
+    /** Raw path segments 1..5: api, v1, plugins, route, and the one that may be {@code public}. */
     private static final int UNENCODED_SEGMENTS = 5;
 
     private static final class Window {
@@ -131,7 +130,11 @@ public class PublicRateLimitFilter extends OncePerRequestFilter {
         objectMapper.writeValue(response.getOutputStream(), problem);
     }
 
-    /** True when the raw URI percent-encodes any of the first segments ({@code api/v1/plugins/<route>/public}). */
+    /**
+     * True when the raw URI percent-encodes the {@code api/v1/plugins/<route>} segments, or encodes a fifth
+     * segment that decodes to {@code public} (which would only be an attempt to dodge a raw-path rule).
+     * Other fifth segments may be encoded: guarded routes can take a path variable there.
+     */
     private static boolean hasEncodedRouteSegment(HttpServletRequest request) {
         String uri = request.getRequestURI();
         String context = request.getContextPath();
@@ -139,9 +142,16 @@ public class PublicRateLimitFilter extends OncePerRequestFilter {
             uri = uri.substring(context.length());
         }
         String[] segments = uri.split("/", UNENCODED_SEGMENTS + 2);
-        for (int i = 1; i <= UNENCODED_SEGMENTS && i < segments.length; i++) {
+        for (int i = 1; i < UNENCODED_SEGMENTS && i < segments.length; i++) {
             if (segments[i].indexOf('%') >= 0) {
                 return true;
+            }
+        }
+        if (segments.length > UNENCODED_SEGMENTS && segments[UNENCODED_SEGMENTS].indexOf('%') >= 0) {
+            try {
+                return "public".equals(UriUtils.decode(segments[UNENCODED_SEGMENTS], StandardCharsets.UTF_8));
+            } catch (IllegalArgumentException e) {
+                return false;
             }
         }
         return false;
@@ -160,25 +170,112 @@ public class PublicRateLimitFilter extends OncePerRequestFilter {
         return normalize(request.getRemoteAddr());
     }
 
-    /** IPv4 (and anything unparseable) by its text; IPv6 by its /64 prefix, which one subscriber controls. */
-    private static String normalize(String address) {
-        if (address.indexOf(':') >= 0) {
-            try {
-                // contains ':' so this is a literal parse, never a DNS lookup
-                byte[] bytes = InetAddress.getByName(address).getAddress();
-                if (bytes.length == 16) {
-                    StringBuilder prefix = new StringBuilder("v6:");
-                    for (int i = 0; i < 8; i++) {
-                        prefix.append(String.format("%02x", bytes[i]));
-                    }
-                    return prefix.toString();
-                }
-                return InetAddress.getByAddress(bytes).getHostAddress();
-            } catch (UnknownHostException e) {
+    /**
+     * IPv4 by its canonical dotted text, IPv6 by its /64 prefix (one subscriber controls a /64), an
+     * IPv4-mapped IPv6 address as its IPv4. Only strict literals are parsed, by hand: the value is never
+     * handed to the JDK's address resolver, so no value can cause a DNS lookup. Anything else
+     * (hostnames, junk) is an opaque key, the string as given.
+     */
+    public static String normalize(String address) {
+        String literal = address;
+        if (literal.length() > 2 && literal.startsWith("[") && literal.endsWith("]")) {
+            literal = literal.substring(1, literal.length() - 1);
+        }
+        if (literal.indexOf(':') >= 0) {
+            byte[] bytes = literal.chars().allMatch(c -> Character.digit(c, 16) >= 0 || c == ':' || c == '.')
+                ? parseIpv6(literal) : null;
+            if (bytes == null) {
                 return address;
             }
+            boolean mapped = (bytes[10] & 0xff) == 0xff && (bytes[11] & 0xff) == 0xff;
+            for (int i = 0; i < 10 && mapped; i++) {
+                mapped = bytes[i] == 0;
+            }
+            if (mapped) {
+                return (bytes[12] & 0xff) + "." + (bytes[13] & 0xff) + "." + (bytes[14] & 0xff) + "." + (bytes[15] & 0xff);
+            }
+            StringBuilder prefix = new StringBuilder("v6:");
+            for (int i = 0; i < 8; i++) {
+                prefix.append(String.format("%02x", bytes[i]));
+            }
+            return prefix.toString();
         }
-        return address;
+        byte[] v4 = parseIpv4(literal);
+        return v4 == null ? address
+            : (v4[0] & 0xff) + "." + (v4[1] & 0xff) + "." + (v4[2] & 0xff) + "." + (v4[3] & 0xff);
+    }
+
+    private static byte[] parseIpv4(String s) {
+        String[] parts = s.split("\\.", -1);
+        if (parts.length != 4) {
+            return null;
+        }
+        byte[] out = new byte[4];
+        for (int i = 0; i < 4; i++) {
+            String part = parts[i];
+            if (part.isEmpty() || part.length() > 3 || !part.chars().allMatch(c -> c >= '0' && c <= '9')) {
+                return null;
+            }
+            int value = Integer.parseInt(part);
+            if (value > 255) {
+                return null;
+            }
+            out[i] = (byte) value;
+        }
+        return out;
+    }
+
+    /** Strict IPv6 literal (RFC 4291 text forms, optional embedded IPv4 tail) to 16 bytes, or null. */
+    private static byte[] parseIpv6(String s) {
+        int gap = s.indexOf("::");
+        if (gap != s.lastIndexOf("::")) {
+            return null;
+        }
+        int[] head = ipv6Groups(gap < 0 ? s : s.substring(0, gap), gap < 0);
+        int[] tail = gap < 0 ? new int[0] : ipv6Groups(s.substring(gap + 2), true);
+        if (head == null || tail == null) {
+            return null;
+        }
+        int total = head.length + tail.length;
+        if (gap < 0 ? total != 8 : total > 7) {
+            return null;
+        }
+        int[] groups = new int[8];
+        System.arraycopy(head, 0, groups, 0, head.length);
+        System.arraycopy(tail, 0, groups, 8 - tail.length, tail.length);
+        byte[] out = new byte[16];
+        for (int i = 0; i < 8; i++) {
+            out[2 * i] = (byte) (groups[i] >> 8);
+            out[2 * i + 1] = (byte) groups[i];
+        }
+        return out;
+    }
+
+    /** Colon-separated 16-bit groups; a dotted IPv4 may end the list when {@code last} is set. */
+    private static int[] ipv6Groups(String part, boolean last) {
+        if (part.isEmpty()) {
+            return new int[0];
+        }
+        String[] tokens = part.split(":", -1);
+        int[] groups = new int[tokens.length + 1];
+        int n = 0;
+        for (int i = 0; i < tokens.length; i++) {
+            String token = tokens[i];
+            if (token.indexOf('.') >= 0) {
+                byte[] v4 = i == tokens.length - 1 && last ? parseIpv4(token) : null;
+                if (v4 == null) {
+                    return null;
+                }
+                groups[n++] = ((v4[0] & 0xff) << 8) | (v4[1] & 0xff);
+                groups[n++] = ((v4[2] & 0xff) << 8) | (v4[3] & 0xff);
+            } else {
+                if (token.isEmpty() || token.length() > 4) {
+                    return null;
+                }
+                groups[n++] = Integer.parseInt(token, 16);
+            }
+        }
+        return java.util.Arrays.copyOf(groups, n);
     }
 
     /** A trusted proxy that sends no usable X-Client-IP is misconfigured; say so at most once a minute. */
@@ -186,8 +283,13 @@ public class PublicRateLimitFilter extends OncePerRequestFilter {
         long now = clock.millis();
         long last = lastProxyWarning.get();
         if ((last == Long.MIN_VALUE || now - last >= WINDOW_MILLIS) && lastProxyWarning.compareAndSet(last, now)) {
-            logger.warn("Trusted guest proxy sent no usable X-Client-IP; rate limiting by its own address");
+            logProxyWarning();
         }
+    }
+
+    /** Fixed message only: never the header value. */
+    protected void logProxyWarning() {
+        logger.warn("Trusted guest proxy sent no usable X-Client-IP; rate limiting by its own address");
     }
 
     /** Counts one request for {@code key}; returns 0 when allowed, else the seconds until the window ends. */
