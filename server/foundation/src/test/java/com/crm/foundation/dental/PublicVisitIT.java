@@ -352,6 +352,9 @@ class PublicVisitIT extends VisitLinkITSupport {
         assertThat(count("previsit_form", "appointment_id", v.id())).isZero();
         assertThat(count("id_scan", "appointment_id", v.id())).isZero();
         assertThat(data(summary(v.token())).path("open").asBoolean()).isFalse();
+        // Staff no longer see either
+        assertThat(get(APPOINTMENTS + "/" + v.id() + "/previsit", v.staff()).getStatusCode().value()).isEqualTo(404);
+        assertThat(get(APPOINTMENTS + "/" + v.id() + "/previsit/id-scan", v.staff()).getStatusCode().value()).isEqualTo(404);
     }
 
     @Test

@@ -31,6 +31,15 @@ public interface DentalIdScanRepository extends JpaRepository<DentalIdScan, UUID
     @Query("select x.appointmentId from DentalIdScan x where x.id = :id")
     Optional<UUID> findAppointmentIdById(@Param("id") UUID id);
 
+    /**
+     * The photo the appointment's own pre-visit form holds: the only route is the form row, scoped by the
+     * appointment (so another appointment's scan never matches) and without loading the entity.
+     */
+    @Query("select new com.crm.dental.scan.StoredImage(x.image, x.contentType) from DentalIdScan x, "
+        + "DentalPrevisitForm f where f.appointmentId = :appointmentId and x.id = f.idScanId "
+        + "and x.appointmentId = :appointmentId")
+    Optional<StoredImage> findFormImage(@Param("appointmentId") UUID appointmentId);
+
     /** Deletes every scan of the appointment (cancellation), flushing first. */
     @Modifying(flushAutomatically = true)
     @Query("delete from DentalIdScan x where x.appointmentId = :appointmentId")

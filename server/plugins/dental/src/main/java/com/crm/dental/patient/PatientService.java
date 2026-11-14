@@ -106,6 +106,19 @@ public class PatientService {
     public PatientView update(UUID id, PatientRequest request, String ifMatch) {
         Patient patient = patients.findById(id).orElseThrow(() -> DentalErrors.notFound("Patient not found"));
         IfMatch.requireVersion(ifMatch, patient.getVersion(), Patient.class, id);
+        return change(patient, request);
+    }
+
+    /**
+     * Replaces the data of a patient the caller has loaded (and checked the version of): the same rules, name
+     * folding, audit (field names only) and change event as {@link #update}. Used when staff apply a pre-visit form.
+     */
+    @Transactional
+    public PatientView applyTo(Patient patient, PatientRequest request) {
+        return change(patient, request);
+    }
+
+    private PatientView change(Patient patient, PatientRequest request) {
         Map<String, Object> before = snapshot(patient);
         apply(patient, request);
         List<String> changed = new ArrayList<>();

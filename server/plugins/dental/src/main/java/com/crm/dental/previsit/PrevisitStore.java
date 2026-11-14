@@ -198,7 +198,7 @@ class PrevisitStore {
         }
     }
 
-    private <T> T open(byte[] sealed, UUID appointmentId, String column, Class<T> type) {
+    <T> T open(byte[] sealed, UUID appointmentId, String column, Class<T> type) {
         try {
             return objectMapper.readValue(fieldCipher.decrypt(sealed, aad(appointmentId, column)), type);
         } catch (JsonProcessingException | IllegalStateException e) {

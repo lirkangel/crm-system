@@ -6,6 +6,7 @@ import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
+import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
@@ -30,6 +31,13 @@ public interface PrevisitFormRepository extends JpaRepository<PrevisitForm, UUID
         """)
     List<PrevisitForm> findEarlierOfPatient(
         @Param("patientId") UUID patientId, @Param("appointmentId") UUID appointmentId, Pageable page);
+
+    /** Ids of the appointments starting in {@code [from, to)} that hold a form: one query for a whole day list. */
+    @Query("""
+        select f.appointmentId from DentalPrevisitForm f, DentalAppointment a
+        where a.id = f.appointmentId and a.startsAt >= :from and a.startsAt < :to
+        """)
+    List<UUID> findAppointmentIdsWithFormBetween(@Param("from") Instant from, @Param("to") Instant to);
 
     /** Deletes the appointment's form (cancellation), flushing first. */
     @Modifying(flushAutomatically = true)

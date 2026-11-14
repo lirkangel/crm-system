@@ -121,7 +121,7 @@ final class PrevisitRules {
         EnumSet<AllergyCode> chosen = EnumSet.copyOf(items);
         String other = null;
         if (chosen.contains(AllergyCode.OTHER)) {
-            other = text(in.otherText(), 500, "Describe the other allergy (at most 500 characters)");
+            other = freeText(in.otherText(), 500, "Describe the other allergy (at most 500 characters)");
         } else if (!isBlank(in.otherText())) {
             throw invalid("Allergy text is only for the OTHER selection");
         }
@@ -136,7 +136,7 @@ final class PrevisitRules {
             throw invalid("Medicines need either 'none' or a text, not both and not neither");
         }
         return in.none() ? new MedicineAnswer(true, null)
-            : new MedicineAnswer(false, text(in.text(), 1000, "The medicines text is at most 1000 characters"));
+            : new MedicineAnswer(false, freeText(in.text(), 1000, "The medicines text is at most 1000 characters"));
     }
 
     private static ReasonAnswer reason(ReasonAnswer in) {
@@ -144,12 +144,16 @@ final class PrevisitRules {
             throw invalid("The reason for the visit is required");
         }
         if (in.code() == ReasonCode.OTHER) {
-            return new ReasonAnswer(ReasonCode.OTHER, text(in.text(), 500, "Describe the reason (at most 500 characters)"));
+            return new ReasonAnswer(ReasonCode.OTHER, freeText(in.text(), 500, "Describe the reason (at most 500 characters)"));
         }
-        return new ReasonAnswer(in.code(), isBlank(in.text()) ? null : text(in.text(), 500, "The reason text is at most 500 characters"));
+        return new ReasonAnswer(in.code(), isBlank(in.text()) ? null : freeText(in.text(), 500, "The reason text is at most 500 characters"));
     }
 
     private static String phone(String raw, String message) {
+        // Phones.normalize strips whitespace, which would let a newline or tab through: no control characters at all
+        if (raw != null && raw.chars().anyMatch(Character::isISOControl)) {
+            throw invalid(message);
+        }
         try {
             return Phones.normalize(raw);
         } catch (PluginProblem e) {
@@ -157,13 +161,31 @@ final class PrevisitRules {
         }
     }
 
+    /** Identity and contact text: no control character of any kind. */
     private static String text(String value, int max, String message) {
+        return clean(value, max, message, false);
+    }
+
+    /**
+     * The free-text health answers (medicines, other allergy, reason): a patient types several lines, so newline,
+     * carriage return and tab are allowed; every other control character is still refused.
+     */
+    private static String freeText(String value, int max, String message) {
+        return clean(value, max, message, true);
+    }
+
+    private static String clean(String value, int max, String message, boolean allowLayout) {
         // The control-character check is on the raw value: String.trim() would silently strip a trailing NUL
         String trimmed = value == null ? "" : value.trim();
-        if (trimmed.isEmpty() || trimmed.length() > max || value.chars().anyMatch(Character::isISOControl)) {
+        if (trimmed.isEmpty() || trimmed.length() > max
+                || value.chars().anyMatch(c -> Character.isISOControl(c) && !(allowLayout && isLayout(c)))) {
             throw invalid(message);
         }
         return trimmed;
+    }
+
+    private static boolean isLayout(int c) {
+        return c == '\n' || c == '\r' || c == '\t';
     }
 
     private static boolean isBlank(String value) {

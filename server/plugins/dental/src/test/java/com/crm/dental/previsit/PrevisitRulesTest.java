@@ -29,7 +29,11 @@ class PrevisitRulesTest {
     }
 
     private static void assertInvalid(PrevisitRequest request) {
-        assertThatThrownBy(() -> PrevisitRules.check(request, false, TODAY))
+        assertInvalid(request, false);
+    }
+
+    private static void assertInvalid(PrevisitRequest request, boolean child) {
+        assertThatThrownBy(() -> PrevisitRules.check(request, child, TODAY))
             .isInstanceOfSatisfying(PluginProblem.class, p -> {
                 assertThat(p.status()).isEqualTo(400);
                 assertThat(p.getMessage() + p.code()).contains(DentalErrors.INVALID_FORM)
@@ -84,6 +88,51 @@ class PrevisitRulesTest {
             new MedicineAnswer(true, null)));
         PrevisitRequest.Identity bad = new PrevisitRequest.Identity("CCCD", "0790\u00001", "A", LocalDate.of(1990, 1, 1), "VN", "x");
         assertInvalid(request(bad, new AllergyAnswer(true, null, null), new MedicineAnswer(true, null)));
+    }
+
+    @Test
+    void free_text_answers_allow_newline_return_and_tab() {
+        PrevisitRules.Checked medicines = PrevisitRules.check(request(identity(), new AllergyAnswer(true, null, null),
+            new MedicineAnswer(false, "aspirin\n500 mg\tdaily\r\nmetformin\n")), false, TODAY);
+        assertThat(medicines.medicines().text()).isEqualTo("aspirin\n500 mg\tdaily\r\nmetformin");
+
+        PrevisitRules.Checked allergies = PrevisitRules.check(request(identity(),
+            new AllergyAnswer(false, Set.of(AllergyCode.OTHER), "kiwi\nand\tplum"), new MedicineAnswer(true, null)), false, TODAY);
+        assertThat(allergies.allergies().otherText()).isEqualTo("kiwi\nand\tplum");
+
+        PrevisitRequest reason = new PrevisitRequest(identity(), null, null, "0912345678",
+            new AllergyAnswer(true, null, null), new MedicineAnswer(true, null),
+            new ReasonAnswer(ReasonCode.OTHER, "line one\r\nline two\ttabbed"), true, null);
+        assertThat(PrevisitRules.check(reason, false, TODAY).reason().text()).isEqualTo("line one\r\nline two\ttabbed");
+    }
+
+    @Test
+    void free_text_still_rejects_every_other_control_character() {
+        for (String bad : new String[] {"a\u0000b", "a\u0007b", "a\u001bb", "a\u000bb", "a\u000cb", "a\u007fb", "a\u0085b"}) {
+            assertInvalid(request(identity(), new AllergyAnswer(true, null, null), new MedicineAnswer(false, bad)));
+            assertInvalid(request(identity(), new AllergyAnswer(false, Set.of(AllergyCode.OTHER), bad), new MedicineAnswer(true, null)));
+            assertInvalid(new PrevisitRequest(identity(), null, null, "0912345678", new AllergyAnswer(true, null, null),
+                new MedicineAnswer(true, null), new ReasonAnswer(ReasonCode.PAIN, bad), true, null));
+        }
+    }
+
+    @Test
+    void identity_and_phone_fields_reject_newline_return_and_tab() {
+        for (String bad : new String[] {"\n", "\r", "\t"}) {
+            for (int field = 0; field < 3; field++) {
+                String idNumber = field == 0 ? "0790" + bad + "1" : "079090123456";
+                String fullName = field == 1 ? "TRAN" + bad + "BINH" : "TRAN THI BINH";
+                String address = field == 2 ? "12 Le Loi" + bad + "Hue" : "12 Le Loi";
+                PrevisitRequest.Identity id = new PrevisitRequest.Identity("CCCD", idNumber, fullName, LocalDate.of(1990, 5, 17), "VN", address);
+                assertInvalid(request(id, new AllergyAnswer(true, null, null), new MedicineAnswer(true, null)));
+            }
+            assertInvalid(new PrevisitRequest(identity(), null, null, "09123" + bad + "45678", new AllergyAnswer(true, null, null),
+                new MedicineAnswer(true, null), new ReasonAnswer(ReasonCode.CHECKUP, null), true, null));
+            assertInvalid(new PrevisitRequest(null, "Mother" + bad + "Name", "0912345678", "0912345678",
+                new AllergyAnswer(true, null, null), new MedicineAnswer(true, null), new ReasonAnswer(ReasonCode.CHECKUP, null), true, null), true);
+            assertInvalid(new PrevisitRequest(null, "Mother", "09123" + bad + "45678", "0912345678",
+                new AllergyAnswer(true, null, null), new MedicineAnswer(true, null), new ReasonAnswer(ReasonCode.CHECKUP, null), true, null), true);
+        }
     }
 
     @Test

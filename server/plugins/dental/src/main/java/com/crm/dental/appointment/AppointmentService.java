@@ -25,9 +25,11 @@ import java.time.Instant;
 import java.time.LocalDate;
 import java.time.OffsetDateTime;
 import java.time.temporal.ChronoUnit;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 
 /**
@@ -45,6 +47,8 @@ public class AppointmentService {
     static final String AUDIT_CANCEL = "APPOINTMENT_CANCEL";
     static final String AUDIT_ARRIVE = "APPOINTMENT_ARRIVE";
     static final String AUDIT_NO_SHOW = "APPOINTMENT_NO_SHOW";
+
+    static final String SUBMITTED = "SUBMITTED";
 
     static final int DEFAULT_MINUTES = 30;
     static final int MAX_MINUTES = 480;
@@ -99,8 +103,9 @@ public class AppointmentService {
 
     @Transactional(readOnly = true)
     public AppointmentView get(UUID id) {
-        return appointments.findDetailed(id).stream().findFirst().map(AppointmentView::of)
+        AppointmentView view = appointments.findDetailed(id).stream().findFirst().map(AppointmentView::of)
             .orElseThrow(() -> DentalErrors.notFound("Appointment not found"));
+        return forms.existsForAppointment(id) ? view.withPrevisit(SUBMITTED) : view;
     }
 
     /** Appointments of any status starting on the clinic-local {@code date}, by start time. */
@@ -108,7 +113,13 @@ public class AppointmentService {
     public List<AppointmentView> listDay(LocalDate date) {
         Instant from = date.atStartOfDay(DentalConfig.CLINIC_ZONE).toInstant();
         Instant to = date.plusDays(1).atStartOfDay(DentalConfig.CLINIC_ZONE).toInstant();
-        return appointments.findDetailedBetween(from, to).stream().map(AppointmentView::of).toList();
+        List<AppointmentView> day = appointments.findDetailedBetween(from, to).stream().map(AppointmentView::of).toList();
+        if (day.isEmpty()) {
+            return day;
+        }
+        // One query for the whole list, never one per row
+        Set<UUID> submitted = new HashSet<>(forms.findAppointmentIdsWithFormBetween(from, to));
+        return day.stream().map(view -> submitted.contains(view.id()) ? view.withPrevisit(SUBMITTED) : view).toList();
     }
 
     /**
@@ -174,7 +185,8 @@ public class AppointmentService {
         changes.record(ENTITY_TYPE, saved.getId(), saved.getVersion(), ChangeOp.UPDATE);
         audit.record(ENTITY_TYPE, saved.getId(), auditOp, before, json(auditState(saved)));
         Patient patient = patients.findById(saved.getPatientId()).orElseThrow();
-        return AppointmentView.of(saved, patient.getFullName(), patient.getPhone());
+        AppointmentView view = AppointmentView.of(saved, patient.getFullName(), patient.getPhone());
+        return forms.existsForAppointment(saved.getId()) ? view.withPrevisit(SUBMITTED) : view;
     }
 
     private static void requireBooked(Appointment appointment, String verb) {
