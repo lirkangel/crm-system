@@ -243,6 +243,80 @@ class PatientAppointmentIT extends DentalITSupport {
     }
 
     @Test
+    void name_search_ignores_accents_and_case() {
+        String token = adminToken();
+        String tag = tag();
+        createPatient(token, "Nguyễn Văn An " + tag, phone(), "1990-01-01");
+        createPatient(token, "Trần Thị Bình " + tag, phone(), "1990-01-01");
+
+        assertThat(names(get(PATIENTS + "?q=nguyen%20van%20an%20" + tag, token))).containsExactly("Nguyễn Văn An " + tag);
+        assertThat(names(get(PATIENTS + "?q=NGUY%E1%BB%84N%20VĂN%20AN%20" + tag.toUpperCase(), token)))
+            .containsExactly("Nguyễn Văn An " + tag);
+        assertThat(names(get(PATIENTS + "?q=an%20" + tag, token))).containsExactly("Nguyễn Văn An " + tag);
+        assertThat(names(get(PATIENTS + "?q=" + "binh%20" + tag, token))).containsExactly("Trần Thị Bình " + tag);
+    }
+
+    @Test
+    void reschedule_arrived_is_409() {
+        String token = adminToken();
+        JsonNode booked = data(book(token, newPatient("Arrived " + tag(), phone(), "1990-01-01"),
+            at(LocalDate.now().minusDays(1), 9, 0), 30));
+        UUID id = UUID.fromString(booked.path("id").asText());
+        assertThat(status(post(APPOINTMENTS + "/" + id + "/arrive", token, null))).isEqualTo("ARRIVED");
+
+        ResponseEntity<String> response = patch(APPOINTMENTS + "/" + id, token,
+            Map.of("startsAt", at(farDay(), 9, 0)), String.valueOf(version(id)));
+
+        assertConflict(response);
+        assertThat(json(response).path("code").asText()).isEqualTo("DENTAL_INVALID_STATE");
+    }
+
+    @Test
+    void get_appointment_requires_appointments_read_403() {
+        String admin = adminToken();
+        UUID id = id(book(admin, newPatient("Get " + tag(), phone(), "1990-01-01"), at(farDay(), 9, 0), 30));
+
+        assertThat(get(APPOINTMENTS + "/" + id, tokenWith("dental_it_get_nothing", "dental.patients.read"))
+            .getStatusCode().value()).isEqualTo(403);
+        assertThat(get(APPOINTMENTS + "/" + id, tokenWith("dental_it_appointments_read", "dental.appointments.read"))
+            .getStatusCode().value()).isEqualTo(200);
+    }
+
+    @Test
+    void parallel_cancel_and_arrive_one_wins() throws Exception {
+        String token = adminToken();
+        UUID id = id(book(token, newPatient("Race " + tag(), phone(), "1990-01-01"), at(farDay(), 9, 0), 30));
+        java.util.concurrent.CyclicBarrier barrier = new java.util.concurrent.CyclicBarrier(2);
+        java.util.concurrent.ExecutorService pool = java.util.concurrent.Executors.newFixedThreadPool(2);
+        ResponseEntity<String> cancel;
+        ResponseEntity<String> arrive;
+        try {
+            java.util.concurrent.Future<ResponseEntity<String>> c = pool.submit(() -> {
+                barrier.await(10, java.util.concurrent.TimeUnit.SECONDS);
+                return post(APPOINTMENTS + "/" + id + "/cancel", token, null);
+            });
+            java.util.concurrent.Future<ResponseEntity<String>> a = pool.submit(() -> {
+                barrier.await(10, java.util.concurrent.TimeUnit.SECONDS);
+                return post(APPOINTMENTS + "/" + id + "/arrive", token, null);
+            });
+            cancel = c.get(60, java.util.concurrent.TimeUnit.SECONDS);
+            arrive = a.get(60, java.util.concurrent.TimeUnit.SECONDS);
+        } finally {
+            pool.shutdownNow();
+        }
+
+        List<Integer> codes = List.of(cancel.getStatusCode().value(), arrive.getStatusCode().value());
+        assertThat(codes).containsExactlyInAnyOrder(200, 409);
+        String winner = cancel.getStatusCode().value() == 200 ? "CANCELLED" : "ARRIVED";
+        assertThat(jdbc.queryForObject("SELECT status FROM dental.appointment WHERE id = ?", String.class, id))
+            .isEqualTo(winner);
+        assertThat(jdbc.queryForObject("""
+            SELECT count(*) FROM audit_event WHERE plugin_id = 'com.crm.dental' AND entity_id = ?
+              AND op IN ('APPOINTMENT_CANCEL', 'APPOINTMENT_ARRIVE', 'APPOINTMENT_NO_SHOW', 'APPOINTMENT_RESCHEDULE')
+            """, Integer.class, id)).isEqualTo(1);
+    }
+
+    @Test
     void permissions_403() {
         String admin = adminToken();
         UUID appointment = id(book(admin, newPatient("Perm " + tag(), phone(), "1990-01-01"), at(farDay(), 9, 0), 30));

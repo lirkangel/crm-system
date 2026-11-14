@@ -2,6 +2,7 @@ package com.crm.dental.patient;
 
 import com.crm.dental.DentalErrors;
 import com.crm.dental.IfMatch;
+import com.crm.dental.Names;
 import com.crm.dental.Phones;
 import com.crm.foundation.Plugin.AuditRecorder;
 import com.crm.foundation.Plugin.ChangeOp;
@@ -20,7 +21,6 @@ import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
-import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
@@ -53,7 +53,7 @@ public class PatientService {
 
     /**
      * Up to {@value #MAX_RESULTS} patients by name. {@code phone} is normalised and matched exactly; {@code q} is a
-     * case-insensitive contains-match on the name; both together narrow each other.
+     * accent- and case-insensitive contains-match on the name; both together narrow each other.
      *
      * @throws com.crm.foundation.Plugin.PluginProblem {@code DENTAL_INVALID_QUERY} (400) when neither is given,
      *         {@code DENTAL_INVALID_PHONE} (400) for a phone that is not a Vietnamese mobile number
@@ -67,7 +67,7 @@ public class PatientService {
         }
         PageRequest page = PageRequest.of(0, MAX_RESULTS);
         String normalized = hasPhone ? Phones.normalize(phone) : null;
-        String pattern = hasName ? "%" + escapeLike(q.trim().toLowerCase(Locale.ROOT)) + "%" : null;
+        String pattern = hasName ? "%" + escapeLike(Names.fold(q)) + "%" : null;
         List<Patient> found;
         if (hasPhone && hasName) {
             found = patients.findByPhoneAndNameLike(normalized, pattern, page);
@@ -135,6 +135,7 @@ public class PatientService {
             throw DentalErrors.invalidPatient("nationality must be an ISO 3166-1 alpha-2 code");
         }
         patient.setFullName(request.fullName().trim());
+        patient.setNameSearch(Names.fold(patient.getFullName()));
         patient.setPhone(Phones.normalize(request.phone()));
         patient.setDateOfBirth(request.dateOfBirth());
         patient.setIdType(idType);

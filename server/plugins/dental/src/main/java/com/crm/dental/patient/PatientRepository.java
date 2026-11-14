@@ -13,13 +13,13 @@ public interface PatientRepository extends JpaRepository<Patient, UUID> {
     @Query("select p from DentalPatient p where p.phone = :phone order by p.fullName, p.id")
     List<Patient> findByPhone(@Param("phone") String phone, Pageable page);
 
-    /** {@code pattern} is a lower-case LIKE pattern whose literal {@code % _ \} are backslash-escaped. */
-    @Query("select p from DentalPatient p where lower(p.fullName) like :pattern escape '\\' order by p.fullName, p.id")
+    /** {@code pattern} is a folded LIKE pattern whose literal {@code % _ \} are backslash-escaped. */
+    @Query("select p from DentalPatient p where p.nameSearch like :pattern escape '\\' order by p.fullName, p.id")
     List<Patient> findByNameLike(@Param("pattern") String pattern, Pageable page);
 
     @Query("""
         select p from DentalPatient p
-        where p.phone = :phone and lower(p.fullName) like :pattern escape '\\'
+        where p.phone = :phone and p.nameSearch like :pattern escape '\\'
         order by p.fullName, p.id
         """)
     List<Patient> findByPhoneAndNameLike(
