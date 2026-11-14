@@ -14,6 +14,7 @@ export function Consent({
   error,
   onSend,
   onBack,
+  onIdentity,
 }: {
   form: FormState;
   update: (fn: (f: FormState) => FormState) => void;
@@ -21,6 +22,8 @@ export function Consent({
   /** Resolves when the attempt has ended, whatever the outcome; the app shows any error. */
   onSend: () => Promise<void>;
   onBack: () => void;
+  /** Jump to the identity step (offered with the "check your details" message). */
+  onIdentity: () => void;
 }) {
   const { t } = useTranslation();
   const [busy, setBusy] = useState(false);
@@ -56,6 +59,11 @@ export function Consent({
         </label>
       </div>
       <ErrorNote messageKey={error} />
+      {error === "dental.err.badForm" && (
+        <button type="button" onClick={onIdentity} className="min-h-11 w-full rounded-lg border border-slate-300 bg-white px-4 text-base">
+          {t("dental.backToIdentity")}
+        </button>
+      )}
       <button
         type="submit"
         disabled={!canSend}

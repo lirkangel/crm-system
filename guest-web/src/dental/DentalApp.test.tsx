@@ -502,4 +502,203 @@ describe("DentalApp", () => {
     await userEvent.click(screen.getByRole("button", { name: t("lang.switch") }));
     expect(await screen.findByRole("button", { name: i18n.getFixedT("en")("dental.start") })).toBeInTheDocument();
   });
+
+  it("payload_contract_keys_adult_and_child", async () => {
+    serve({ get: () => ok(summary), form: () => created() });
+    const first = render(<App />);
+    await screen.findByText(summary.maskedName);
+    await fillToConsent();
+    await userEvent.click(await screen.findByLabelText(t("dental.consent.label")));
+    await userEvent.click(await button("action.send"));
+    await screen.findByText(t("dental.done.title"));
+    const adult = sentForm();
+    expect(Object.keys(adult).sort()).toEqual(
+      ["allergies", "consent", "idScanId", "identity", "medicines", "phone", "reason"].sort(),
+    );
+    expect(Object.keys(adult.identity).sort()).toEqual(
+      ["address", "dateOfBirth", "fullName", "idNumber", "idType", "nationality"].sort(),
+    );
+    expect(Object.keys(adult.allergies).sort()).toEqual(["items", "none", "otherText"]);
+    expect(Object.keys(adult.medicines).sort()).toEqual(["none", "text"]);
+    expect(Object.keys(adult.reason).sort()).toEqual(["code", "text"]);
+    first.unmount();
+
+    resetVisitToken();
+    window.history.replaceState(null, "", "/#d/tok-123");
+    fetchMock.mockReset();
+    serve({ get: () => ok({ ...summary, child: true }), form: () => created() });
+    render(<App />);
+    await screen.findByText(summary.maskedName);
+    await click("dental.start");
+    await userEvent.type(screen.getByLabelText(t("dental.parentName")), "Tran Thi B");
+    await userEvent.type(screen.getByLabelText(t("dental.parentPhone")), "0987654321");
+    await click("dental.next");
+    await userEvent.type(await screen.findByLabelText(t("dental.phone")), "0912345678");
+    await click("dental.next");
+    await userEvent.click(await screen.findByLabelText(t("dental.allergies.none")));
+    await click("dental.next");
+    await userEvent.click(await screen.findByLabelText(t("dental.medicines.none")));
+    await click("dental.next");
+    await userEvent.click(await screen.findByLabelText(t("dental.reason.CHECKUP")));
+    await click("dental.next");
+    await userEvent.click(await screen.findByLabelText(t("dental.consent.label")));
+    await userEvent.click(await button("action.send"));
+    await screen.findByText(t("dental.done.title"));
+    const child = sentForm();
+    expect(child.identity).toBeNull();
+    expect(Object.keys(child).sort()).toEqual(
+      ["allergies", "consent", "idScanId", "identity", "medicines", "parentName", "parentPhone", "phone", "reason"].sort(),
+    );
+  });
+
+  it("identity_date_of_birth_today_or_future_blocks_next", async () => {
+    await openSummary();
+    await click("dental.start");
+    await fillIdentity();
+    expect(await button("dental.next")).toBeEnabled();
+    const dob = screen.getByLabelText(t("field.dateOfBirth"));
+    expect(dob).toHaveAttribute("max");
+    const d = new Date();
+    const pad = (n: number) => String(n).padStart(2, "0");
+    await userEvent.clear(dob);
+    await userEvent.type(dob, `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`);
+    expect(await button("dental.next")).toBeDisabled();
+  });
+
+  it("answers_are_cleared_after_done", async () => {
+    serve({ get: () => ok(summary), form: () => created() });
+    const { container } = render(<App />);
+    await screen.findByText(summary.maskedName);
+    await fillToConsent();
+    await userEvent.click(await screen.findByLabelText(t("dental.consent.label")));
+    await userEvent.click(await button("action.send"));
+    await screen.findByText(t("dental.done.title"));
+    const text = container.textContent ?? "";
+    for (const v of ["NGUYEN VAN A", "079090001234", "0912345678", "12 Le Loi"]) expect(text).not.toContain(v);
+    expect(container.querySelectorAll("input,textarea")).toHaveLength(0);
+  });
+
+  it("answers_are_cleared_on_closed_after_send", async () => {
+    serve({ get: () => ok(summary), form: () => problem(409, "DENTAL_VISIT_CLOSED") });
+    const { container } = render(<App />);
+    await screen.findByText(summary.maskedName);
+    await fillToConsent();
+    await userEvent.click(await screen.findByLabelText(t("dental.consent.label")));
+    await userEvent.click(await button("action.send"));
+    await screen.findByText(t("dental.closed"));
+    expect(container.textContent).not.toContain("NGUYEN VAN A");
+  });
+
+  it("reload_without_token_on_clinic_host_shows_dental_invalid", async () => {
+    resetVisitToken();
+    window.history.replaceState(null, "", "/");
+    vi.stubGlobal("location", {
+      hash: "",
+      pathname: "/",
+      search: "",
+      hostname: "nhakhoa.mathisterben.org",
+    });
+    render(<App />);
+    expect(await screen.findByText(t("dental.invalid"))).toBeInTheDocument();
+    expect(screen.getByRole("heading", { level: 1 })).toHaveTextContent(t("dental.title"));
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("reload_without_token_on_other_host_shows_hotel_invalid", async () => {
+    resetVisitToken();
+    window.history.replaceState(null, "", "/");
+    render(<App />);
+    expect(await screen.findByText(t("invalid"))).toBeInTheDocument();
+    expect(screen.getByRole("heading", { level: 1 })).toHaveTextContent(t("app.title"));
+  });
+
+  it("400_on_send_names_what_to_check_and_jumps_back_to_identity", async () => {
+    serve({ get: () => ok(summary), form: () => problem(400, "DENTAL_INVALID_FORM") });
+    render(<App />);
+    await screen.findByText(summary.maskedName);
+    await fillToConsent();
+    await userEvent.click(await screen.findByLabelText(t("dental.consent.label")));
+    await userEvent.click(await button("action.send"));
+    expect(await screen.findByRole("alert")).toHaveTextContent("Vui lòng kiểm tra lại số điện thoại và thông tin giấy tờ");
+    await click("dental.backToIdentity");
+    expect(await screen.findByLabelText(t("field.idNumber"))).toHaveValue("079090001234");
+    expect(i18n.getFixedT("en")("dental.err.badForm")).toBe("Please check the phone number and identity details");
+  });
+
+  it("field_unreadable_during_dob_check_is_generic_and_skip_works", async () => {
+    serve({
+      get: () => ok({ ...summary, returning: "AVAILABLE" }),
+      previous: () => problem(500, "DENTAL_FIELD_UNREADABLE"),
+    });
+    render(<App />);
+    await screen.findByText(summary.maskedName);
+    await click("dental.start");
+    await userEvent.type(await screen.findByLabelText(t("dental.dob.label")), "1990-05-17");
+    await click("dental.dob.check");
+    const alert = await screen.findByRole("alert");
+    expect(alert).toHaveTextContent(t("common.error"));
+    expect(alert).not.toHaveTextContent("DENTAL_");
+    await click("dental.dob.skip");
+    expect(await screen.findByLabelText(t("field.idNumber"))).toHaveValue("");
+  });
+
+  it("409_from_previous_shows_closed", async () => {
+    serve({
+      get: () => ok({ ...summary, returning: "AVAILABLE" }),
+      previous: () => problem(409, "DENTAL_VISIT_CLOSED"),
+    });
+    render(<App />);
+    await screen.findByText(summary.maskedName);
+    await click("dental.start");
+    await userEvent.type(await screen.findByLabelText(t("dental.dob.label")), "1990-05-17");
+    await click("dental.dob.check");
+    expect(await screen.findByText(t("dental.closed"))).toBeInTheDocument();
+  });
+
+  it("focus_moves_to_the_new_step_heading", async () => {
+    await openSummary();
+    await click("dental.start");
+    expect(screen.getByRole("heading", { level: 2, name: t("dental.identity.title") })).toHaveFocus();
+    await fillIdentity();
+    await click("dental.next");
+    expect(await screen.findByRole("heading", { level: 2, name: t("dental.phone") })).toHaveFocus();
+  });
+
+  it("privacy_nothing_logged_stored_or_in_urls", async () => {
+    const spies = (["log", "info", "warn", "error", "debug"] as const).map((m) => vi.spyOn(console, m).mockImplementation(() => {}));
+    const setItem = vi.spyOn(Storage.prototype, "setItem");
+    let n = 0;
+    serve({
+      get: () => ok({ ...summary, returning: "AVAILABLE" }),
+      previous: () => ok(previous),
+      form: () => (n++ === 0 ? problem(400, "DENTAL_INVALID_FORM") : created()),
+    });
+    render(<App />);
+    await screen.findByText(summary.maskedName);
+    await click("dental.start");
+    await userEvent.type(await screen.findByLabelText(t("dental.dob.label")), "1990-05-17");
+    await click("dental.dob.check");
+    await fillIdentity();
+    await click("dental.next");
+    await userEvent.type(await screen.findByLabelText(t("dental.phone")), "0912345678");
+    await click("dental.next");
+    await click("dental.next");
+    await click("dental.next");
+    await click("dental.next");
+    await userEvent.click(await screen.findByLabelText(t("dental.consent.label")));
+    await userEvent.click(await button("action.send")); // error path
+    await screen.findByRole("alert");
+    await userEvent.click(await button("action.send"));
+    await screen.findByText(t("dental.done.title"));
+
+    for (const [url] of fetchMock.mock.calls) expect(String(url)).not.toContain("tok-123");
+    expect(setItem).not.toHaveBeenCalled();
+    const secrets = ["tok-123", "NGUYEN VAN A", "079090001234", "0912345678", "Metformin", "Hạt điều", "1990-05-17"];
+    for (const spy of spies) {
+      const logged = JSON.stringify(spy.mock.calls);
+      for (const v of secrets) expect(logged).not.toContain(v);
+    }
+    spies.forEach((s) => s.mockRestore());
+    setItem.mockRestore();
+  });
 });

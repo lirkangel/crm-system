@@ -165,9 +165,10 @@
       "mismatch": "Ngày này không khớp. Vui lòng thử lại hoặc khai báo mới.",
       "mismatchLeft": "Ngày này không khớp. Bạn còn {{count}} lần thử.",
       "locked": "Đã hết lượt kiểm tra. Vui lòng khai báo từ đầu.",
-      "badForm": "Một số câu trả lời còn thiếu hoặc không hợp lệ. Vui lòng kiểm tra lại.",
+      "badForm": "Vui lòng kiểm tra lại số điện thoại và thông tin giấy tờ",
       "scanUnreadable": "Không đọc được ảnh. Vui lòng chụp lại rõ nét hoặc nhập thông tin.",
       "scanLimit": "Đã gửi quá nhiều ảnh. Vui lòng nhập thông tin hoặc liên hệ phòng khám."
-    }
+    },
+    "backToIdentity": "Quay lại thông tin giấy tờ"
   }
 }

@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import {
   bootstrapVisitToken,
+  resetVisitToken,
   failureKey,
   getSummary,
   submitForm,
@@ -35,15 +36,37 @@ export function DentalApp() {
   const [locked, setLocked] = useState(false);
   const [sendError, setSendError] = useState<string | null>(null);
   const loading = useRef(false);
+  const main = useRef<HTMLElement>(null);
+  const firstStep = useRef(true);
+
+  // After Next or Back, move focus to the new step's heading (screen readers and keyboard users).
+  useEffect(() => {
+    if (firstStep.current) {
+      firstStep.current = false;
+      return;
+    }
+    const h = main.current?.querySelector("h2");
+    if (h instanceof HTMLElement) {
+      h.tabIndex = -1;
+      h.focus();
+    }
+  }, [step]);
 
   useEffect(() => {
     document.documentElement.lang = i18n.language;
     document.title = t("dental.docTitle");
   }, [i18n.language, t]);
 
-  const fatal = useCallback((failure: "invalid" | "closed") => {
-    setView(failure === "closed" ? { name: "closed" } : { name: "invalid" });
+  // Health answers and the link do not outlive their use: cleared on Done and on a dead link.
+  const clear = useCallback(() => {
+    setForm(emptyForm());
+    resetVisitToken();
   }, []);
+
+  const fatal = useCallback((failure: "invalid" | "closed") => {
+    clear();
+    setView(failure === "closed" ? { name: "closed" } : { name: "invalid" });
+  }, [clear]);
 
   const load = useCallback(async () => {
     if (loading.current) return;
@@ -88,6 +111,7 @@ export function DentalApp() {
     setSendError(null);
     try {
       await submitForm(buildPayload(form, child));
+      clear();
       setStep("done");
     } catch (err) {
       const failure = err instanceof VisitError ? err.failure : "error";
@@ -141,7 +165,7 @@ export function DentalApp() {
         body = <Reason form={form} update={update} onNext={to("consent")} onBack={to("medicines")} />;
         break;
       case "consent":
-        body = <Consent form={form} update={update} error={sendError} onSend={send} onBack={to("reason")} />;
+        body = <Consent form={form} update={update} error={sendError} onSend={send} onBack={to("reason")} onIdentity={to("identity")} />;
         break;
       case "done":
         body = <Done />;
@@ -162,7 +186,7 @@ export function DentalApp() {
         </button>
       </header>
       <ErrorBoundary>
-        <main>{body}</main>
+        <main ref={main}>{body}</main>
       </ErrorBoundary>
     </div>
   );

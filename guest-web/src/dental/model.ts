@@ -38,8 +38,16 @@ export const emptyForm = (): FormState => ({
 
 const blank = (s: string) => s.trim() === "";
 
-/** A Vietnamese mobile number as people type it (spaces, dots, dashes, +84). The server stays authoritative. */
-export const phoneValid = (p: string) => /^(\+84|84|0)\d{9}$/.test(p.replace(/[\s.-]/g, ""));
+/** Same rule as the server's Phones: a Vietnamese mobile, `0` or `+84` then 3/5/7/8/9 and 8 digits. */
+export const phoneValid = (p: string) => /^(\+84|0)[35789]\d{8}$/.test(p.replace(/[\s.-]/g, ""));
+
+const pad = (n: number) => String(n).padStart(2, "0");
+/** Local calendar date as yyyy-mm-dd, {@code daysAgo} days back. */
+export function localDate(daysAgo = 0): string {
+  const d = new Date();
+  d.setDate(d.getDate() - daysAgo);
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+}
 
 export function identityBlank(i: IdentityState): boolean {
   return blank(i.idNumber) && blank(i.fullName) && i.dateOfBirth === "" && blank(i.address) && i.idScanId === null;
@@ -49,6 +57,7 @@ export function identityComplete(i: IdentityState): boolean {
     !blank(i.idNumber) &&
     !blank(i.fullName) &&
     i.dateOfBirth !== "" &&
+    i.dateOfBirth < localDate() &&
     i.nationality !== "" &&
     (i.nationality !== "VN" || !blank(i.address))
   );

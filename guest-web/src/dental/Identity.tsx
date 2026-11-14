@@ -3,7 +3,7 @@ import { useTranslation } from "react-i18next";
 import { failureKey, uploadScan, VisitError } from "@/api/visit";
 import { countries } from "@/lib/countries";
 import { UndecodablePhotoError, toUploadJpeg } from "@/lib/photo";
-import { identityStepValid, type FormState, type IdentityState } from "./model";
+import { identityStepValid, localDate, type FormState, type IdentityState } from "./model";
 import { ErrorNote, Field, Nav, inputClass } from "./ui";
 
 /**
@@ -109,7 +109,7 @@ export function Identity({
         <input id="f-fullName" className={inputClass} value={i.fullName} onChange={setId("fullName")} maxLength={200} autoComplete="off" />
       </Field>
       <Field id="f-dob" label={t("field.dateOfBirth")}>
-        <input id="f-dob" type="date" className={inputClass} value={i.dateOfBirth} onChange={setId("dateOfBirth")} />
+        <input id="f-dob" type="date" className={inputClass} value={i.dateOfBirth} onChange={setId("dateOfBirth")} max={localDate(1)} />
       </Field>
       <Field id="f-nat" label={t("field.nationality")}>
         <select id="f-nat" className={inputClass} value={i.nationality} onChange={setId("nationality")}>

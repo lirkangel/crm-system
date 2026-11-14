@@ -165,9 +165,10 @@
       "mismatch": "That date doesn't match. Please try again or start fresh.",
       "mismatchLeft": "That date doesn't match. You have {{count}} attempts left.",
       "locked": "No more attempts left. Please answer from scratch.",
-      "badForm": "Some answers are missing or invalid. Please check them.",
+      "badForm": "Please check the phone number and identity details",
       "scanUnreadable": "The photo could not be read. Please retake it clearly or type the details.",
       "scanLimit": "Too many photos sent. Please type the details or contact the clinic."
-    }
+    },
+    "backToIdentity": "Back to identity"
   }
 }
