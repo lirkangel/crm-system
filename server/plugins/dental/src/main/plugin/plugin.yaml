@@ -1,0 +1,21 @@
+id: com.crm.dental
+version: 0.1.0
+display-name:
+  vi: "Nha khoa"
+  en: "Dental"
+depends-on:
+  foundation: ">=0.1.0,<2.0.0"
+permissions-declared:
+  - dental.patients.read
+  - dental.patients.write
+  - dental.appointments.read
+  - dental.appointments.write
+  - dental.previsit.read
+foundation-services-used:
+  - persistence
+  - rest
+  - audit
+  - sync
+schema: dental
+route: dental
+entry: com.crm.dental.DentalPlugin

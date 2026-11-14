@@ -23,6 +23,7 @@
         <module>plugin-api</module>
         <module>libs/cccd-scan</module>
         <module>plugins/hotel</module>
+        <module>plugins/dental</module>
         <module>foundation</module>
     </modules>
 

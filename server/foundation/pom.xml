@@ -135,10 +135,18 @@
         </dependency>
 
         <!-- ── Test ── -->
-        <!-- The packaged hotel plugin: copied to target/test-plugins (see build) for the hotel ITs -->
+        <!-- The packaged hotel and dental plugins: copied to target/test-plugins (hotel) and target/test-plugins-dental (both), see build -->
         <dependency>
             <groupId>com.crm.plugins</groupId>
             <artifactId>hotel</artifactId>
+            <version>${project.version}</version>
+            <classifier>plugin</classifier>
+            <type>zip</type>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>com.crm.plugins</groupId>
+            <artifactId>dental</artifactId>
             <version>${project.version}</version>
             <classifier>plugin</classifier>
             <type>zip</type>
@@ -248,6 +256,35 @@
                                     <type>zip</type>
                                     <outputDirectory>${project.build.directory}/test-plugins</outputDirectory>
                                     <destFileName>hotel-plugin.zip</destFileName>
+                                </artifactItem>
+                            </artifactItems>
+                        </configuration>
+                    </execution>
+                    <execution>
+                        <id>copy-dental-plugins</id>
+                        <phase>process-test-resources</phase>
+                        <goals>
+                            <goal>copy</goal>
+                        </goals>
+                        <configuration>
+                            <artifactItems>
+                                <artifactItem>
+                                    <groupId>com.crm.plugins</groupId>
+                                    <artifactId>hotel</artifactId>
+                                    <version>${project.version}</version>
+                                    <classifier>plugin</classifier>
+                                    <type>zip</type>
+                                    <outputDirectory>${project.build.directory}/test-plugins-dental</outputDirectory>
+                                    <destFileName>hotel-plugin.zip</destFileName>
+                                </artifactItem>
+                                <artifactItem>
+                                    <groupId>com.crm.plugins</groupId>
+                                    <artifactId>dental</artifactId>
+                                    <version>${project.version}</version>
+                                    <classifier>plugin</classifier>
+                                    <type>zip</type>
+                                    <outputDirectory>${project.build.directory}/test-plugins-dental</outputDirectory>
+                                    <destFileName>dental-plugin.zip</destFileName>
                                 </artifactItem>
                             </artifactItems>
                         </configuration>
