@@ -18,6 +18,11 @@ Two artifacts from one repo: a **Spring Boot server** (deployed to home-lab k8s)
 - **DB:** postgres:16-alpine, PVC `crm-postgres-data` 5Gi. **Secrets:** `crm-db-secret` + `crm-server-secret` (pre-created in-cluster).
 - ⚠️ Spring Security **must `permitAll` `/actuator/health/**`** or the k8s readiness probe fails.
 
+## Guest check-in web (hotel 0.4.0)
+
+- **`guest-web/`** (React page + nginx-unprivileged, port 8080) is built by the `build_guest_web` CI job → `10.0.0.7:30500/crm-guest-web:latest`, NodePort 30084. Env: `CRM_SERVER_URL`, `CRM_PUBLIC_PROXY_SECRET` (also set on the server), `REAL_IP_FROM` (tunnel connector's exact /32; default trusts no proxy).
+- **Public URL:** `checkin.mathisterben.org` via the Cloudflare Tunnel → `http://<node>:30084`; nginx exposes only `/api/v1/plugins/hotel/public/`.
+
 ## Desktop deployment (NOT k8s)
 
 - `.github/workflows/release.yml` builds Tauri binaries on `v*.*.*` tags → **GitHub Releases**.

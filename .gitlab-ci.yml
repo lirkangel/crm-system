@@ -12,3 +12,11 @@ build_server:
     - docker push 10.0.0.7:30500/crm-server:latest
   rules:
     - if: $CI_COMMIT_BRANCH == "main"
+
+build_guest_web:
+  stage: build
+  script:
+    - docker build -t 10.0.0.7:30500/crm-guest-web:latest ./guest-web
+    - docker push 10.0.0.7:30500/crm-guest-web:latest
+  rules:
+    - if: $CI_COMMIT_BRANCH == "main"

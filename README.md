@@ -129,7 +129,7 @@ The platform is Vietnamese-first (`vi-VN`): DD/MM/YYYY dates, VND currency (dot-
 
 ## Status
 
-> **Active development** — Foundation platform and plugin runtime complete. Hotel PMS Tier 1 on the server: the booking slice (rooms, guests, availability, reservations) and the stay slice (check-in, folio, check-out, front-desk lists; plugin 0.2.0) and the CCCD scan (plugin 0.3.0) are done; the desktop screens are next.
+> **Active development** — Foundation platform and plugin runtime complete. Hotel PMS Tier 1 on the server: the booking slice (rooms, guests, availability, reservations) and the stay slice (check-in, folio, check-out, front-desk lists; plugin 0.2.0) the CCCD scan (plugin 0.3.0) and guest online check-in (plugin 0.4.0, `guest-web/`) are done; the desktop screens are next.
 
 ### What's working
 
@@ -159,6 +159,39 @@ At check-in, staff upload a photo of the guest's CCCD. The server decodes the QR
 - **Endpoints and permissions:** `POST /api/v1/plugins/hotel/reservations/{id}/id-scans` (multipart `image`; `hotel.stays.checkin`; 201 new, 200 duplicate); `GET .../reservations/{id}/stay-guests/{stayGuestId}/id-scan` (`hotel.stays.read`); `StayGuestRequest.idScanId` (optional) links a scan on check-in or correction (`hotel.stays.checkin`). No new permission keys.
 - **Clients** should check that a photo is 10 MB or less before uploading; larger uploads are refused with 413.
 - **Plugin ZIPs** may now bundle non-Spring third-party libraries in `lib/` (the hotel ZIP carries `zxing-core` and `zxing-javase`).
+
+### Guest online check-in (hotel 0.4.0)
+
+Before arrival, a guest opens a personal link on a phone, photographs each adult's CCCD (or types a passport), confirms the details and consents. Staff then see the submitted details on the reservation and use them at check-in. The page is `guest-web/` (React, served by nginx-unprivileged on port 8080) at `https://checkin.mathisterben.org` through the Cloudflare Tunnel.
+
+- **Create a link** (staff, `hotel.stays.checkin`; `GET` needs `hotel.reservations.read`): `POST /api/v1/plugins/hotel/reservations/{id}/guest-link` returns the URL once (the token is stored hashed and never shown again; posting again replaces it). `DELETE` revokes it, `GET` shows its status. Only CONFIRMED reservations get a link; it expires at the business-day cutoff (06:00 hotel time) on the day after check-out.
+
+  ```bash
+  CRM=http://10.0.0.7:30082
+  read -s -p 'Admin password: ' PW; echo
+  TOKEN=$(curl -s "$CRM/api/v1/auth/login" -H 'Content-Type: application/json' \
+    -d "{\"username\":\"admin\",\"password\":\"$PW\"}" | jq -r '.data.accessToken')
+  curl -s -X POST "$CRM/api/v1/plugins/hotel/reservations/<reservation-id>/guest-link" \
+    -H "Authorization: Bearer $TOKEN" | jq
+  ```
+
+- **Staff view** (`hotel.stays.read`): `GET .../reservations/{id}/pre-arrival-guests` lists the submissions (with the fields the guest edited after the scan); `GET .../pre-arrival-guests/{guestId}/id-scan` returns the photo. The arrivals list shows `preArrivalAdults` per reservation.
+- **Retention:** submissions are deleted at check-in, at cancel, and 30 days after submission. Photos follow the existing 30-day rule (see CCCD scan above); photos of submissions that were never checked in go with them.
+- **Consent:** the guest-web consent text (`guest-web/src/components/ConsentNotice.tsx`, vi/en in `src/i18n`) is marked `TODO(legal)` and must be reviewed by Mathisterben before real guests use it.
+- **Public surface:** only `/api/v1/plugins/hotel/public/**` is reachable from the internet, through nginx, which answers 404 for every other `/api` path. Public routes are opt-in per endpoint (`@PublicEndpoint`), rate limited per client (`CRM_PUBLIC_RATE_LIMIT_PER_MINUTE`, default 60), and answer `Cache-Control: no-store` and `X-Robots-Tag: noindex`. The token travels in the `X-Checkin-Token` header (and in the link's `#fragment`, which never reaches a server log), never in a URL path or query.
+- **Configuration:**
+
+  | Where | Setting | Meaning |
+  |---|---|---|
+  | server | `CRM_PUBLIC_PROXY_SECRET` | shared secret (`[A-Za-z0-9_-]{32,}`) that lets the server trust the client address nginx forwards; empty trusts nothing |
+  | server | `CRM_PUBLIC_RATE_LIMIT_PER_MINUTE` | public requests per client per minute (default 60) |
+  | hotel plugin | `hotel.guest-base-url` | link prefix (default `https://checkin.mathisterben.org`) |
+  | hotel plugin | `hotel.display-name` | hotel name shown to guests |
+  | guest-web | `CRM_SERVER_URL` | `scheme://host:port` of the server, no path |
+  | guest-web | `CRM_PUBLIC_PROXY_SECRET` | same value as the server's |
+  | guest-web | `REAL_IP_FROM` | the only address trusted to send `CF-Connecting-IP`; default `127.0.0.1/32` trusts no proxy, so in production set the Cloudflare Tunnel connector's exact /32 |
+
+  guest-web refuses to start on a malformed `CRM_SERVER_URL`, a weak secret or a bad `REAL_IP_FROM`. CI builds the image as `10.0.0.7:30500/crm-guest-web:latest`; `scripts/smoke-guest-checkin.sh` runs the whole stack on the docker-host.
 
 ## License
 

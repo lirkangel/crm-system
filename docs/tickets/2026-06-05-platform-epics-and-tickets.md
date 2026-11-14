@@ -37,6 +37,8 @@ F-EPIC-1 (scaffold) ─► F-EPIC-2 (auth UI) ─► F-EPIC-3 (data) ─► F-EP
 
 > **State (2026-11-07):** the CCCD scan (H-EPIC-3, plugin 0.3.0) is done on the server. Full gate: 538 tests (467 foundation + 71 hotel unit), 0 failures, 0 skipped.
 
+> **State (2026-11-14):** guest online check-in (H-EPIC-4, plugin 0.4.0 and `guest-web/`) is done and passes the gate; going live (manifests, secret, Cloudflare hostname) is a separate step. Full gate: 610 tests (525 foundation + 85 hotel unit), 0 failures, 0 skipped; guest-web 36 tests; docker-host smoke 93 checks.
+
 ## B-EPIC-1 — Identity & Auth
 *Goal: a usable, rotation-safe token contract.*
 
@@ -350,6 +352,37 @@ F-EPIC-1 (scaffold) ─► F-EPIC-2 (auth UI) ─► F-EPIC-3 (data) ─► F-EP
 **Done:** (8ff4c30) `IdScanPurgeJob` on the plugin scheduler. `IdScanPurgeJobTest`, `IdScanPurgeIT`. Verified 2026-11-07.
 
 **Not in this slice:** passport/MRZ scanning, OCR of the front of the card, the desktop upload screen, per-guest retention settings.
+
+## H-EPIC-4 — Guest online check-in
+*Goal: before arrival a guest opens a personal link on a phone, scans each adult's CCCD (or types a passport), consents and submits; staff see the details on the reservation and the data is deleted at check-in, at cancel and after 30 days. Hotel plugin 0.4.0 plus the new `guest-web/` page.*
+*Spec: `2026-11-14-hotel-guest-checkin-web-design.md` — design doc kept locally (docs/superpowers is git-ignored). Migration `V4__hotel_guest_checkin.sql` (tables `hotel.guest_link`, `hotel.pre_arrival_guest`, column `hotel.id_scan.qr_digest`); no new permission keys (`hotel.stays.checkin` manages links, `hotel.stays.read` views submissions). Public host `checkin.mathisterben.org` through the Cloudflare Tunnel.*
+
+### H401 — Public plugin routes and rate limit · `DONE` · P0 · (needs B-EPIC-5)
+**Expected:** a plugin can expose a small unauthenticated surface, safely.
+**Acceptance:** `@PublicEndpoint` methods must map under `/public/` and carry no `@PreAuthorize`, otherwise the whole plugin is refused (LOAD_FAILED); a `/public` mapping without the annotation is refused; public paths are matched after decoding and an encoded `public` segment is 400; per-client rate limit `CRM_PUBLIC_RATE_LIMIT_PER_MINUTE` (default 60, below 1 fails startup) answers 429 `RATE_LIMITED` with `Retry-After`; the client address is `X-Client-IP` only when `X-Guest-Proxy-Secret` equals `CRM_PUBLIC_PROXY_SECRET` (constant-time), IPv6 keyed by /64, never resolved; every public response carries `Cache-Control: no-store` and `X-Robots-Tag: noindex`.
+**Done:** (63731ac, 52b5b72, 48ae863) `PublicEndpoint`, `PluginRouteRegistry` checks, `PublicRateLimitFilter`, `PublicPaths`. `PluginPublicRouteIT`, `PublicRateLimitFilterTest`. Verified 2026-11-14.
+
+### H402 — Guest links · `DONE` · P0 · (needs H401, H203)
+**Expected:** staff create, replace, revoke and view a personal check-in link for a reservation.
+**Acceptance:** `POST|DELETE|GET /reservations/{id}/guest-link` (`hotel.stays.checkin`; `GET` `hotel.reservations.read`); POST returns the URL once (201, `no-store`), prefix `hotel.guest-base-url` (default `https://checkin.mathisterben.org`); only a CONFIRMED reservation whose expiry (06:00 hotel time on the day after check-out) is still ahead gets one, otherwise 409 `HOTEL_CHECKIN_CLOSED`; posting again replaces the token; only the SHA-256 of the token is stored; the token and URL are never audited.
+**Done:** (757e8b6) `GuestLinkService`, `GuestLinkController`, `GuestSite` (`hotel.guest-base-url`, `hotel.display-name`), V4 migration, plugin version 0.4.0. `GuestLinkIT`, `BusinessDayTest`, `HotelPluginInstallIT`. Verified 2026-11-14.
+
+### H403 — Public check-in API · `DONE` · P0 · (needs H402, H303)
+**Expected:** a guest with the link reads the stay summary, uploads a CCCD photo and submits or removes each adult's details.
+**Acceptance:** `GET /public/checkin`, `POST /public/checkin/id-scans`, `POST /public/checkin/guests`, `DELETE /public/checkin/guests/{id}` under `/api/v1/plugins/hotel/public`, token in header `X-Checkin-Token`; a missing, unknown or revoked token is 404 `HOTEL_NOT_FOUND`; the summary shows masked names only; submission needs `consent: true` and is idempotent per `(idType, idNumber)`; capacity `maxGuests` holds under parallel requests (`HOTEL_TOO_MANY_GUESTS`); a scan must belong to the reservation (`HOTEL_SCAN_MISMATCH`); fields the guest edited after the scan are recorded; removing a submission works with or without a photo; audit holds no identity data or token.
+**Done:** (d354091, 00cc055) `PublicCheckinController`, `PreArrivalService`, `PreArrivalStore`, `MaskedName`, `QrDigest`. `PublicCheckinIT`, `MaskedNameTest`, `QrDigestTest`. Verified 2026-11-14.
+
+### H404 — Staff view and clean-up · `DONE` · P1 · (needs H403)
+**Expected:** staff read what guests submitted, and the data does not outlive its purpose.
+**Acceptance:** `GET /reservations/{id}/pre-arrival-guests` and `GET .../pre-arrival-guests/{guestId}/id-scan` (`hotel.stays.read`, `no-store`); the arrivals list carries `preArrivalAdults`; submissions are deleted at check-in, at cancel (with their unlinked photos and the link) and 30 days after submission by the existing hourly purge (audit `ID_SCAN_PURGE` holds `count` and `preArrival`); the `IdScan` entity is never loaded.
+**Done:** (af041aa) `PreArrivalController`, `FrontDeskService`, `CheckInService`, `ReservationService`, `IdScanService.purgeOlderThan`. `PreArrivalStaffIT`, `IdScanPurgeIT`. Verified 2026-11-14.
+
+### H405 — Guest web page and deployment · `DONE` · P0 · (needs H403)
+**Expected:** a mobile page and a container that exposes only the public API.
+**Acceptance:** `guest-web/` (React, Tailwind 4, Vietnamese default and English) reads the token from the URL fragment into memory only and removes it from the address bar; consent text is marked `TODO(legal)` for Mathisterben's review before real guests use it; the image is nginx-unprivileged on 8080 and proxies only `/api/v1/plugins/hotel/public/`, every other `/api` path is 404; env `CRM_SERVER_URL`, `CRM_PUBLIC_PROXY_SECRET`, `REAL_IP_FROM` (default `127.0.0.1/32`, trusts no proxy; production uses the tunnel connector's exact /32), refused at start if malformed; security headers and a strict CSP on every response; CI job `build_guest_web` pushes `10.0.0.7:30500/crm-guest-web:latest`.
+**Done:** (7dcb41f, f287166, 21949e6, cb2270a, this commit) `guest-web/`, `nginx/`, `Dockerfile`, `scripts/smoke-guest-checkin.sh` (93 checks on the docker-host), `.gitlab-ci.yml`. 36 Vitest tests. Go-live (manifests, secret, Cloudflare hostname) is a separate step.
+
+**Not in this slice:** desktop screens for links and submissions, sending the link by SMS or email, the real consent text (legal review), a browser run of the CSP on a real device.
 
 ---
 
