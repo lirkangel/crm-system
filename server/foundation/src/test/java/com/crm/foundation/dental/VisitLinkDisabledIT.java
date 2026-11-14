@@ -39,16 +39,44 @@ class VisitLinkDisabledIT extends VisitLinkITSupport {
             VALUES (?, sha256(convert_to(?, 'UTF8')), now(), ?)
             """, id, known, java.sql.Timestamp.from(Instant.now().plus(2, ChronoUnit.DAYS)));
         assertThat(resolveStatus(known)).isEqualTo(404);
-        for (String path : new String[] {"/public/visit", "/public/visit/form", "/public/visit/id-scan"}) {
-            ResponseEntity<String> response = exchange(HttpMethod.GET, DENTAL_API + path, null, null,
-                "X-Visit-Token", known);
-            assertThat(response.getStatusCode().value()).as(path).isEqualTo(404);
-        }
+        assertThat(exchange(HttpMethod.GET, DENTAL_API + "/public/visit", null, null, "X-Visit-Token", known)
+            .getStatusCode().value()).isEqualTo(404);
 
         // Staff can still see and revoke what exists
         JsonNode status = data(get(linkPath(id), token));
         assertThat(status.path("exists").asBoolean()).isTrue();
         assertThat(exchange(HttpMethod.DELETE, linkPath(id), token, null).getStatusCode().value()).isEqualTo(204);
         assertThat(count("visit_link", "appointment_id", id)).isZero();
+    }
+
+    @Test
+    void public_routes_404_when_disabled() {
+        String token = adminToken();
+        UUID id = idOf(book(token, futureDay()));
+        String known = "known-token-" + tag();
+        jdbc.update("""
+            INSERT INTO dental.visit_link (appointment_id, token_hash, created_at, expires_at)
+            VALUES (?, sha256(convert_to(?, 'UTF8')), now(), ?)
+            """, id, known, java.sql.Timestamp.from(Instant.now().plus(2, ChronoUnit.DAYS)));
+        String base = DENTAL_API + "/public/visit";
+        java.util.Map<String, Object> form = java.util.Map.of("consent", true, "phone", "0912345678");
+        java.util.Map<String, Object> dob = java.util.Map.of("dateOfBirth", "1990-05-17");
+
+        assertThat(exchange(HttpMethod.GET, base, null, null, "X-Visit-Token", known).getStatusCode().value()).isEqualTo(404);
+        assertThat(exchange(HttpMethod.POST, base + "/form", null, form, "X-Visit-Token", known).getStatusCode().value()).isEqualTo(404);
+        assertThat(exchange(HttpMethod.POST, base + "/previous", null, dob, "X-Visit-Token", known).getStatusCode().value()).isEqualTo(404);
+        org.springframework.util.LinkedMultiValueMap<String, Object> body = new org.springframework.util.LinkedMultiValueMap<>();
+        body.add("image", new org.springframework.core.io.ByteArrayResource(new byte[] {1, 2, 3}) {
+            @Override
+            public String getFilename() {
+                return "cccd.jpg";
+            }
+        });
+        org.springframework.http.HttpHeaders headers = new org.springframework.http.HttpHeaders();
+        headers.set("X-Visit-Token", known);
+        headers.setContentType(org.springframework.http.MediaType.MULTIPART_FORM_DATA);
+        assertThat(rest.postForEntity(base + "/id-scans", new org.springframework.http.HttpEntity<>(body, headers), String.class)
+            .getStatusCode().value()).isEqualTo(404);
+        assertThat(count("previsit_form", "appointment_id", id)).isZero();
     }
 }

@@ -8,6 +8,7 @@ import com.crm.dental.link.VisitLinkService;
 import com.crm.dental.patient.Patient;
 import com.crm.dental.patient.PatientService;
 import com.crm.dental.patient.PatientRepository;
+import com.crm.dental.previsit.PrevisitFormRepository;
 import com.crm.dental.scan.DentalIdScanRepository;
 import com.crm.foundation.Plugin.AuditRecorder;
 import com.crm.foundation.Plugin.ChangeOp;
@@ -55,6 +56,7 @@ public class AppointmentService {
     private final PatientService patientService;
     private final VisitLinkRepository visitLinks;
     private final DentalIdScanRepository idScans;
+    private final PrevisitFormRepository forms;
     private final ChangeRecorder changes;
     private final AuditRecorder audit;
     private final CurrentUser currentUser;
@@ -161,7 +163,7 @@ public class AppointmentService {
         appointment.setStatus(target);
         if (target == AppointmentStatus.CANCELLED) {
             // Retention: a cancelled appointment's form and photos go; the link stays so the public page says "closed"
-            appointments.deleteFormOf(id);
+            forms.deleteByAppointment(id);
             idScans.deleteByAppointment(id);
         }
         return saveChange(appointment, auditOp, before);

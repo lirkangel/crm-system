@@ -3,7 +3,6 @@ package com.crm.dental.appointment;
 import jakarta.persistence.LockModeType;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Lock;
-import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
@@ -33,12 +32,4 @@ public interface AppointmentRepository extends JpaRepository<Appointment, UUID> 
         order by a.startsAt, a.id
         """)
     List<Object[]> findDetailedBetween(@Param("from") Instant from, @Param("to") Instant to);
-
-    /**
-     * Deletes the appointment's pre-visit form (cancellation). The form has no entity yet (the public form arrives
-     * with the form task, which may swap this for a repository delete), hence the native statement.
-     */
-    @Modifying(flushAutomatically = true)
-    @Query(value = "delete from dental.previsit_form where appointment_id = :id", nativeQuery = true)
-    int deleteFormOf(@Param("id") UUID id);
 }

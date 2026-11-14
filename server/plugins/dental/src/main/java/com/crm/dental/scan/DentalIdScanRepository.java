@@ -27,6 +27,10 @@ public interface DentalIdScanRepository extends JpaRepository<DentalIdScan, UUID
     @Query("select x.qrDigest from DentalIdScan x where x.id = :id")
     Optional<String> findQrDigestById(@Param("id") UUID id);
 
+    /** The appointment a scan belongs to, without loading its image. */
+    @Query("select x.appointmentId from DentalIdScan x where x.id = :id")
+    Optional<UUID> findAppointmentIdById(@Param("id") UUID id);
+
     /** Deletes every scan of the appointment (cancellation), flushing first. */
     @Modifying(flushAutomatically = true)
     @Query("delete from DentalIdScan x where x.appointmentId = :appointmentId")

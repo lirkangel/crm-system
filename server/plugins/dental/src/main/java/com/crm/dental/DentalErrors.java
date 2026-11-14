@@ -18,6 +18,8 @@ public final class DentalErrors {
     public static final String PUBLIC_DISABLED = "DENTAL_PUBLIC_DISABLED";
     public static final String INVALID_FORM = "DENTAL_INVALID_FORM";
     public static final String VISIT_CLOSED = "DENTAL_VISIT_CLOSED";
+    public static final String CHECK_FAILED = "DENTAL_CHECK_FAILED";
+    public static final String CHECK_LOCKED = "DENTAL_CHECK_LOCKED";
     public static final String SCAN_UNREADABLE = "DENTAL_SCAN_UNREADABLE";
     public static final String SCAN_UNSUPPORTED = "DENTAL_SCAN_UNSUPPORTED";
     public static final String SCAN_LIMIT = "DENTAL_SCAN_LIMIT";
@@ -74,6 +76,16 @@ public final class DentalErrors {
     /** 409: the pre-visit link or form is closed: the visit day is over or the appointment is no longer booked. */
     public static PluginProblem visitClosed(String detail) {
         return new PluginProblem(409, VISIT_CLOSED, detail);
+    }
+
+    /** 403: the date of birth of the previous-answers check does not match the patient record. */
+    public static PluginProblem checkFailed(String detail) {
+        return new PluginProblem(403, CHECK_FAILED, detail);
+    }
+
+    /** 423: five wrong dates of birth: the previous-answers check is locked for this link. */
+    public static PluginProblem checkLocked(String detail) {
+        return new PluginProblem(423, CHECK_LOCKED, detail);
     }
 
     /** 400: the upload is not a readable image, or its QR code is missing or not a CCCD's. */
