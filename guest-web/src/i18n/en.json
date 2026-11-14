@@ -1,0 +1,63 @@
+{
+  "app": { "title": "Online check-in" },
+  "lang": { "switch": "Tiếng Việt" },
+  "common": {
+    "busy": "The system is busy. Please try again in a few minutes.",
+    "error": "Something went wrong. Please try again.",
+    "loading": "Loading…",
+    "retry": "Try again"
+  },
+  "invalid": "This link is no longer valid. Please ask the hotel to send you a new one.",
+  "invalidTitle": "Invalid link",
+  "closed": "Pre-arrival registration is closed for this booking. Please register when you arrive at the hotel.",
+  "closedTitle": "Registration closed",
+  "stay": {
+    "room": "Room type",
+    "dates": "{{checkIn}} to {{checkOut}}",
+    "adults": "Adults",
+    "submitted": "Submitted ({{count}}/{{adults}})",
+    "none": "No guest has been submitted yet.",
+    "add": "Add an adult",
+    "remove": "Remove",
+    "removeAria": "Remove {{name}}"
+  },
+  "done": {
+    "title": "All details received",
+    "text": "Thank you. The hotel has the details of all {{adults}} adults. See you at the front desk."
+  },
+  "adults": { "full": "This booking already has the maximum number of guests." },
+  "adult": {
+    "title": "One adult's identity",
+    "takePhoto": "Take a photo of the CCCD",
+    "hint": "Photograph the side of the Vietnamese citizen ID with the QR code. The details are filled in for you to check.",
+    "reading": "Reading the photo…",
+    "noCccd": "I don't have a CCCD",
+    "back": "Back"
+  },
+  "scan": {
+    "unreadable": "The photo could not be read. Please retake it clearly or type the details.",
+    "unreadablePhoto": "This photo could not be read. Please use the camera to take it directly.",
+    "mismatch": "The details do not match the uploaded photo. Please retake the photo.",
+    "reviewTitle": "Check the details",
+    "reviewHint": "Compare with the document and correct any mistake."
+  },
+  "passport": {
+    "title": "Passport",
+    "hint": "Type the details from your passport."
+  },
+  "field": {
+    "idNumber": "Document number",
+    "fullName": "Full name",
+    "dateOfBirth": "Date of birth",
+    "nationality": "Nationality",
+    "address": "Permanent address",
+    "visaNumber": "Visa number",
+    "entryDate": "Entry date",
+    "required": "Required"
+  },
+  "consent": {
+    "label": "I have read and agree to the above",
+    "text": "We collect your identity details (name, date of birth, document number, nationality, address) and the photo of your CCCD. Purpose: registering your stay with the police, as required by law. The CCCD photo is deleted within 30 days. By sending, you confirm that you may send the details of the other adults on this booking."
+  },
+  "action": { "send": "Send", "sending": "Sending…" }
+}

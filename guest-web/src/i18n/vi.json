@@ -1,0 +1,63 @@
+{
+  "app": { "title": "Check-in trực tuyến" },
+  "lang": { "switch": "English" },
+  "common": {
+    "busy": "Hệ thống đang bận, vui lòng thử lại sau ít phút.",
+    "error": "Có lỗi xảy ra. Vui lòng thử lại.",
+    "loading": "Đang tải…",
+    "retry": "Thử lại"
+  },
+  "invalid": "Liên kết này không còn hiệu lực. Vui lòng liên hệ khách sạn để được gửi liên kết mới.",
+  "invalidTitle": "Liên kết không hợp lệ",
+  "closed": "Khách sạn đã đóng việc khai báo trước cho đặt phòng này. Vui lòng khai báo khi đến nhận phòng.",
+  "closedTitle": "Đã đóng khai báo",
+  "stay": {
+    "room": "Loại phòng",
+    "dates": "{{checkIn}} đến {{checkOut}}",
+    "adults": "Số người lớn",
+    "submitted": "Đã gửi ({{count}}/{{adults}})",
+    "none": "Chưa có khách nào được gửi.",
+    "add": "Thêm khách",
+    "remove": "Xóa",
+    "removeAria": "Xóa {{name}}"
+  },
+  "done": {
+    "title": "Đã đủ thông tin",
+    "text": "Cảm ơn bạn. Khách sạn đã nhận đủ thông tin của {{adults}} người lớn. Hẹn gặp bạn tại quầy lễ tân."
+  },
+  "adults": { "full": "Đặt phòng này đã đủ số khách tối đa." },
+  "adult": {
+    "title": "Giấy tờ của một người lớn",
+    "takePhoto": "Chụp ảnh CCCD",
+    "hint": "Chụp mặt có mã QR của căn cước công dân. Thông tin sẽ được điền sẵn để bạn kiểm tra.",
+    "reading": "Đang đọc ảnh…",
+    "noCccd": "Tôi không có CCCD",
+    "back": "Quay lại"
+  },
+  "scan": {
+    "unreadable": "Không đọc được ảnh. Vui lòng chụp lại rõ nét hoặc nhập tay.",
+    "unreadablePhoto": "Không đọc được ảnh này. Vui lòng dùng camera để chụp trực tiếp.",
+    "mismatch": "Thông tin không khớp với ảnh đã tải lên. Vui lòng chụp lại ảnh.",
+    "reviewTitle": "Kiểm tra thông tin",
+    "reviewHint": "Vui lòng đối chiếu và sửa nếu có sai sót."
+  },
+  "passport": {
+    "title": "Hộ chiếu",
+    "hint": "Nhập thông tin trên hộ chiếu của bạn."
+  },
+  "field": {
+    "idNumber": "Số giấy tờ",
+    "fullName": "Họ và tên",
+    "dateOfBirth": "Ngày sinh",
+    "nationality": "Quốc tịch",
+    "address": "Địa chỉ thường trú",
+    "visaNumber": "Số thị thực (visa)",
+    "entryDate": "Ngày nhập cảnh",
+    "required": "Bắt buộc"
+  },
+  "consent": {
+    "label": "Tôi đã đọc và đồng ý với nội dung trên",
+    "text": "Chúng tôi thu thập thông tin giấy tờ tùy thân của bạn (họ tên, ngày sinh, số giấy tờ, quốc tịch, địa chỉ) và ảnh CCCD. Mục đích: đăng ký lưu trú với cơ quan công an theo quy định của pháp luật. Ảnh CCCD sẽ được xóa trong vòng 30 ngày. Bằng việc gửi, bạn xác nhận bạn có quyền gửi thông tin của những người lớn khác trong đặt phòng này."
+  },
+  "action": { "send": "Gửi", "sending": "Đang gửi…" }
+}
