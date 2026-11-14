@@ -48,6 +48,9 @@ class PluginPublicRouteIT {
     private static final String PUB_PLUGIN_ID = "com.crm.pub";
     private static final String OUTSIDE_PLUGIN_ID = "com.crm.pubout";
     private static final String UNMARKED_PLUGIN_ID = "com.crm.pubmissing";
+    private static final String BOTH_PLUGIN_ID = "com.crm.pubboth";
+    private static final String CLASS_GUARDED_PLUGIN_ID = "com.crm.pubclass";
+    private static final String BARE_PLUGIN_ID = "com.crm.pubbare";
 
     @Autowired
     private TestRestTemplate rest;
@@ -76,6 +79,28 @@ class PluginPublicRouteIT {
                 return "pong";
             }
             """);
+        buildPlugin(pluginDir.resolve("pubboth.zip"), BOTH_PLUGIN_ID, "pubboth", "demo.pubboth", "", """
+            @GetMapping("/public/ping")
+            @PublicEndpoint
+            @PreAuthorize("hasAuthority('x.y')")
+            public String ping() {
+                return "pong";
+            }
+            """);
+        buildPlugin(pluginDir.resolve("pubclass.zip"), CLASS_GUARDED_PLUGIN_ID, "pubclass", "demo.pubclass",
+            "@PreAuthorize(\"hasAuthority('x.y')\")", """
+            @GetMapping("/public/ping")
+            @PublicEndpoint
+            public String ping() {
+                return "pong";
+            }
+            """);
+        buildPlugin(pluginDir.resolve("pubbare.zip"), BARE_PLUGIN_ID, "pubbare", "demo.pubbare", "", """
+            @GetMapping("/public")
+            public String ping() {
+                return "pong";
+            }
+            """);
         registry.add("foundation.plugins.directory", pluginDir::toString);
         registry.add("crm.public.proxy-secret", () -> PROXY_SECRET);
         registry.add("crm.public.rate-limit-per-minute", () -> "60");
@@ -98,6 +123,11 @@ class PluginPublicRouteIT {
     }
 
     private static void buildPlugin(Path zip, String id, String route, String pkg, String handlers) throws IOException {
+        buildPlugin(zip, id, route, pkg, "", handlers);
+    }
+
+    private static void buildPlugin(Path zip, String id, String route, String pkg, String classAnnotation,
+                                    String handlers) throws IOException {
         PluginPackageBuilder.plugin(id)
             .schema("plugin_" + route)
             .route(route)
@@ -119,10 +149,11 @@ class PluginPublicRouteIT {
                 import org.springframework.web.bind.annotation.RestController;
 
                 @RestController
+                %s
                 public class Controller {
                 %s
                 }
-                """.formatted(pkg, handlers))
+                """.formatted(pkg, classAnnotation, handlers))
             .buildTo(zip);
     }
 
@@ -203,5 +234,44 @@ class PluginPublicRouteIT {
             assertThat(response.getHeaders().getCacheControl()).isEqualTo("no-store");
             assertThat(response.getHeaders().getFirst("X-Robots-Tag")).isEqualTo("noindex");
         }
+    }
+
+    @Test
+    void encoded_public_segment_is_rejected_or_limited() throws IOException {
+        for (String path : new String[] {"/api/v1/plugins/pub/%70ublic/hello", "/api/v1/plugins/p%75b/public/hello",
+            "/api/v1/plugins/pub/%70ublic/guarded"}) {
+            // a URI object, so the client does not encode the percent signs a second time
+            HttpHeaders headers = new HttpHeaders();
+            headers.set("X-Guest-Proxy-Secret", PROXY_SECRET);
+            headers.set("X-Client-IP", freshIp());
+            ResponseEntity<String> response = rest.exchange(
+                java.net.URI.create(rest.getRootUri() + path), HttpMethod.GET, new HttpEntity<>(headers), String.class);
+
+            assertThat(response.getStatusCode().value()).as(path + " " + response.getBody()).isEqualTo(400);
+            assertThat(response.getHeaders().getContentType()).as(path + " " + response.getBody()).isEqualTo(MediaType.APPLICATION_PROBLEM_JSON);
+            assertThat(objectMapper.readTree(response.getBody()).path("code").asText()).isEqualTo("BAD_REQUEST");
+        }
+    }
+
+    @Test
+    void public_and_pre_authorize_together_refuse_plugin() {
+        assertRefused(BOTH_PLUGIN_ID, "@PreAuthorize");
+    }
+
+    @Test
+    void class_level_pre_authorize_with_public_method_refuses_plugin() {
+        assertRefused(CLASS_GUARDED_PLUGIN_ID, "@PreAuthorize");
+    }
+
+    @Test
+    void unannotated_handler_at_bare_public_refuses_plugin() {
+        assertRefused(BARE_PLUGIN_ID, "@PublicEndpoint");
+    }
+
+    private void assertRefused(String pluginId, String messagePart) {
+        PluginRegistry entry = registryService.findByPluginId(pluginId).orElseThrow();
+
+        assertThat(entry.getState()).isEqualTo(PluginState.LOAD_FAILED.name());
+        assertThat(entry.getErrorMessage()).contains(messagePart);
     }
 }

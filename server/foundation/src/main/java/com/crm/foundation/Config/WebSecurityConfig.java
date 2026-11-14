@@ -51,10 +51,12 @@ public class WebSecurityConfig {
                             "/actuator/health/**",
                             "/v3/api-docs/**",
                             "/swagger-ui/**",
-                            "/swagger-ui.html",
-                            // Login-free plugin endpoints (@PublicEndpoint); PluginRouteRegistry only
-                            // allows @PublicEndpoint handlers under this prefix, and nothing else there
-                            "/api/v1/plugins/*/public/**")
+                            "/swagger-ui.html")
+                        .permitAll()
+                        // Login-free plugin endpoints (@PublicEndpoint); PluginRouteRegistry only allows
+                        // @PublicEndpoint handlers under this prefix, and nothing else there. The same
+                        // matcher drives PublicRateLimitFilter, so the two cannot disagree.
+                        .requestMatchers(PublicPaths.MATCHER)
                         .permitAll()
                         .anyRequest()
                         .authenticated())

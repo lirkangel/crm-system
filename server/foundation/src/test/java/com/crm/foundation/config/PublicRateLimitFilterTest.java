@@ -1,7 +1,9 @@
 package com.crm.foundation.config;
 
 import com.crm.foundation.Config.PublicRateLimitFilter;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.Test;
+import org.springframework.http.converter.json.Jackson2ObjectMapperBuilder;
 import org.springframework.mock.web.MockFilterChain;
 import org.springframework.mock.web.MockHttpServletRequest;
 import org.springframework.mock.web.MockHttpServletResponse;
@@ -12,6 +14,7 @@ import java.time.Instant;
 import java.time.ZoneOffset;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 class PublicRateLimitFilterTest {
 
@@ -41,7 +44,13 @@ class PublicRateLimitFilterTest {
         }
     }
 
+    private static final ObjectMapper MAPPER = Jackson2ObjectMapperBuilder.json().build();
+
     private final MutableClock clock = new MutableClock();
+
+    private PublicRateLimitFilter filter(int limit, String secret) {
+        return new PublicRateLimitFilter(limit, secret, MAPPER, clock);
+    }
 
     private static MockHttpServletRequest request(String path, String remote, String clientIp, String secret) {
         MockHttpServletRequest request = new MockHttpServletRequest("GET", path);
@@ -63,7 +72,7 @@ class PublicRateLimitFilterTest {
 
     @Test
     void forged_client_ip_without_secret_is_ignored() throws Exception {
-        PublicRateLimitFilter filter = new PublicRateLimitFilter(2, "proxy-secret", clock);
+        PublicRateLimitFilter filter = filter(2, "proxy-secret");
 
         assertThat(call(filter, request(PUBLIC_PATH, "10.0.0.5", "1.1.1.1", null)).getStatus()).isEqualTo(200);
         assertThat(call(filter, request(PUBLIC_PATH, "10.0.0.5", "2.2.2.2", null)).getStatus()).isEqualTo(200);
@@ -76,7 +85,7 @@ class PublicRateLimitFilterTest {
 
     @Test
     void empty_configured_secret_trusts_no_proxy() throws Exception {
-        PublicRateLimitFilter filter = new PublicRateLimitFilter(1, "", clock);
+        PublicRateLimitFilter filter = filter(1, "");
 
         assertThat(call(filter, request(PUBLIC_PATH, "10.0.0.5", "1.1.1.1", "")).getStatus()).isEqualTo(200);
         assertThat(call(filter, request(PUBLIC_PATH, "10.0.0.5", "2.2.2.2", "")).getStatus()).isEqualTo(429);
@@ -84,7 +93,7 @@ class PublicRateLimitFilterTest {
 
     @Test
     void client_ip_used_with_valid_secret() throws Exception {
-        PublicRateLimitFilter filter = new PublicRateLimitFilter(1, "proxy-secret", clock);
+        PublicRateLimitFilter filter = filter(1, "proxy-secret");
 
         // same remote address (the proxy), different guests: each has a bucket of its own
         assertThat(call(filter, request(PUBLIC_PATH, "10.0.0.5", "1.1.1.1", "proxy-secret")).getStatus()).isEqualTo(200);
@@ -94,7 +103,7 @@ class PublicRateLimitFilterTest {
 
     @Test
     void non_public_paths_not_limited() throws Exception {
-        PublicRateLimitFilter filter = new PublicRateLimitFilter(1, "proxy-secret", clock);
+        PublicRateLimitFilter filter = filter(1, "proxy-secret");
 
         for (String path : new String[] {"/api/v1/plugins/hotel/reservations", "/api/v1/auth/login",
             "/api/v1/plugins/hotel/publicity", "/api/v1/plugins/public/x"}) {
@@ -108,7 +117,7 @@ class PublicRateLimitFilterTest {
 
     @Test
     void public_paths_carry_headers_and_429_is_a_problem() throws Exception {
-        PublicRateLimitFilter filter = new PublicRateLimitFilter(1, "", clock);
+        PublicRateLimitFilter filter = filter(1, "");
         MockHttpServletResponse ok = call(filter, request(PUBLIC_PATH, "10.0.0.5", null, null));
         MockHttpServletResponse limited = call(filter, request(PUBLIC_PATH, "10.0.0.5", null, null));
 
@@ -125,7 +134,7 @@ class PublicRateLimitFilterTest {
 
     @Test
     void window_resets_after_a_minute() throws Exception {
-        PublicRateLimitFilter filter = new PublicRateLimitFilter(1, "", clock);
+        PublicRateLimitFilter filter = filter(1, "");
 
         assertThat(call(filter, request(PUBLIC_PATH, "10.0.0.5", null, null)).getStatus()).isEqualTo(200);
         assertThat(call(filter, request(PUBLIC_PATH, "10.0.0.5", null, null)).getStatus()).isEqualTo(429);
@@ -136,11 +145,63 @@ class PublicRateLimitFilterTest {
 
     @Test
     void map_stays_bounded_and_keeps_serving() throws Exception {
-        PublicRateLimitFilter filter = new PublicRateLimitFilter(1, "", clock);
+        PublicRateLimitFilter filter = filter(1, "");
 
         for (int i = 0; i < 10_050; i++) {
             assertThat(call(filter, request(PUBLIC_PATH, "10.1." + (i / 256) + "." + (i % 256), null, null))
                 .getStatus()).isEqualTo(200);
         }
+    }
+
+    @Test
+    void encoded_public_segment_is_answered_400_with_the_public_headers() throws Exception {
+        PublicRateLimitFilter filter = filter(1, "");
+
+        for (String path : new String[] {"/api/v1/plugins/hotel/%70ublic/checkin/stay",
+            "/api/v1/plugins/h%6Ftel/public/checkin/stay", "/api/v1/plugins/hotel/%50ublic/x".replace("%50", "%70")}) {
+            MockHttpServletResponse response = call(filter, request(path, "10.0.0.5", null, null));
+            assertThat(response.getStatus()).as(path).isEqualTo(400);
+            assertThat(response.getContentType()).isEqualTo("application/problem+json");
+            assertThat(response.getContentAsString()).contains("\"code\":\"BAD_REQUEST\"");
+        }
+        MockHttpServletResponse decodedPublic = call(filter,
+            request("/api/v1/plugins/hotel/%70ublic/x", "10.0.0.5", null, null));
+        assertThat(decodedPublic.getHeader("Cache-Control")).isEqualTo("no-store");
+        assertThat(decodedPublic.getHeader("X-Robots-Tag")).isEqualTo("noindex");
+        // encoding after the public segment is fine (an encoded value in a later segment)
+        assertThat(call(filter, request("/api/v1/plugins/hotel/public/a%20b", "10.0.0.6", null, null)).getStatus())
+            .isEqualTo(200);
+    }
+
+    @Test
+    void ipv6_clients_share_a_bucket_per_slash_64() throws Exception {
+        PublicRateLimitFilter filter = filter(1, "proxy-secret");
+
+        assertThat(call(filter, request(PUBLIC_PATH, "2001:db8:1:2:aaaa::1", null, null)).getStatus()).isEqualTo(200);
+        assertThat(call(filter, request(PUBLIC_PATH, "2001:db8:1:2:bbbb::2", null, null)).getStatus()).isEqualTo(429);
+        assertThat(call(filter, request(PUBLIC_PATH, "2001:db8:1:3::1", null, null)).getStatus()).isEqualTo(200);
+        // the same for a trusted proxy's X-Client-IP
+        assertThat(call(filter, request(PUBLIC_PATH, "10.0.0.5", "2001:db8:9:9::1", "proxy-secret")).getStatus())
+            .isEqualTo(200);
+        assertThat(call(filter, request(PUBLIC_PATH, "10.0.0.5", "2001:db8:9:9:ffff::7", "proxy-secret")).getStatus())
+            .isEqualTo(429);
+        // IPv4 clients stay per full address
+        assertThat(call(filter, request(PUBLIC_PATH, "192.0.2.1", null, null)).getStatus()).isEqualTo(200);
+        assertThat(call(filter, request(PUBLIC_PATH, "192.0.2.2", null, null)).getStatus()).isEqualTo(200);
+    }
+
+    @Test
+    void trusted_proxy_without_client_ip_falls_back_to_its_own_address() throws Exception {
+        PublicRateLimitFilter filter = filter(1, "proxy-secret");
+
+        assertThat(call(filter, request(PUBLIC_PATH, "10.0.0.5", null, "proxy-secret")).getStatus()).isEqualTo(200);
+        assertThat(call(filter, request(PUBLIC_PATH, "10.0.0.5", " ", "proxy-secret")).getStatus()).isEqualTo(429);
+    }
+
+    @Test
+    void limit_below_one_fails_startup_with_a_clear_message() {
+        assertThatThrownBy(() -> filter(0, ""))
+            .isInstanceOf(IllegalStateException.class)
+            .hasMessageContaining("crm.public.rate-limit-per-minute must be at least 1");
     }
 }

@@ -29,10 +29,8 @@ import org.springframework.web.multipart.MaxUploadSizeExceededException;
 import org.springframework.web.servlet.NoHandlerFoundException;
 import org.springframework.web.servlet.resource.NoResourceFoundException;
 
-import java.net.URI;
 import java.util.List;
 import java.util.Map;
-import java.util.UUID;
 
 /**
  * RFC 7807 error contract (T016): every error is
@@ -49,7 +47,7 @@ public class ErrorHandler {
     static final String TYPE_UNAUTHORIZED = "urn:problem-type:unauthorized";
     static final String TYPE_FORBIDDEN = "urn:problem-type:forbidden";
     static final String TYPE_NOT_FOUND = "urn:problem-type:not-found";
-    static final String TYPE_BAD_REQUEST = "urn:problem-type:bad-request";
+    static final String TYPE_BAD_REQUEST = Problems.TYPE_BAD_REQUEST;
     static final String TYPE_CONFLICT = "urn:problem-type:conflict";
     static final String TYPE_PLUGIN_LOAD = "urn:problem-type:plugin-load";
     static final String TYPE_PLUGIN = "urn:problem-type:plugin";
@@ -200,13 +198,9 @@ public class ErrorHandler {
     }
 
     private ProblemDetail problem(HttpStatus status, String type, String code, String detail) {
-        String traceId = UUID.randomUUID().toString();
-        ProblemDetail problem = ProblemDetail.forStatusAndDetail(status, detail);
-        problem.setType(URI.create(type));
-        problem.setTitle(status.getReasonPhrase());
-        problem.setProperty("trace_id", traceId);
-        problem.setProperty("code", code);
-        log.debug("Returning HTTP {} problem {} trace_id={} : {}", status.value(), type, traceId, detail);
+        ProblemDetail problem = Problems.of(status, type, code, detail);
+        log.debug("Returning HTTP {} problem {} trace_id={} : {}", status.value(), type,
+            problem.getProperties().get("trace_id"), detail);
         return problem;
     }
 }

@@ -11,7 +11,8 @@ import java.lang.annotation.Target;
  * e.g. a guest's personal link). The foundation accepts it only under the plugin's
  * {@code /public/} path prefix: every mapped path of the method must start with
  * {@code /public/}, and every handler under {@code /public/} must carry this
- * annotation and no {@code @PreAuthorize}. Such requests have no Authentication;
+ * annotation and no {@code @PreAuthorize}. Such requests have no login: the handler must not rely on an
+ * Authentication (a bearer token may still be parsed, but it grants nothing here);
  * they are rate limited per client, and their responses are sent
  * {@code Cache-Control: no-store} and {@code X-Robots-Tag: noindex}.
  */
