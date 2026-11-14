@@ -4,6 +4,7 @@ import com.crm.dental.DentalPermissions;
 import com.crm.dental.patient.PatientView;
 import com.crm.dental.scan.StoredImage;
 import com.crm.foundation.DTO.CommonResponse;
+import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.CacheControl;
 import org.springframework.http.MediaType;
@@ -12,6 +13,7 @@ import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RestController;
 
@@ -41,13 +43,17 @@ public class PrevisitController {
             .body(image.bytes());
     }
 
-    /** The {@code If-Match} header is optional here so a missing one is the clinic's 428, not a generic 400. */
+    /**
+     * Needs both permissions: it writes the patient and acts on what the previsit permission lets staff read. The
+     * body binds the call to the form version staff reviewed. The {@code If-Match} header is optional here so a missing one is the clinic's 428, not a generic 400. */
     @PostMapping("/appointments/{id}/previsit/apply")
-    @PreAuthorize("hasAuthority('" + DentalPermissions.PATIENTS_WRITE + "')")
+    @PreAuthorize("hasAuthority('" + DentalPermissions.PATIENTS_WRITE + "') and hasAuthority('"
+        + DentalPermissions.PREVISIT_READ + "')")
     public ResponseEntity<CommonResponse<PatientView>> apply(
             @PathVariable("id") UUID id,
+            @Valid @RequestBody ApplyRequest request,
             @RequestHeader(value = "If-Match", required = false) String ifMatch) {
         return ResponseEntity.ok().cacheControl(CacheControl.noStore())
-            .body(CommonResponse.success(previsits.apply(id, ifMatch)));
+            .body(CommonResponse.success(previsits.apply(id, request.formVersion(), ifMatch)));
     }
 }

@@ -136,6 +136,32 @@ class PrevisitRulesTest {
     }
 
     @Test
+    void unicode_line_separators_become_newlines_in_free_text() {
+        PrevisitRules.Checked checked = PrevisitRules.check(request(identity(), new AllergyAnswer(true, null, null),
+            new MedicineAnswer(false, "aspirin\u2028500 mg\u2029daily")), false, TODAY);
+        assertThat(checked.medicines().text()).isEqualTo("aspirin\n500 mg\ndaily");
+        PrevisitRules.Checked other = PrevisitRules.check(request(identity(),
+            new AllergyAnswer(false, Set.of(AllergyCode.OTHER), "kiwi\u2028plum"), new MedicineAnswer(true, null)), false, TODAY);
+        assertThat(other.allergies().otherText()).isEqualTo("kiwi\nplum");
+    }
+
+    @Test
+    void unicode_line_separators_rejected_in_identity_parent_and_phone() {
+        for (String bad : new String[] {"\u2028", "\u2029"}) {
+            PrevisitRequest.Identity id = new PrevisitRequest.Identity("CCCD", "079090123456", "TRAN" + bad + "BINH",
+                LocalDate.of(1990, 5, 17), "VN", "12 Le Loi");
+            assertInvalid(request(id, new AllergyAnswer(true, null, null), new MedicineAnswer(true, null)));
+            PrevisitRequest.Identity addr = new PrevisitRequest.Identity("CCCD", "079090123456", "TRAN THI BINH",
+                LocalDate.of(1990, 5, 17), "VN", "12 Le" + bad + "Loi");
+            assertInvalid(request(addr, new AllergyAnswer(true, null, null), new MedicineAnswer(true, null)));
+            assertInvalid(new PrevisitRequest(identity(), null, null, "09123" + bad + "45678", new AllergyAnswer(true, null, null),
+                new MedicineAnswer(true, null), new ReasonAnswer(ReasonCode.CHECKUP, null), true, null));
+            assertInvalid(new PrevisitRequest(null, "Mother" + bad + "Name", "0912345678", "0912345678",
+                new AllergyAnswer(true, null, null), new MedicineAnswer(true, null), new ReasonAnswer(ReasonCode.CHECKUP, null), true, null), true);
+        }
+    }
+
+    @Test
     void checked_never_prints_values() {
         assertThat(PrevisitRules.check(ok(), false, TODAY).toString()).doesNotContain("079090123456")
             .doesNotContain("+84912345678");

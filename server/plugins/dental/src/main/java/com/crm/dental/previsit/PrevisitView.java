@@ -7,12 +7,13 @@ import java.util.UUID;
 /**
  * A submitted form as served to staff holding {@code dental.previsit.read}, health answers decrypted.
  * {@code identity} is null for a child's form without identity details. {@code patientVersion} is the patient
- * record's version, the {@code If-Match} of the apply call. Identity and health values: never printed.
+ * record's version, the {@code If-Match} of the apply call; {@code formVersion} is the form's, sent in its body. Identity and health values: never printed.
  */
 public record PrevisitView(
         UUID appointmentId,
         UUID patientId,
         long patientVersion,
+        long formVersion,
         PrevisitRequest.Identity identity,
         String parentName,
         String parentPhone,

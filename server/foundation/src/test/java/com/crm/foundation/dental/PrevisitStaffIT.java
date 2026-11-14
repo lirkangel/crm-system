@@ -118,7 +118,14 @@ class PrevisitStaffIT extends VisitLinkITSupport {
     }
 
     private ResponseEntity<String> apply(Visit v, String token, String ifMatch) {
-        return exchange(HttpMethod.POST, previsitPath(v.id()) + "/apply", token, null, "If-Match", ifMatch);
+        List<Long> versions = jdbc.queryForList("SELECT version FROM dental.previsit_form WHERE appointment_id = ?",
+            Long.class, v.id());
+        return apply(v, token, ifMatch, versions.isEmpty() ? 0L : versions.get(0));
+    }
+
+    private ResponseEntity<String> apply(Visit v, String token, String ifMatch, long formVersion) {
+        return exchange(HttpMethod.POST, previsitPath(v.id()) + "/apply", token, Map.of("formVersion", formVersion),
+            "If-Match", ifMatch);
     }
 
     private String code(ResponseEntity<String> response) {
@@ -254,12 +261,14 @@ class PrevisitStaffIT extends VisitLinkITSupport {
         Visit v = visit();
         submit(v, form());
         long version = data(get(previsitPath(v.id()), v.staff())).path("patientVersion").asLong();
-        String writeOnly = tokenWith("dental_it_patients_write", "dental.patients.write");
+        String writeOnly = tokenWith("dental_it_write_and_read", "dental.patients.write", "dental.previsit.read");
 
         assertThat(apply(v, v.staff(), null).getStatusCode().value()).as("If-Match required").isEqualTo(428);
         assertThat(apply(v, v.staff(), String.valueOf(version + 7)).getStatusCode().value()).as("stale").isEqualTo(409);
         assertThat(apply(v, tokenWith("dental_it_appts_only", "dental.appointments.read", "dental.previsit.read"),
             String.valueOf(version)).getStatusCode().value()).isEqualTo(403);
+        assertThat(apply(v, tokenWith("dental_it_patients_write_only", "dental.patients.write"), String.valueOf(version))
+            .getStatusCode().value()).as("apply needs previsit.read too").isEqualTo(403);
         ResponseEntity<String> applied = apply(v, writeOnly, String.valueOf(version));
 
         assertThat(applied.getStatusCode().value()).as(applied.getBody()).isEqualTo(200);
@@ -315,8 +324,8 @@ class PrevisitStaffIT extends VisitLinkITSupport {
         assertThat(jdbc.queryForObject("SELECT full_name FROM dental.patient WHERE id = ?", String.class, noShow.patientId()))
             .startsWith("Old Name");
 
-        assertThat(exchange(HttpMethod.POST, APPOINTMENTS + "/" + UUID.randomUUID() + "/previsit/apply", none.staff(), null,
-            "If-Match", "0").getStatusCode().value()).isEqualTo(404);
+        assertThat(exchange(HttpMethod.POST, APPOINTMENTS + "/" + UUID.randomUUID() + "/previsit/apply", none.staff(),
+            Map.of("formVersion", 0), "If-Match", "0").getStatusCode().value()).isEqualTo(404);
     }
 
     @Test
@@ -342,13 +351,108 @@ class PrevisitStaffIT extends VisitLinkITSupport {
         JsonNode view = data(get(previsitPath(id), staff));
         assertThat(view.path("identity").isNull()).isTrue();
         assertThat(view.path("parentName").asText()).isEqualTo("Parent Name");
-        ResponseEntity<String> applied = exchange(HttpMethod.POST, previsitPath(id) + "/apply", staff, null,
-            "If-Match", view.path("patientVersion").asText());
+        ResponseEntity<String> applied = exchange(HttpMethod.POST, previsitPath(id) + "/apply", staff,
+            Map.of("formVersion", view.path("formVersion").asLong()), "If-Match", view.path("patientVersion").asText());
 
         assertThat(applied.getStatusCode().value()).as(applied.getBody()).isEqualTo(200);
         assertThat(data(applied).path("phone").asText()).isEqualTo("+84955555555");
         assertThat(data(applied).path("fullName").asText()).isEqualTo(booked.path("patientName").asText());
         assertThat(data(applied).path("dateOfBirth").asText()).isEqualTo(patient.get("dateOfBirth"));
+    }
+
+    @Test
+    void photo_view_is_audited_404_is_not() {
+        Visit v = visit();
+        Visit noPhoto = visit();
+        ResponseEntity<String> scan = upload(v, CccdQrImages.jpeg(CccdQrImages.payload(), 6));
+        Map<String, Object> body = form();
+        body.put("idScanId", data(scan).path("scanId").asText());
+        submit(v, body);
+        submit(noPhoto, form());
+        String appointmentsOnly = tokenWith("dental_it_appts_only", "dental.appointments.read", "dental.appointments.write");
+
+        assertThat(get(previsitPath(noPhoto.id()) + "/id-scan", noPhoto.staff()).getStatusCode().value()).isEqualTo(404);
+        assertThat(get(previsitPath(v.id()) + "/id-scan", appointmentsOnly).getStatusCode().value()).isEqualTo(403);
+        assertThat(photoViews(noPhoto.id())).isZero();
+        assertThat(photoViews(v.id())).isZero();
+        assertThat(get(previsitPath(v.id()) + "/id-scan", v.staff()).getStatusCode().value()).isEqualTo(200);
+
+        assertThat(photoViews(v.id())).isEqualTo(1);
+        Map<String, Object> event = jdbc.queryForMap("""
+            SELECT user_id, entity_type, coalesce(before_json::text, '') || coalesce(after_json::text, '') AS values
+            FROM audit_event WHERE plugin_id = 'com.crm.dental' AND entity_id = ? AND op = 'PREVISIT_PHOTO_VIEW'
+            """, v.id());
+        assertThat(event.get("user_id")).isNotNull();
+        assertThat(event.get("entity_type")).isEqualTo("Appointment");
+        assertThat(event.get("values")).isEqualTo("");
+    }
+
+    private int photoViews(UUID appointment) {
+        return jdbc.queryForObject(
+            "SELECT count(*) FROM audit_event WHERE plugin_id = 'com.crm.dental' AND entity_id = ? AND op = 'PREVISIT_PHOTO_VIEW'",
+            Integer.class, appointment);
+    }
+
+    @Test
+    void photo_read_with_foreign_scan_swapped_is_404() {
+        Visit v = visit();
+        Visit other = visit();
+        submit(v, form());
+        UUID foreign = seedScan(other.id(), java.time.Instant.now());
+        jdbc.update("UPDATE dental.previsit_form SET id_scan_id = ? WHERE appointment_id = ?", foreign, v.id());
+
+        assertThat(get(previsitPath(v.id()) + "/id-scan", v.staff()).getStatusCode().value()).isEqualTo(404);
+        assertThat(photoViews(v.id())).isZero();
+    }
+
+    @Test
+    void apply_does_not_erase_existing_address() {
+        Visit v = visit();
+        jdbc.update("UPDATE dental.patient SET address = 'Existing Street 1, Hue' WHERE id = ?", v.patientId());
+        Map<String, Object> id = identity();
+        id.put("nationality", "FR");
+        id.remove("address");
+        submit(v, with(form(), "identity", id));
+        JsonNode view = data(get(previsitPath(v.id()), v.staff()));
+
+        ResponseEntity<String> applied = apply(v, v.staff(), view.path("patientVersion").asText());
+
+        assertThat(applied.getStatusCode().value()).as(applied.getBody()).isEqualTo(200);
+        assertThat(data(applied).path("address").asText()).isEqualTo("Existing Street 1, Hue");
+        assertThat(data(applied).path("fullName").asText()).isEqualTo("Trần Thị Bình");
+        assertThat(data(applied).path("nationality").asText()).isEqualTo("FR");
+        assertThat(data(applied).path("dateOfBirth").asText()).isEqualTo("1990-05-18");
+    }
+
+    @Test
+    void apply_after_patient_resubmits_is_409_form_changed() {
+        Visit v = visit();
+        submit(v, form());
+        JsonNode view = data(get(previsitPath(v.id()), v.staff()));
+        long reviewed = view.path("formVersion").asLong();
+        Map<String, Object> changed = form();
+        changed.put("phone", "0987654321");
+        submit(v, changed);
+
+        ResponseEntity<String> stale = apply(v, v.staff(), view.path("patientVersion").asText(), reviewed);
+
+        assertThat(stale.getStatusCode().value()).isEqualTo(409);
+        assertThat(code(stale)).isEqualTo("DENTAL_FORM_CHANGED");
+        assertThat(jdbc.queryForObject("SELECT full_name FROM dental.patient WHERE id = ?", String.class, v.patientId()))
+            .startsWith("Old Name");
+        JsonNode again = data(get(previsitPath(v.id()), v.staff()));
+        assertThat(again.path("formVersion").asLong()).isGreaterThan(reviewed);
+        assertThat(apply(v, v.staff(), again.path("patientVersion").asText(), again.path("formVersion").asLong())
+            .getStatusCode().value()).isEqualTo(200);
+        // A body without the version is a 400
+        assertThat(exchange(HttpMethod.POST, previsitPath(v.id()) + "/apply", v.staff(), Map.of(), "If-Match", "0")
+            .getStatusCode().value()).isEqualTo(400);
+    }
+
+    private static Map<String, Object> with(Map<String, Object> form, String key, Object value) {
+        Map<String, Object> copy = new LinkedHashMap<>(form);
+        copy.put(key, value);
+        return copy;
     }
 
     @Test

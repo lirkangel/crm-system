@@ -151,7 +151,7 @@ final class PrevisitRules {
 
     private static String phone(String raw, String message) {
         // Phones.normalize strips whitespace, which would let a newline or tab through: no control characters at all
-        if (raw != null && raw.chars().anyMatch(Character::isISOControl)) {
+        if (raw != null && raw.chars().anyMatch(PrevisitRules::isControl)) {
             throw invalid(message);
         }
         try {
@@ -175,13 +175,20 @@ final class PrevisitRules {
     }
 
     private static String clean(String value, int max, String message, boolean allowLayout) {
+        // Free text: a Unicode line or paragraph separator is a newline
+        String raw = value != null && allowLayout ? value.replace('\u2028', '\n').replace('\u2029', '\n') : value;
         // The control-character check is on the raw value: String.trim() would silently strip a trailing NUL
-        String trimmed = value == null ? "" : value.trim();
+        String trimmed = raw == null ? "" : raw.trim();
         if (trimmed.isEmpty() || trimmed.length() > max
-                || value.chars().anyMatch(c -> Character.isISOControl(c) && !(allowLayout && isLayout(c)))) {
+                || raw.chars().anyMatch(c -> isControl(c) && !(allowLayout && isLayout(c)))) {
             throw invalid(message);
         }
         return trimmed;
+    }
+
+    /** ISO control characters, plus U+2028 and U+2029 (Unicode line and paragraph separators). */
+    private static boolean isControl(int c) {
+        return Character.isISOControl(c) || c == '\u2028' || c == '\u2029';
     }
 
     private static boolean isLayout(int c) {
