@@ -3,6 +3,7 @@ package com.crm.hotel.scan;
 import com.crm.hotel.stay.StayGuestRequest;
 
 import java.nio.charset.StandardCharsets;
+import java.text.Normalizer;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.util.ArrayList;
@@ -65,9 +66,12 @@ public final class QrDigest {
         return String.join(";", parts);
     }
 
-    /** Trimmed text; dates in ISO form ({@code toString}); nothing is the empty string. */
+    /**
+     * Trimmed, Unicode NFC text (a keyboard may send the same Vietnamese letter composed or decomposed); dates in ISO
+     * form ({@code toString}); nothing is the empty string.
+     */
     private static String normalise(Object value) {
-        return value == null ? "" : value.toString().trim();
+        return value == null ? "" : Normalizer.normalize(value.toString().trim(), Normalizer.Form.NFC);
     }
 
     private static String sha256Hex(String text) {

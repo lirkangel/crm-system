@@ -13,7 +13,9 @@ import com.crm.hotel.domain.Reservation;
 import com.crm.hotel.domain.ReservationStatus;
 import com.crm.hotel.domain.Room;
 import com.crm.hotel.domain.RoomType;
+import com.crm.hotel.repo.GuestLinkRepository;
 import com.crm.hotel.repo.GuestRepository;
+import com.crm.hotel.repo.PreArrivalGuestRepository;
 import com.crm.hotel.repo.ReservationRepository;
 import com.crm.hotel.repo.RoomRepository;
 import com.crm.hotel.repo.RoomTypeRepository;
@@ -65,6 +67,8 @@ public class CheckInService {
     private final AuditRecorder audit;
     private final ObjectMapper objectMapper;
     private final IdScanService scans;
+    private final PreArrivalGuestRepository preArrivals;
+    private final GuestLinkRepository guestLinks;
 
     /**
      * Checks a reservation in, in one transaction.
@@ -138,6 +142,11 @@ public class CheckInService {
                 scans.link(saved.getId(), scanId, savedRecords.get(i).getId());
             }
         }
+
+        // The guest's pre-arrival details and link have served their purpose. Scans the request linked stay with their
+        // stay guest; the others stay unlinked and the retention purge takes them.
+        preArrivals.deleteByReservation(saved.getId());
+        guestLinks.deleteByReservation(saved.getId());
 
         ReservationView view = ReservationView.of(saved, guestName, target.getNumber());
         // Only the count and ids of the identity records: the audit chain is append-only, so no personal data.

@@ -70,7 +70,42 @@ class IdScanPurgeIT extends HotelITSupport {
         assertThat(row.get("user_id")).isNull();
         assertThat(row.get("source_ip")).isNull();
         assertThat(row.get("plugin_id")).isEqualTo(HOTEL_PLUGIN_ID);
-        assertThat(row.get("after")).isEqualTo("{\"count\": " + purged + "}");
+        assertThat(row.get("after")).isEqualTo("{\"count\": " + purged + ", \"preArrival\": 0}");
+    }
+
+    @Test
+    void purge_removes_pre_arrival_older_than_30_days() {
+        UUID reservation = reservation();
+        Instant now = Instant.now();
+        UUID old = seedPreArrival(reservation, "079090400001", null, now.minus(30, ChronoUnit.DAYS).minus(1, ChronoUnit.MINUTES));
+        UUID young = seedPreArrival(reservation, "079090400002", null, now.minus(29, ChronoUnit.DAYS));
+        long before = purgeAudits();
+
+        int scansPurged = purgeScansOlderThan(now.minus(30, ChronoUnit.DAYS));
+
+        assertThat(preArrivalExists(old)).isFalse();
+        assertThat(preArrivalExists(young)).isTrue();
+        assertThat(purgeAudits()).as("audited although no scan went").isEqualTo(before + 1);
+        Map<String, Object> row = jdbc.queryForMap("""
+            SELECT after_json::text AS after FROM audit_event WHERE op = 'ID_SCAN_PURGE'
+            ORDER BY occurred_at DESC LIMIT 1
+            """);
+        assertThat(row.get("after")).isEqualTo("{\"count\": " + scansPurged + ", \"preArrival\": 1}");
+    }
+
+    @Test
+    void scan_purged_before_its_submission_nulls_the_link() {
+        UUID reservation = reservation();
+        Instant now = Instant.now();
+        UUID scan = seedScan(reservation, now.minus(30, ChronoUnit.DAYS).minus(1, ChronoUnit.MINUTES));
+        UUID submission = seedPreArrival(reservation, "079090400003", scan, now.minus(5, ChronoUnit.DAYS));
+
+        purgeScansOlderThan(now.minus(30, ChronoUnit.DAYS));
+
+        assertThat(exists(scan)).isFalse();
+        assertThat(preArrivalExists(submission)).isTrue();
+        assertThat(jdbc.queryForObject(
+            "SELECT id_scan_id FROM hotel.pre_arrival_guest WHERE id = ?", UUID.class, submission)).isNull();
     }
 
     @Test
@@ -89,6 +124,20 @@ class IdScanPurgeIT extends HotelITSupport {
 
     private long purgeAudits() {
         return jdbc.queryForObject("SELECT count(*) FROM audit_event WHERE op = 'ID_SCAN_PURGE'", Long.class);
+    }
+
+    private boolean preArrivalExists(UUID id) {
+        return jdbc.queryForObject("SELECT count(*) FROM hotel.pre_arrival_guest WHERE id = ?", Integer.class, id) > 0;
+    }
+
+    private UUID seedPreArrival(UUID reservation, String idNumber, UUID scan, Instant submittedAt) {
+        UUID id = UUID.randomUUID();
+        jdbc.update("""
+            INSERT INTO hotel.pre_arrival_guest (id, reservation_id, id_type, id_number, full_name, date_of_birth,
+                nationality, address, id_scan_id, consent_at, notice_version, submitted_at, version)
+            VALUES (?, ?, 'CCCD', ?, 'Pre Arrival', DATE '1990-05-17', 'VN', 'Hue', ?, ?, '2026-11-14', ?, 0)
+            """, id, reservation, idNumber, scan, Timestamp.from(submittedAt), Timestamp.from(submittedAt));
+        return id;
     }
 
     private boolean exists(UUID scan) {

@@ -7,13 +7,17 @@ import com.crm.hotel.domain.Reservation;
 import com.crm.hotel.domain.ReservationStatus;
 import com.crm.hotel.domain.Room;
 import com.crm.hotel.domain.RoomType;
+import com.crm.hotel.repo.IdScanRepository;
 import com.crm.hotel.repo.PreArrivalGuestRepository;
+import com.crm.hotel.repo.ReservationRepository;
 import com.crm.hotel.repo.RoomRepository;
 import com.crm.hotel.repo.RoomTypeRepository;
 import com.crm.hotel.scan.IdScanService;
+import com.crm.hotel.scan.StoredImage;
 import com.crm.hotel.stay.CheckInPolicy;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
 import java.util.Map;
@@ -40,6 +44,8 @@ public class PreArrivalService {
     private final PreArrivalGuestRepository submissions;
     private final IdScanService scans;
     private final PreArrivalStore store;
+    private final ReservationRepository reservations;
+    private final IdScanRepository scanRepository;
 
     /** A submission and whether this call created it (a repeat of the same document returns the first). */
     public record SubmitResult(CheckinSummary.SubmittedGuest guest, boolean created) {
@@ -88,6 +94,32 @@ public class PreArrivalService {
     /** Withdraws a submission of this reservation, and its scan. */
     public void delete(String token, UUID submissionId) {
         store.delete(reservationOf(token).getId(), submissionId);
+    }
+
+    /**
+     * What guests sent for a reservation, oldest first (staff, {@code hotel.stays.read}).
+     *
+     * @throws com.crm.foundation.Plugin.PluginProblem {@code HOTEL_NOT_FOUND} (404) for an unknown reservation
+     */
+    @Transactional(readOnly = true)
+    public List<PreArrivalGuestView> staffList(UUID reservationId) {
+        if (!reservations.existsById(reservationId)) {
+            throw HotelErrors.notFound("Reservation not found");
+        }
+        return submissions.findByReservationIdOrderBySubmittedAtAscIdAsc(reservationId).stream()
+            .map(PreArrivalGuestView::of).toList();
+    }
+
+    /**
+     * The stored image of a submission's scan, only through the submission row of this reservation (never the scan
+     * entity).
+     *
+     * @throws com.crm.foundation.Plugin.PluginProblem {@code HOTEL_NOT_FOUND} (404) when there is none
+     */
+    @Transactional(readOnly = true)
+    public StoredImage staffImage(UUID reservationId, UUID guestId) {
+        return scanRepository.findPreArrivalImage(reservationId, guestId)
+            .orElseThrow(() -> HotelErrors.notFound("No scan for this guest"));
     }
 
     private Reservation reservationOf(String token) {

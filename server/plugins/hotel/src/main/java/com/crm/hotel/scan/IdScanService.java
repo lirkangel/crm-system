@@ -6,6 +6,7 @@ import com.crm.hotel.HotelErrors;
 import com.crm.hotel.domain.Reservation;
 import com.crm.hotel.domain.ReservationStatus;
 import com.crm.hotel.repo.IdScanRepository;
+import com.crm.hotel.repo.PreArrivalGuestRepository;
 import com.crm.hotel.repo.ReservationRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -36,6 +37,7 @@ public class IdScanService {
     private final ReservationRepository reservations;
     private final IdScanStore store;
     private final IdScanRepository scans;
+    private final PreArrivalGuestRepository preArrivals;
     private final ScanPipeline pipeline;
     private final AuditRecorder audit;
 
@@ -127,18 +129,22 @@ public class IdScanService {
     }
 
     /**
-     * Deletes every scan uploaded before {@code cutoff}, in one bulk statement in its own transaction (no entity is
-     * loaded, so no image bytes are read). Audited as {@code ID_SCAN_PURGE} (count only) when anything was deleted;
-     * a system job, so there is no user or IP.
+     * Deletes every scan uploaded before {@code cutoff} and every pre-arrival submission made before it, each in one
+     * bulk statement in one transaction (no entity is loaded, so no image bytes are read). A scan purged before its
+     * younger submission leaves the submission with no scan ({@code ON DELETE SET NULL}). Audited as
+     * {@code ID_SCAN_PURGE} (counts only: {@code {"count": scans, "preArrival": submissions}}) when anything was
+     * deleted; a system job, so there is no user or IP.
      *
      * @return the number of deleted scans
      */
     @Transactional
     public int purgeOlderThan(Instant cutoff) {
+        int preArrival = preArrivals.deleteSubmittedBefore(cutoff);
         int count = scans.deleteUploadedBefore(cutoff);
-        if (count > 0) {
-            audit.record(IdScanStore.ID_SCAN, null, AUDIT_PURGE, null, "{\"count\": " + count + "}");
-            log.info("Purged {} ID scan(s)", count);
+        if (count > 0 || preArrival > 0) {
+            audit.record(IdScanStore.ID_SCAN, null, AUDIT_PURGE, null,
+                "{\"count\": " + count + ", \"preArrival\": " + preArrival + "}");
+            log.info("Purged {} ID scan(s) and {} pre-arrival submission(s)", count, preArrival);
         }
         return count;
     }

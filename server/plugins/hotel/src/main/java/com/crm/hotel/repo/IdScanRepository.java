@@ -41,6 +41,20 @@ public interface IdScanRepository extends JpaRepository<IdScan, UUID> {
     Optional<StoredImage> findImage(
         @Param("reservationId") UUID reservationId, @Param("stayGuestId") UUID stayGuestId);
 
+    /**
+     * The image of the scan a pre-arrival submission of this reservation holds: the only route to it is the
+     * submission row (so a guest of another reservation never matches), and the entity is not loaded.
+     */
+    @Query("select new com.crm.hotel.scan.StoredImage(x.image, x.contentType) from HotelIdScan x, "
+        + "HotelPreArrivalGuest p where p.id = :guestId and p.reservationId = :reservationId and x.id = p.idScanId")
+    Optional<StoredImage> findPreArrivalImage(
+        @Param("reservationId") UUID reservationId, @Param("guestId") UUID guestId);
+
+    /** Deletes every scan of the reservation that no stay guest holds (cancellation), flushing first. */
+    @Modifying(flushAutomatically = true)
+    @Query("delete from HotelIdScan x where x.reservationId = :reservationId and x.stayGuestId is null")
+    int deleteUnlinkedByReservation(@Param("reservationId") UUID reservationId);
+
     /** The QR digest of a scan (empty for an unknown scan or one without a digest), without loading its image. */
     @Query("select x.qrDigest from HotelIdScan x where x.id = :id")
     Optional<String> findQrDigestById(@Param("id") UUID id);

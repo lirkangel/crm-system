@@ -46,6 +46,22 @@ class QrDigestTest {
     }
 
     @Test
+    void nfd_input_gives_no_change() {
+        // the QR says the name precomposed (NFC); the guest's keyboard sent it decomposed (NFD)
+        ScanFields scan = new ScanFields("CCCD", "079090123456", "NGUY\u1EC4N V\u0102N AN",
+            LocalDate.of(1990, 5, 17), "VN", "12 Le Loi, Phu Hoi, Hue", "Nam", LocalDate.of(2021, 6, 10));
+        String nfd = java.text.Normalizer.normalize("NGUY\u1EC4N V\u0102N AN", java.text.Normalizer.Form.NFD);
+        assertThat(nfd).isNotEqualTo("NGUY\u1EC4N V\u0102N AN");
+
+        assertThat(QrDigest.changed(QrDigest.of(scan),
+            request("079090123456", nfd, LocalDate.of(1990, 5, 17), "12 Le Loi, Phu Hoi, Hue"))).isEmpty();
+        // and the digest of an NFD scan equals that of the NFC scan
+        ScanFields decomposed = new ScanFields("CCCD", "079090123456", nfd,
+            LocalDate.of(1990, 5, 17), "VN", "12 Le Loi, Phu Hoi, Hue", "Nam", LocalDate.of(2021, 6, 10));
+        assertThat(QrDigest.of(decomposed)).isEqualTo(QrDigest.of(scan));
+    }
+
+    @Test
     void a_changed_name_gives_full_name() {
         String digest = QrDigest.of(SCAN);
 
