@@ -1,5 +1,6 @@
 package com.crm.hotel;
 
+import com.crm.cccd.ScanPipeline;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
@@ -27,6 +28,12 @@ public class HotelConfig {
             @Value("${hotel.guest-base-url:${HOTEL_GUEST_BASE_URL:https://checkin.mathisterben.org}}") String baseUrl,
             @Value("${hotel.display-name:${HOTEL_DISPLAY_NAME:Khách sạn}}") String displayName) {
         return new GuestSite(baseUrl.trim().replaceAll("/+$", ""), displayName);
+    }
+
+    /** The CCCD reader, shared with other plugins as a plain library; no Spring in it, so hotel declares the bean. */
+    @Bean
+    ScanPipeline scanPipeline() {
+        return new ScanPipeline();
     }
 
     /** The cutoff comes from Foundation's environment; a malformed one fails the plugin's start (LOAD_FAILED). */

@@ -1,11 +1,11 @@
-package com.crm.hotel.checkin;
+package com.crm.cccd;
 
 import java.text.Normalizer;
 import java.util.ArrayList;
 import java.util.List;
 
 /** A name for display back to the guest: every word keeps its first letter, the rest becomes {@code *}. */
-final class MaskedName {
+public final class MaskedName {
 
     private MaskedName() {
     }
@@ -14,7 +14,7 @@ final class MaskedName {
      * {@code "Nguyễn Văn An"} gives {@code "N***** V** A*"}. Works per Unicode code point (the name is composed
      * first, so a letter with its accent counts once); runs of whitespace collapse to one space.
      */
-    static String of(String name) {
+    public static String of(String name) {
         if (name == null) {
             return "";
         }

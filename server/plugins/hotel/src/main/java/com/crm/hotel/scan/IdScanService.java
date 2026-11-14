@@ -18,6 +18,13 @@ import org.springframework.transaction.annotation.Transactional;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.time.Instant;
+import com.crm.cccd.CccdData;
+import com.crm.cccd.CccdQrParser;
+import com.crm.cccd.ImageFormat;
+import com.crm.cccd.QrDigest;
+import com.crm.cccd.ScanBusyException;
+import com.crm.cccd.ScanPipeline;
+
 import java.util.Collection;
 import java.util.Optional;
 import java.util.UUID;
@@ -86,7 +93,7 @@ public class IdScanService {
         byte[] jpeg = processed.storedJpeg();
 
         IdScanStore.StoreResult stored = store.store(
-            reservationId, sha256(bytes), "image/jpeg", jpeg, QrDigest.of(ScanFields.of(data)), guestLink);
+            reservationId, sha256(bytes), "image/jpeg", jpeg, QrDigest.of(ScanFields.of(data).digestFields()), guestLink);
         return new UploadResult(new IdScanView(stored.scanId(), ScanFields.of(data)), stored.created());
     }
 

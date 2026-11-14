@@ -60,26 +60,11 @@
             <scope>provided</scope>
         </dependency>
 
-        <!-- QR decoding: the only runtime libraries bundled into the plugin ZIP's lib/ (see assembly) -->
+        <!-- CCCD reading: a plain library each plugin bundles in its own lib/ (see assembly); brings ZXing along -->
         <dependency>
-            <groupId>com.google.zxing</groupId>
-            <artifactId>core</artifactId>
-            <version>${zxing.version}</version>
-        </dependency>
-        <dependency>
-            <groupId>com.google.zxing</groupId>
-            <artifactId>javase</artifactId>
-            <version>${zxing.version}</version>
-            <exclusions>
-                <exclusion>
-                    <groupId>com.beust</groupId>
-                    <artifactId>jcommander</artifactId>
-                </exclusion>
-                <exclusion>
-                    <groupId>com.github.jai-imageio</groupId>
-                    <artifactId>jai-imageio-core</artifactId>
-                </exclusion>
-            </exclusions>
+            <groupId>com.crm.libs</groupId>
+            <artifactId>cccd-scan</artifactId>
+            <version>${project.version}</version>
         </dependency>
 
         <dependency>

@@ -1,5 +1,6 @@
 package com.crm.hotel.checkin;
 
+import com.crm.cccd.MaskedName;
 import com.crm.hotel.BusinessDay;
 import com.crm.hotel.GuestSite;
 import com.crm.hotel.HotelErrors;

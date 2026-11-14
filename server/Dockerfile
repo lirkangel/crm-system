@@ -5,10 +5,12 @@ FROM maven:3.9.9-eclipse-temurin-21-alpine AS builder
 WORKDIR /workspace
 COPY pom.xml .
 COPY plugin-api/pom.xml plugin-api/
+COPY libs/cccd-scan/pom.xml libs/cccd-scan/
 COPY plugins/hotel/pom.xml plugins/hotel/
 COPY foundation/pom.xml foundation/
 RUN mvn -B -pl foundation -am dependency:go-offline
 COPY plugin-api/src plugin-api/src
+COPY libs/cccd-scan/src libs/cccd-scan/src
 COPY plugins/hotel/src plugins/hotel/src
 COPY foundation/src foundation/src
 RUN mvn -B verify

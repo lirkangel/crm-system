@@ -21,6 +21,7 @@
 
     <modules>
         <module>plugin-api</module>
+        <module>libs/cccd-scan</module>
         <module>plugins/hotel</module>
         <module>foundation</module>
     </modules>
@@ -34,7 +35,7 @@
         <lombok.version>1.18.46</lombok.version>
         <mapstruct.version>1.5.5.Final</mapstruct.version>
         <jjwt.version>0.12.6</jjwt.version>
-        <!-- QR decoding in the hotel plugin; foundation's tests render QR codes with the same version -->
+        <!-- QR decoding in the cccd-scan library; foundation's tests render QR codes with the same version -->
         <zxing.version>3.5.3</zxing.version>
         <poi.version>5.3.0</poi.version>
         <rest-assured.version>5.4.0</rest-assured.version>

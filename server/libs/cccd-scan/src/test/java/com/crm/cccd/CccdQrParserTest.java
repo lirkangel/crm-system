@@ -1,4 +1,4 @@
-package com.crm.hotel.scan;
+package com.crm.cccd;
 
 import org.junit.jupiter.api.Test;
 

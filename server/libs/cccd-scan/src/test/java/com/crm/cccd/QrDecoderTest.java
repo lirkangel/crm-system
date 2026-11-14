@@ -1,4 +1,4 @@
-package com.crm.hotel.scan;
+package com.crm.cccd;
 
 import com.google.zxing.BarcodeFormat;
 import com.google.zxing.EncodeHintType;

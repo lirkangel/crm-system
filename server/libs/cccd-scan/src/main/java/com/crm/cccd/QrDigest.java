@@ -1,13 +1,10 @@
-package com.crm.hotel.scan;
-
-import com.crm.hotel.stay.StayGuestRequest;
+package com.crm.cccd;
 
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.text.Normalizer;
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -20,22 +17,24 @@ import java.util.Map;
 public final class QrDigest {
 
     /** The compared fields, in digest order; also the names listed as edited. */
-    static final List<String> FIELDS = List.of("idType", "idNumber", "fullName", "dateOfBirth", "nationality", "address");
+    public static final List<String> FIELDS = List.of("idType", "idNumber", "fullName", "dateOfBirth", "nationality", "address");
 
     private QrDigest() {
     }
 
-    /** The digest of what the scan decoded to. */
-    public static String of(ScanFields scan) {
-        return join(Arrays.<Object>asList(
-            scan.idType(), scan.idNumber(), scan.fullName(), scan.dateOfBirth(), scan.nationality(), scan.address()));
+    /**
+     * The digest of what the scan decoded to. {@code fields} is keyed by the names in {@link #FIELDS}; a missing or
+     * null value counts as empty; dates are given in ISO form ({@code LocalDate.toString()}).
+     */
+    public static String of(Map<String, String> fields) {
+        return join(fields);
     }
 
     /**
-     * Names of the fields of {@code request} that differ from the scan {@code digest} was made from, in digest order.
+     * Names of the {@code submitted} fields that differ from the scan {@code digest} was made from, in digest order.
      * Empty when the scan has no digest (an older scan): then nothing can be said.
      */
-    public static List<String> changed(String digest, StayGuestRequest request) {
+    public static List<String> changed(String digest, Map<String, String> submitted) {
         if (digest == null || digest.isBlank()) {
             return List.of();
         }
@@ -46,32 +45,29 @@ public final class QrDigest {
                 scanned.put(part.substring(0, eq), part.substring(eq + 1));
             }
         }
-        String[] current = join(Arrays.<Object>asList(request.idType().name(), request.idNumber(), request.fullName(),
-            request.dateOfBirth(), request.nationality(), request.address())).split(";");
         List<String> changed = new ArrayList<>();
-        for (int i = 0; i < FIELDS.size(); i++) {
-            String name = FIELDS.get(i);
-            if (!current[i].substring(name.length() + 1).equals(scanned.get(name))) {
+        for (String name : FIELDS) {
+            if (!sha256Hex(normalise(submitted.get(name))).equals(scanned.get(name))) {
                 changed.add(name);
             }
         }
         return changed;
     }
 
-    private static String join(List<Object> values) {
+    private static String join(Map<String, String> fields) {
         List<String> parts = new ArrayList<>();
-        for (int i = 0; i < FIELDS.size(); i++) {
-            parts.add(FIELDS.get(i) + "=" + sha256Hex(normalise(values.get(i))));
+        for (String name : FIELDS) {
+            parts.add(name + "=" + sha256Hex(normalise(fields.get(name))));
         }
         return String.join(";", parts);
     }
 
     /**
-     * Trimmed, Unicode NFC text (a keyboard may send the same Vietnamese letter composed or decomposed); dates in ISO
-     * form ({@code toString}); nothing is the empty string.
+     * Trimmed, Unicode NFC text (a keyboard may send the same Vietnamese letter composed or decomposed); dates arrive in ISO
+     * form; nothing is the empty string.
      */
-    private static String normalise(Object value) {
-        return value == null ? "" : Normalizer.normalize(value.toString().trim(), Normalizer.Form.NFC);
+    private static String normalise(String value) {
+        return value == null ? "" : Normalizer.normalize(value.trim(), Normalizer.Form.NFC);
     }
 
     private static String sha256Hex(String text) {

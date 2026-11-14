@@ -1,6 +1,4 @@
-package com.crm.hotel.scan;
-
-import org.springframework.stereotype.Component;
+package com.crm.cccd;
 
 import java.time.Duration;
 import java.util.Optional;
@@ -10,7 +8,6 @@ import java.util.Optional;
  * yields both the QR text and the stored JPEG. (A separate normalisation pass would decode the image again outside
  * the cap.)
  */
-@Component
 public class ScanPipeline {
 
     private static final Duration TIMEOUT = Duration.ofSeconds(4);

@@ -1,4 +1,4 @@
-package com.crm.hotel.scan;
+package com.crm.cccd;
 
 import javax.imageio.ImageIO;
 import javax.imageio.ImageReadParam;

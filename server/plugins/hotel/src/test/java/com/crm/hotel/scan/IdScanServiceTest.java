@@ -1,5 +1,7 @@
 package com.crm.hotel.scan;
 
+import com.crm.cccd.ScanBusyException;
+import com.crm.cccd.ScanPipeline;
 import com.crm.foundation.Plugin.AuditRecorder;
 import com.crm.foundation.Plugin.PluginProblem;
 import com.crm.hotel.BusinessDay;

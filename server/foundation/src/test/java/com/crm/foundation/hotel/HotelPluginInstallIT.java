@@ -48,7 +48,7 @@ class HotelPluginInstallIT extends HotelITSupport {
     }
 
     @Test
-    void hotel_zip_lib_holds_hotel_and_zxing_only() throws Exception {
+    void hotel_zip_lib_holds_hotel_cccd_scan_and_zxing_only() throws Exception {
         List<String> jars = new ArrayList<>();
         try (java.util.zip.ZipFile zip = new java.util.zip.ZipFile(
             hotelPluginDirectory().resolve("hotel-plugin.zip").toFile())) {
@@ -57,8 +57,9 @@ class HotelPluginInstallIT extends HotelITSupport {
                 .forEach(jars::add);
         }
 
-        assertThat(jars).hasSize(3);
+        assertThat(jars).hasSize(4);
         assertThat(jars).anyMatch(name -> name.matches("lib/hotel-.+\\.jar"));
+        assertThat(jars).anyMatch(name -> name.matches("lib/cccd-scan-.+\\.jar"));
         assertThat(jars).anyMatch(name -> name.matches("lib/zxing-core-3\\.5\\.3\\.jar"));
         assertThat(jars).anyMatch(name -> name.matches("lib/zxing-javase-3\\.5\\.3\\.jar"));
     }

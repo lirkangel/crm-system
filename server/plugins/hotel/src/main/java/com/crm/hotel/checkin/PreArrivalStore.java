@@ -1,5 +1,6 @@
 package com.crm.hotel.checkin;
 
+import com.crm.cccd.QrDigest;
 import com.crm.foundation.Plugin.AuditRecorder;
 import com.crm.hotel.HotelErrors;
 import com.crm.hotel.domain.Reservation;
@@ -11,7 +12,7 @@ import com.crm.hotel.repo.PreArrivalGuestRepository;
 import com.crm.hotel.repo.ReservationRepository;
 import com.crm.hotel.repo.RoomRepository;
 import com.crm.hotel.repo.RoomTypeRepository;
-import com.crm.hotel.scan.QrDigest;
+import com.crm.hotel.stay.StayGuestRequest;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -19,7 +20,9 @@ import org.springframework.transaction.annotation.Transactional;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -78,7 +81,7 @@ class PreArrivalStore {
             if (submissions.existsByIdScanId(scanId)) {
                 throw HotelErrors.scanMismatch("The scan is already used by another guest");
             }
-            List<String> changed = QrDigest.changed(scans.findQrDigestById(scanId).orElse(null), identity);
+            List<String> changed = QrDigest.changed(scans.findQrDigestById(scanId).orElse(null), digestFields(identity));
             editedFields = changed.isEmpty() ? null : String.join(",", changed);
         }
 
@@ -137,6 +140,18 @@ class PreArrivalStore {
 
     private static String submissionJson(UUID submissionId) {
         return "{\"submissionId\":\"" + submissionId + "\"}";
+    }
+
+    /** The submitted identity under {@link QrDigest}'s field names, dates in ISO form. */
+    private static Map<String, String> digestFields(StayGuestRequest identity) {
+        Map<String, String> fields = new HashMap<>();
+        fields.put("idType", identity.idType().name());
+        fields.put("idNumber", identity.idNumber());
+        fields.put("fullName", identity.fullName());
+        fields.put("dateOfBirth", identity.dateOfBirth() == null ? null : identity.dateOfBirth().toString());
+        fields.put("nationality", identity.nationality());
+        fields.put("address", identity.address());
+        return fields;
     }
 
     private static String blankToNull(String value) {
