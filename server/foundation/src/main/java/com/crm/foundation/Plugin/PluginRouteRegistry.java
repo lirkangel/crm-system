@@ -17,6 +17,7 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 /**
  * Serves plugin controllers (design 6.3): a handler mapping of its own, next to
@@ -30,6 +31,10 @@ import java.util.Map;
  * the method or its class), or the plugin's routes are refused as a whole —
  * an unguarded plugin endpoint would be open to every authenticated user.
  *
+ * <p>The one exception is {@link PublicEndpoint}: a handler method may be public, but only under
+ * {@code /public/}, and everything under {@code /public/} must be public (WebSecurityConfig
+ * permits exactly {@code /api/v1/plugins/*}{@code /public/**} without a token).
+ *
  * <p>It never detects handlers by itself ({@link #isHandler} is {@code false}),
  * so Foundation's controllers stay with Foundation's mapping.
  */
@@ -37,6 +42,9 @@ import java.util.Map;
 public class PluginRouteRegistry extends RequestMappingHandlerMapping {
 
     static final String PREFIX = "/api/v1/plugins/";
+
+    /** Plugin-relative prefix of the login-free endpoints ({@link PublicEndpoint}). */
+    static final String PUBLIC_PREFIX = "/public/";
 
     /** route → its registered mappings. */
     private final Map<String, List<RequestMappingInfo>> routes = new HashMap<>();
@@ -69,7 +77,7 @@ public class PluginRouteRegistry extends RequestMappingHandlerMapping {
                 Class<?> userType = AopProxyUtils.ultimateTargetClass(handler);
                 Map<Method, RequestMappingInfo> methods = MethodIntrospector.selectMethods(userType,
                     (MethodIntrospector.MetadataLookup<RequestMappingInfo>) method -> getMappingForMethod(method, userType));
-                methods.keySet().forEach(method -> requireMethodSecurity(method, userType));
+                methods.forEach((method, mapping) -> requireMethodSecurity(method, userType, mapping));
                 for (Map.Entry<Method, RequestMappingInfo> entry : methods.entrySet()) {
                     RequestMappingInfo mapping = prefix.combine(entry.getValue());
                     registerMapping(mapping, handler, AopUtils.selectInvocableMethod(entry.getKey(), handler.getClass()));
@@ -84,11 +92,35 @@ public class PluginRouteRegistry extends RequestMappingHandlerMapping {
         logger.info("Plugin route " + PREFIX + route + " registered with " + registered.size() + " handler method(s)");
     }
 
-    private static void requireMethodSecurity(Method method, Class<?> userType) {
+    /**
+     * Every handler is either guarded ({@code @PreAuthorize}, outside {@code /public/}) or public
+     * ({@link PublicEndpoint}, only under {@code /public/}, never with {@code @PreAuthorize}).
+     */
+    private static void requireMethodSecurity(Method method, Class<?> userType, RequestMappingInfo mapping) {
+        String where = userType.getName() + "." + method.getName();
         boolean guarded = MergedAnnotations.from(method, SearchStrategy.TYPE_HIERARCHY).isPresent(PreAuthorize.class)
             || MergedAnnotations.from(userType, SearchStrategy.TYPE_HIERARCHY).isPresent(PreAuthorize.class);
+        boolean publicEndpoint = MergedAnnotations.from(method, SearchStrategy.TYPE_HIERARCHY)
+            .isPresent(PublicEndpoint.class);
+        Set<String> paths = mapping.getPatternValues();
+        if (publicEndpoint) {
+            if (paths.isEmpty() || !paths.stream().allMatch(path -> path.startsWith(PUBLIC_PREFIX))) {
+                throw new InvalidPluginPackageException("handler method " + where + " is @PublicEndpoint but is mapped "
+                    + "outside " + PUBLIC_PREFIX + "; public endpoints must live under " + PUBLIC_PREFIX);
+            }
+            if (guarded) {
+                throw new InvalidPluginPackageException("handler method " + where
+                    + " is @PublicEndpoint and also carries @PreAuthorize; a public endpoint has no login");
+            }
+            return;
+        }
+        if (paths.stream().anyMatch(path -> path.equals(PUBLIC_PREFIX.substring(0, PUBLIC_PREFIX.length() - 1))
+                || path.startsWith(PUBLIC_PREFIX))) {
+            throw new InvalidPluginPackageException("handler method " + where + " is mapped under " + PUBLIC_PREFIX
+                + " but has no @PublicEndpoint; paths under " + PUBLIC_PREFIX + " are reserved for public endpoints");
+        }
         if (!guarded) {
-            throw new InvalidPluginPackageException("handler method " + userType.getName() + "." + method.getName()
+            throw new InvalidPluginPackageException("handler method " + where
                 + " has no @PreAuthorize (on the method or its class); plugin endpoints are deny-by-default");
         }
     }

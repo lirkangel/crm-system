@@ -65,6 +65,14 @@ management:
     health:
       show-details: always
 
+# ── Public (login-free) plugin endpoints ────────────────────────────────────
+crm:
+  public:
+    rate-limit-per-minute: 60                       # per client, on /api/v1/plugins/*/public/**
+    # Shared with the trusted guest proxy; only a request carrying it in X-Guest-Proxy-Secret may name
+    # the client in X-Client-IP. Empty = no proxy is trusted, the remote address is always the key.
+    proxy-secret: ${CRM_PUBLIC_PROXY_SECRET:}
+
 # ── Foundation-specific properties ──────────────────────────────────────────
 foundation:
   jwt:

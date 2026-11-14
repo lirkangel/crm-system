@@ -18,9 +18,12 @@ import org.springframework.security.web.authentication.UsernamePasswordAuthentic
 public class WebSecurityConfig {
 
     private final JwtAuthenticationFilter jwtAuthenticationFilter;
+    private final PublicRateLimitFilter publicRateLimitFilter;
 
-    public WebSecurityConfig(JwtAuthenticationFilter jwtAuthenticationFilter) {
+    public WebSecurityConfig(JwtAuthenticationFilter jwtAuthenticationFilter,
+                             PublicRateLimitFilter publicRateLimitFilter) {
         this.jwtAuthenticationFilter = jwtAuthenticationFilter;
+        this.publicRateLimitFilter = publicRateLimitFilter;
     }
 
     @Bean
@@ -48,11 +51,16 @@ public class WebSecurityConfig {
                             "/actuator/health/**",
                             "/v3/api-docs/**",
                             "/swagger-ui/**",
-                            "/swagger-ui.html")
+                            "/swagger-ui.html",
+                            // Login-free plugin endpoints (@PublicEndpoint); PluginRouteRegistry only
+                            // allows @PublicEndpoint handlers under this prefix, and nothing else there
+                            "/api/v1/plugins/*/public/**")
                         .permitAll()
                         .anyRequest()
                         .authenticated())
-            .addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class);
+            .addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class)
+            // Rate limit and no-store/noindex for public paths run before anything else can reject
+            .addFilterBefore(publicRateLimitFilter, JwtAuthenticationFilter.class);
         return http.build();
     }
 }
