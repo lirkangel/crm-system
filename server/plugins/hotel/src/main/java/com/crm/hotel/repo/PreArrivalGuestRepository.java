@@ -1,9 +1,40 @@
 package com.crm.hotel.repo;
 
 import com.crm.hotel.checkin.PreArrivalGuest;
+import com.crm.hotel.stay.IdDocType;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Modifying;
+import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.query.Param;
 
+import java.util.List;
+import java.util.Optional;
 import java.util.UUID;
 
 public interface PreArrivalGuestRepository extends JpaRepository<PreArrivalGuest, UUID> {
+
+    /** The reservation's submissions, oldest first. */
+    List<PreArrivalGuest> findByReservationIdOrderBySubmittedAtAscIdAsc(UUID reservationId);
+
+    long countByReservationId(UUID reservationId);
+
+    Optional<PreArrivalGuest> findByReservationIdAndIdTypeAndIdNumber(
+        UUID reservationId, IdDocType idType, String idNumber);
+
+    /** Whether any submission holds this scan. */
+    boolean existsByIdScanId(UUID idScanId);
+
+    /** The scan a submission holds (null once the retention purge took it). */
+    interface ScanRef {
+        UUID getIdScanId();
+    }
+
+    @Query("select p.idScanId as idScanId from HotelPreArrivalGuest p "
+        + "where p.id = :id and p.reservationId = :reservationId")
+    Optional<ScanRef> findScanRef(@Param("id") UUID id, @Param("reservationId") UUID reservationId);
+
+    /** @return 1 if the reservation had this submission, else 0 */
+    @Modifying(flushAutomatically = true)
+    @Query("delete from HotelPreArrivalGuest p where p.id = :id and p.reservationId = :reservationId")
+    int deleteOne(@Param("id") UUID id, @Param("reservationId") UUID reservationId);
 }

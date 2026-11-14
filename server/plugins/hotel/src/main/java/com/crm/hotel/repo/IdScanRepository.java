@@ -41,6 +41,15 @@ public interface IdScanRepository extends JpaRepository<IdScan, UUID> {
     Optional<StoredImage> findImage(
         @Param("reservationId") UUID reservationId, @Param("stayGuestId") UUID stayGuestId);
 
+    /** The QR digest of a scan (empty for an unknown scan or one without a digest), without loading its image. */
+    @Query("select x.qrDigest from HotelIdScan x where x.id = :id")
+    Optional<String> findQrDigestById(@Param("id") UUID id);
+
+    /** Deletes one scan of the reservation that no stay guest holds, flushing first. */
+    @Modifying(flushAutomatically = true)
+    @Query("delete from HotelIdScan x where x.id = :id and x.reservationId = :reservationId and x.stayGuestId is null")
+    int deleteUnlinked(@Param("id") UUID id, @Param("reservationId") UUID reservationId);
+
     /** Links the scan (by id, without loading its image) and bumps its version. */
     @Modifying(flushAutomatically = true)
     @Query("update HotelIdScan x set x.stayGuestId = :stayGuestId, x.version = x.version + 1 where x.id = :id")

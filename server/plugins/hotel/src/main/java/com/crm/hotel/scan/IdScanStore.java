@@ -36,12 +36,16 @@ class IdScanStore {
     private final CurrentUser currentUser;
     private final AuditRecorder audit;
 
-    /** Stores the scan, or returns the id of the reservation's existing scan of the same original bytes. */
+    /**
+     * Stores the scan, or returns the id of the reservation's existing scan of the same original bytes (which keeps
+     * the digest it has). {@code guestLink} is an upload through the guest's link: only while {@code CONFIRMED}.
+     */
     @Transactional
-    StoreResult store(UUID reservationId, byte[] sha256, String contentType, byte[] jpeg) {
+    StoreResult store(UUID reservationId, byte[] sha256, String contentType, byte[] jpeg, String qrDigest,
+            boolean guestLink) {
         Reservation reservation = reservations.lockById(reservationId)
             .orElseThrow(() -> HotelErrors.notFound("Reservation not found"));
-        IdScanService.requireOpen(reservation);
+        IdScanService.requireOpen(reservation, guestLink);
 
         Optional<UUID> existing = scans.findIdByReservationIdAndSha256(reservationId, sha256);
         if (existing.isPresent()) {
@@ -56,6 +60,7 @@ class IdScanStore {
         scan.setImage(jpeg);
         scan.setSha256(sha256);
         scan.setSizeBytes(jpeg.length);
+        scan.setQrDigest(qrDigest);
         scan.setUploadedBy(currentUser.id().orElse(null));
         // Microsecond precision, as stored by timestamptz
         scan.setUploadedAt(Instant.now(hotelClock).truncatedTo(ChronoUnit.MICROS));

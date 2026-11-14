@@ -54,7 +54,8 @@ public class GuestLinkService {
      * Makes the reservation's link, replacing (and so killing) any earlier one.
      *
      * @throws com.crm.foundation.Plugin.PluginProblem {@code HOTEL_NOT_FOUND} (404); {@code HOTEL_INVALID_STATE}
-     *         (409) unless the reservation is {@code CONFIRMED}
+     *         (409) unless the reservation is {@code CONFIRMED}; {@code HOTEL_CHECKIN_CLOSED} (409) when the link would
+     *         already be expired
      */
     @Transactional
     public CreatedLink create(UUID reservationId) {
@@ -64,11 +65,14 @@ public class GuestLinkService {
             throw HotelErrors.invalidState(
                 "A check-in link can only be made for a confirmed reservation; this one is " + reservation.getStatus());
         }
+        // 06:00 hotel time (the business day cutoff) on the day after the check-out date
+        Instant expiresAt = businessDay.cutoffInstantOn(reservation.getCheckOut().plusDays(1));
+        if (!expiresAt.isAfter(Instant.now(hotelClock))) {
+            throw HotelErrors.checkinClosed("The stay is over: a check-in link would already be expired");
+        }
         byte[] raw = new byte[32];
         RANDOM.nextBytes(raw);
         String token = Base64.getUrlEncoder().withoutPadding().encodeToString(raw);
-        // 06:00 hotel time (the business day cutoff) on the day after the check-out date
-        Instant expiresAt = businessDay.cutoffInstantOn(reservation.getCheckOut().plusDays(1));
 
         GuestLink link = links.findById(reservationId).orElseGet(GuestLink::new);
         link.setReservationId(reservationId);

@@ -4,6 +4,7 @@ import com.crm.foundation.Plugin.AuditRecorder;
 import com.crm.hotel.BusinessDay;
 import com.crm.hotel.HotelErrors;
 import com.crm.hotel.domain.Reservation;
+import com.crm.hotel.domain.ReservationStatus;
 import com.crm.hotel.repo.IdScanRepository;
 import com.crm.hotel.repo.ReservationRepository;
 import lombok.RequiredArgsConstructor;
@@ -48,8 +49,21 @@ public class IdScanService {
      *         or oversized image; nothing is stored); {@code HOTEL_SCAN_BUSY} (503); {@code HOTEL_SCAN_LIMIT} (409)
      */
     public UploadResult upload(UUID reservationId, byte[] bytes) {
+        return upload(reservationId, bytes, false);
+    }
+
+    /**
+     * An upload through a guest's personal link: as {@link #upload(UUID, byte[])}, but only while the reservation is
+     * {@code CONFIRMED} (online check-in is open), otherwise {@code HOTEL_CHECKIN_CLOSED} (409) instead of
+     * {@code HOTEL_INVALID_STATE}.
+     */
+    public UploadResult uploadViaLink(UUID reservationId, byte[] bytes) {
+        return upload(reservationId, bytes, true);
+    }
+
+    private UploadResult upload(UUID reservationId, byte[] bytes, boolean guestLink) {
         requireOpen(reservations.findById(reservationId)
-            .orElseThrow(() -> HotelErrors.notFound("Reservation not found")));
+            .orElseThrow(() -> HotelErrors.notFound("Reservation not found")), guestLink);
         if (bytes.length > MAX_BYTES) {
             throw HotelErrors.scanTooLarge("The image is over 10 MB");
         }
@@ -67,7 +81,8 @@ public class IdScanService {
             () -> HotelErrors.scanUnreadable("The QR code is not a citizen ID card's"));
         byte[] jpeg = processed.storedJpeg();
 
-        IdScanStore.StoreResult stored = store.store(reservationId, sha256(bytes), "image/jpeg", jpeg);
+        IdScanStore.StoreResult stored = store.store(
+            reservationId, sha256(bytes), "image/jpeg", jpeg, QrDigest.of(ScanFields.of(data)), guestLink);
         return new UploadResult(new IdScanView(stored.scanId(), ScanFields.of(data)), stored.created());
     }
 
@@ -134,8 +149,12 @@ public class IdScanService {
         return scans.findImage(reservationId, stayGuestId);
     }
 
-    static void requireOpen(Reservation reservation) {
-        if (!IdScanStore.accepts(reservation.getStatus())) {
+    static void requireOpen(Reservation reservation, boolean guestLink) {
+        if (guestLink) {
+            if (reservation.getStatus() != ReservationStatus.CONFIRMED) {
+                throw HotelErrors.checkinClosed("Online check-in is closed for this reservation");
+            }
+        } else if (!IdScanStore.accepts(reservation.getStatus())) {
             throw HotelErrors.invalidState(
                 "Scans can only be added to a confirmed or checked-in stay; this one is " + reservation.getStatus());
         }

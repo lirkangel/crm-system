@@ -131,6 +131,21 @@ class GuestLinkIT extends HotelITSupport {
     }
 
     @Test
+    void past_checkout_cannot_get_link_409() {
+        String token = adminToken();
+        UUID room = newRoom(token, "GL" + tag(), newRoomType(token, "GL" + tag(), 3, 900_000, true), true);
+        // Confirmed but long over: its link would already be expired
+        UUID id = seedReservation(room, hotelToday().minusDays(10), hotelToday().minusDays(8), "CONFIRMED");
+
+        ResponseEntity<String> response = post(link(id), token, null);
+
+        assertThat(response.getStatusCode().value()).as(response.getBody()).isEqualTo(409);
+        assertThat(json(response).path("code").asText()).isEqualTo("HOTEL_CHECKIN_CLOSED");
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM hotel.guest_link WHERE reservation_id = ?",
+            Integer.class, id)).isZero();
+    }
+
+    @Test
     void audit_has_no_token_or_url() {
         String token = adminToken();
         UUID id = booked(token, 1);
