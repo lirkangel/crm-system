@@ -5,3 +5,6 @@ dist
 .git
 Dockerfile
 .dockerignore
+.env*
+*.local
+.DS_Store
