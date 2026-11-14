@@ -26,12 +26,14 @@ public interface PreArrivalGuestRepository extends JpaRepository<PreArrivalGuest
     /** Whether any submission holds this scan. */
     boolean existsByIdScanId(UUID idScanId);
 
-    /** The scan a submission holds (null once the retention purge took it). */
+    /** A submission and the scan it holds (null without a scan, or once the retention purge took it). */
     interface ScanRef {
+        UUID getId();
+
         UUID getIdScanId();
     }
 
-    @Query("select p.idScanId as idScanId from HotelPreArrivalGuest p "
+    @Query("select p.id as id, p.idScanId as idScanId from HotelPreArrivalGuest p "
         + "where p.id = :id and p.reservationId = :reservationId")
     Optional<ScanRef> findScanRef(@Param("id") UUID id, @Param("reservationId") UUID reservationId);
 

@@ -308,6 +308,24 @@ class PublicCheckinIT extends HotelITSupport {
     }
 
     @Test
+    void delete_submission_without_scan_removes_it() {
+        Stay stay = stay(3);
+        UUID passport = UUID.fromString(data(pub(HttpMethod.POST, PUBLIC + "/guests", stay.guestToken(),
+            Map.of("identity", identity("PASSPORT", "C1234567", "Alice Smith"), "consent", true))).path("id").asText());
+        UUID other = UUID.fromString(data(submit(stay, "C7777777", "Other Guest", null, true)).path("id").asText());
+
+        ResponseEntity<String> deleted = pub(HttpMethod.DELETE, PUBLIC + "/guests/" + passport, stay.guestToken(), null);
+
+        assertThat(deleted.getStatusCode().value()).as(deleted.getBody()).isEqualTo(204);
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM hotel.pre_arrival_guest WHERE id = ?", Integer.class,
+            passport)).isZero();
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM hotel.pre_arrival_guest WHERE id = ?", Integer.class,
+            other)).isEqualTo(1);
+        assertThat(pub(HttpMethod.DELETE, PUBLIC + "/guests/" + passport, stay.guestToken(), null)
+            .getStatusCode().value()).isEqualTo(404);
+    }
+
+    @Test
     void closed_after_checkin_or_cancel_409() {
         for (String status : List.of("CHECKED_IN", "CANCELLED")) {
             Stay stay = stay(3);
