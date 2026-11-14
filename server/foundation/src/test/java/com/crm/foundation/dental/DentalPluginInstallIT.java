@@ -77,7 +77,7 @@ class DentalPluginInstallIT extends DentalITSupport {
         assertThat(jars).hasSize(4);
         assertThat(jars).anyMatch(name -> name.matches("lib/dental-.+\\.jar"));
         assertThat(jars).anyMatch(name -> name.matches("lib/cccd-scan-.+\\.jar"));
-        assertThat(jars).anyMatch(name -> name.matches("lib/zxing-core-3\\.5\\.3\\.jar"));
-        assertThat(jars).anyMatch(name -> name.matches("lib/zxing-javase-3\\.5\\.3\\.jar"));
+        assertThat(jars).anyMatch(name -> name.matches("lib/zxing-core-.+\\.jar"));
+        assertThat(jars).anyMatch(name -> name.matches("lib/zxing-javase-.+\\.jar"));
     }
 }

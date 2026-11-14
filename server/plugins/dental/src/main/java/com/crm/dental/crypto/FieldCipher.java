@@ -1,6 +1,5 @@
 package com.crm.dental.crypto;
 
-import javax.crypto.AEADBadTagException;
 import javax.crypto.Cipher;
 import javax.crypto.spec.GCMParameterSpec;
 import javax.crypto.spec.SecretKeySpec;
@@ -69,8 +68,6 @@ public final class FieldCipher {
             Cipher cipher = Cipher.getInstance(TRANSFORMATION);
             cipher.init(Cipher.DECRYPT_MODE, key, new GCMParameterSpec(TAG_BITS, data, 0, IV_BYTES));
             return new String(cipher.doFinal(data, IV_BYTES, data.length - IV_BYTES), StandardCharsets.UTF_8);
-        } catch (AEADBadTagException e) {
-            throw new IllegalStateException("Field decryption failed");
         } catch (GeneralSecurityException e) {
             throw new IllegalStateException("Field decryption failed");
         }

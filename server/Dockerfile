@@ -21,7 +21,7 @@ FROM eclipse-temurin:21-jre-alpine
 WORKDIR /app
 RUN addgroup -S app && adduser -S app -G app
 COPY --from=builder /workspace/foundation/target/foundation-*.jar /app/app.jar
-# The server image ships the hotel and dental plugins, so a normal deploy install them with no manual step.
+# The server image ships the hotel and dental plugins, so a normal deploy installs them with no manual step.
 COPY --from=builder /workspace/plugins/hotel/target/hotel-*-plugin.zip /app/plugins/
 COPY --from=builder /workspace/plugins/dental/target/dental-*-plugin.zip /app/plugins/
 USER app

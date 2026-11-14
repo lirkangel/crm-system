@@ -56,7 +56,40 @@ class FieldCipherTest {
 
     @Test
     void short_key_rejected_without_echoing_it() {
-        assertThatThrownBy(() -> new FieldCipher(new byte[16])).isInstanceOf(IllegalArgumentException.class);
+        byte[] shortKey = new byte[19];
+        Arrays.fill(shortKey, (byte) 'Q');
+
+        assertThatThrownBy(() -> new FieldCipher(shortKey))
+            .isInstanceOf(IllegalArgumentException.class)
+            .hasMessageNotContaining("QQQ")
+            .hasMessageNotContaining("19");
+    }
+
+    @Test
+    void flipped_iv_byte_fails() {
+        FieldCipher cipher = new FieldCipher(key(7));
+        byte[] sealed = cipher.encrypt("secret answer");
+        sealed[0] ^= 0x01;
+
+        assertThatThrownBy(() -> cipher.decrypt(sealed)).isInstanceOf(IllegalStateException.class);
+    }
+
+    @Test
+    void truncated_input_fails() {
+        FieldCipher cipher = new FieldCipher(key(7));
+        byte[] sealed = cipher.encrypt("secret answer");
+
+        assertThatThrownBy(() -> cipher.decrypt(Arrays.copyOf(sealed, 20))).isInstanceOf(IllegalStateException.class);
+        assertThatThrownBy(() -> cipher.decrypt(Arrays.copyOf(sealed, sealed.length - 1)))
+            .isInstanceOf(IllegalStateException.class);
+        assertThatThrownBy(() -> cipher.decrypt(new byte[0])).isInstanceOf(IllegalStateException.class);
+    }
+
+    @Test
+    void null_input_fails() {
+        FieldCipher cipher = new FieldCipher(key(7));
+
+        assertThatThrownBy(() -> cipher.decrypt(null)).isInstanceOf(IllegalStateException.class);
     }
 
     @Test

@@ -55,6 +55,7 @@ CREATE TABLE id_scan (
     content_type   VARCHAR(32) NOT NULL,
     image          BYTEA       NOT NULL,
     sha256         BYTEA       NOT NULL,                -- of the ORIGINAL upload
+    qr_digest      VARCHAR(600),                        -- digest of the decoded QR payload, for matching the form
     size_bytes     INT         NOT NULL,                -- of the stored image
     uploaded_by    UUID,
     uploaded_at    TIMESTAMPTZ NOT NULL,
