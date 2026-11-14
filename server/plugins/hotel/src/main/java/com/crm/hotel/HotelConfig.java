@@ -24,8 +24,8 @@ public class HotelConfig {
     /** Where guests open their personal check-in link, and the hotel name shown to them. */
     @Bean
     GuestSite guestSite(
-            @Value("${hotel.guest-base-url:https://checkin.mathisterben.org}") String baseUrl,
-            @Value("${hotel.display-name:Khách sạn}") String displayName) {
+            @Value("${hotel.guest-base-url:${HOTEL_GUEST_BASE_URL:https://checkin.mathisterben.org}}") String baseUrl,
+            @Value("${hotel.display-name:${HOTEL_DISPLAY_NAME:Khách sạn}}") String displayName) {
         return new GuestSite(baseUrl.trim().replaceAll("/+$", ""), displayName);
     }
 

@@ -3,9 +3,9 @@ package com.crm.hotel.scan;
 import com.crm.hotel.stay.StayGuestRequest;
 
 import java.nio.charset.StandardCharsets;
-import java.text.Normalizer;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
+import java.text.Normalizer;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashMap;

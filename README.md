@@ -176,22 +176,23 @@ Before arrival, a guest opens a personal link on a phone, photographs each adult
   ```
 
 - **Staff view** (`hotel.stays.read`): `GET .../reservations/{id}/pre-arrival-guests` lists the submissions (with the fields the guest edited after the scan); `GET .../pre-arrival-guests/{guestId}/id-scan` returns the photo. The arrivals list shows `preArrivalAdults` per reservation.
-- **Retention:** submissions are deleted at check-in, at cancel, and 30 days after submission. Photos follow the existing 30-day rule (see CCCD scan above); photos of submissions that were never checked in go with them.
+- **Retention:** submissions are deleted at check-in, at cancel, and 30 days after submission. Photos follow the existing 30-day rule (see CCCD scan above); photos of submissions that were never checked in go with them. The guest link row itself is kept at check-in and cancel, so a guest who opens the link afterwards sees a "closed" page instead of "invalid"; the hourly purge removes links that expired more than 30 days ago.
+- **Known limit:** photos a guest uploaded but never submitted still count toward the 20-scan cap of the reservation until the 30-day purge clears them. Staff hit the cap only after a guest has uploaded 20 photos.
 - **Consent:** the guest-web consent text (`guest-web/src/components/ConsentNotice.tsx`, vi/en in `src/i18n`) is marked `TODO(legal)` and must be reviewed by Mathisterben before real guests use it.
 - **Public surface:** only `/api/v1/plugins/hotel/public/**` is reachable from the internet, through nginx, which answers 404 for every other `/api` path. Public routes are opt-in per endpoint (`@PublicEndpoint`), rate limited per client (`CRM_PUBLIC_RATE_LIMIT_PER_MINUTE`, default 60), and answer `Cache-Control: no-store` and `X-Robots-Tag: noindex`. The token travels in the `X-Checkin-Token` header (and in the link's `#fragment`, which never reaches a server log), never in a URL path or query.
 - **Configuration:**
 
   | Where | Setting | Meaning |
   |---|---|---|
-  | server | `CRM_PUBLIC_PROXY_SECRET` | shared secret (`[A-Za-z0-9_-]{32,}`) that lets the server trust the client address nginx forwards; empty trusts nothing |
+  | server | `CRM_PUBLIC_PROXY_SECRET` | shared secret (`[A-Za-z0-9_-]{32,}`, make it with `openssl rand -hex 32`) that lets the server trust the client address nginx forwards; empty trusts nothing |
   | server | `CRM_PUBLIC_RATE_LIMIT_PER_MINUTE` | public requests per client per minute (default 60) |
-  | hotel plugin | `hotel.guest-base-url` | link prefix (default `https://checkin.mathisterben.org`) |
-  | hotel plugin | `hotel.display-name` | hotel name shown to guests |
+  | hotel plugin | `HOTEL_GUEST_BASE_URL` (property `hotel.guest-base-url`) | link prefix (default `https://checkin.mathisterben.org`) |
+  | hotel plugin | `HOTEL_DISPLAY_NAME` (property `hotel.display-name`) | hotel name shown to guests (default `Khách sạn`) |
   | guest-web | `CRM_SERVER_URL` | `scheme://host:port` of the server, no path |
   | guest-web | `CRM_PUBLIC_PROXY_SECRET` | same value as the server's |
-  | guest-web | `REAL_IP_FROM` | the only address trusted to send `CF-Connecting-IP`; default `127.0.0.1/32` trusts no proxy, so in production set the Cloudflare Tunnel connector's exact /32 |
+  | guest-web | `REAL_IP_FROM` | the only address trusted to send `CF-Connecting-IP`; default `127.0.0.1/32` trusts no proxy, so in production set the exact /32 of the source address nginx sees for tunnel traffic: measure it from the guest-web access log for `/` (it is the address after the tunnel and kube-proxy, not necessarily the connector pod's), or set `externalTrafficPolicy: Local` on the guest-web Service. Never a broad range |
 
-  guest-web refuses to start on a malformed `CRM_SERVER_URL`, a weak secret or a bad `REAL_IP_FROM`. CI builds the image as `10.0.0.7:30500/crm-guest-web:latest`; `scripts/smoke-guest-checkin.sh` runs the whole stack on the docker-host.
+  The server logs one INFO line at start saying whether `CRM_PUBLIC_PROXY_SECRET` is configured (never its value) and, at most once a minute, a WARN when a request carries a non-matching `X-Guest-Proxy-Secret` (the two secrets differ). guest-web refuses to start on a malformed `CRM_SERVER_URL`, a weak secret or a bad `REAL_IP_FROM`. CI builds the image as `10.0.0.7:30500/crm-guest-web:latest`; `scripts/smoke-guest-checkin.sh` runs the whole stack on the docker-host.
 
 ## License
 

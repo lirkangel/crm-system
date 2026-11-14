@@ -122,6 +122,42 @@ public abstract class HotelITSupport {
         }
     }
 
+    /**
+     * Runs the hotel's {@code IdScanStore.store(...)} (the short transaction of a scan upload) for the reservation in
+     * the plugin's own context, by reflection, with a made-up one-off image. {@code guestLink} selects the guest
+     * rules (only a {@code CONFIRMED} stay). A problem the store raises is rethrown as it is.
+     */
+    protected void storeScan(UUID reservationId, boolean guestLink) {
+        ConfigurableApplicationContext context = PluginContexts.running(pluginHost, HOTEL_PLUGIN_ID);
+        Object store = context.getBean("idScanStore");
+        byte[] image = {(byte) 0xFF, (byte) 0xD8, 1, 2, 3};
+        byte[] sha = new byte[32];
+        new java.security.SecureRandom().nextBytes(sha);
+        try {
+            java.lang.reflect.Method store6 = null;
+            for (Class<?> type = store.getClass(); type != null && store6 == null; type = type.getSuperclass()) {
+                for (java.lang.reflect.Method method : type.getDeclaredMethods()) {
+                    if (method.getName().equals("store") && method.getParameterCount() == 6) {
+                        store6 = method;
+                        break;
+                    }
+                }
+            }
+            if (store6 == null) {
+                throw new IllegalStateException("IdScanStore.store(...) not found");
+            }
+            store6.setAccessible(true);
+            store6.invoke(store, reservationId, sha, "image/jpeg", image, null, guestLink);
+        } catch (java.lang.reflect.InvocationTargetException e) {
+            if (e.getCause() instanceof RuntimeException runtime) {
+                throw runtime;
+            }
+            throw new IllegalStateException(e.getCause());
+        } catch (ReflectiveOperationException e) {
+            throw new IllegalStateException(e);
+        }
+    }
+
     /** Access token of an {@code admin} user (created on first use), obtained by logging in over HTTP. */
     protected String adminToken() {
         if (userRepository.findByUsername(ADMIN_USERNAME).isEmpty()) {

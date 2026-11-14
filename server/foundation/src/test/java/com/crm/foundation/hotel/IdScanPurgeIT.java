@@ -50,7 +50,7 @@ class IdScanPurgeIT extends HotelITSupport {
     }
 
     @Test
-    void purge_audit_has_count_only() {
+    void purge_audit_has_counts_only() {
         UUID reservation = reservation();
         Instant old = Instant.now().minus(40, ChronoUnit.DAYS);
         seedScan(reservation, old);
@@ -109,6 +109,20 @@ class IdScanPurgeIT extends HotelITSupport {
     }
 
     @Test
+    void purge_removes_links_expired_more_than_30_days_ago() {
+        Instant now = Instant.now();
+        UUID longExpired = seedLink(reservation(), now.minus(31, ChronoUnit.DAYS));
+        UUID recentlyExpired = seedLink(reservation(), now.minus(29, ChronoUnit.DAYS));
+        UUID live = seedLink(reservation(), now.plus(2, ChronoUnit.DAYS));
+
+        purgeScansOlderThan(now.minus(30, ChronoUnit.DAYS));
+
+        assertThat(linkExists(longExpired)).isFalse();
+        assertThat(linkExists(recentlyExpired)).isTrue();
+        assertThat(linkExists(live)).isTrue();
+    }
+
+    @Test
     void no_audit_when_nothing_purged() {
         UUID reservation = reservation();
         seedScan(reservation, Instant.now().minus(1, ChronoUnit.DAYS));
@@ -124,6 +138,21 @@ class IdScanPurgeIT extends HotelITSupport {
 
     private long purgeAudits() {
         return jdbc.queryForObject("SELECT count(*) FROM audit_event WHERE op = 'ID_SCAN_PURGE'", Long.class);
+    }
+
+    /** A link row for the reservation with the given expiry (a random token hash); returns the reservation id. */
+    private UUID seedLink(UUID reservation, Instant expiresAt) {
+        byte[] hash = new byte[32];
+        ThreadLocalRandom.current().nextBytes(hash);
+        jdbc.update(
+            "INSERT INTO hotel.guest_link (reservation_id, token_hash, created_at, expires_at) VALUES (?, ?, now(), ?)",
+            reservation, hash, Timestamp.from(expiresAt));
+        return reservation;
+    }
+
+    private boolean linkExists(UUID reservation) {
+        return jdbc.queryForObject("SELECT count(*) FROM hotel.guest_link WHERE reservation_id = ?", Integer.class,
+            reservation) > 0;
     }
 
     private boolean preArrivalExists(UUID id) {

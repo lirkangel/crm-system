@@ -15,7 +15,6 @@ import com.crm.hotel.domain.RoomType;
 import com.crm.hotel.guest.GuestService;
 import com.crm.hotel.guest.GuestView;
 import com.crm.hotel.repo.FolioPaymentRepository;
-import com.crm.hotel.repo.GuestLinkRepository;
 import com.crm.hotel.repo.GuestRepository;
 import com.crm.hotel.repo.IdScanRepository;
 import com.crm.hotel.repo.PreArrivalGuestRepository;
@@ -59,7 +58,6 @@ public class ReservationService {
     private final FolioPaymentRepository folioPayments;
     private final PreArrivalGuestRepository preArrivals;
     private final IdScanRepository scans;
-    private final GuestLinkRepository guestLinks;
     private final ReservationCodeGenerator codes;
     private final ChangeRecorder changes;
     private final AuditRecorder audit;
@@ -191,10 +189,9 @@ public class ReservationService {
 
         changes.record(ENTITY_TYPE, saved.getId(), saved.getVersion(), ChangeOp.UPDATE);
         // Nothing the guest sent is kept for a cancelled stay: the submissions, then the scans (a confirmed stay has
-        // no stay guest, so all of them), then the link.
+        // no stay guest, so all of them). The link row stays so the guest's page answers "closed".
         preArrivals.deleteByReservation(id);
         scans.deleteUnlinkedByReservation(id);
-        guestLinks.deleteByReservation(id);
         ReservationView view = ReservationView.of(saved, guestName, roomNumber);
         audit.record(ENTITY_TYPE, saved.getId(), AUDIT_CANCEL, before, json(view));
         return view;

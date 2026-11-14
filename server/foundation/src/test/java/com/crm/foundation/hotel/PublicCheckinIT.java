@@ -1,5 +1,6 @@
 package com.crm.foundation.hotel;
 
+import com.crm.foundation.Plugin.PluginProblem;
 import com.fasterxml.jackson.databind.JsonNode;
 import org.junit.jupiter.api.Test;
 import org.springframework.core.io.ByteArrayResource;
@@ -21,8 +22,10 @@ import java.util.concurrent.CyclicBarrier;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
+import java.util.concurrent.TimeUnit;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 /** The guest's public check-in API ({@code /public/checkin}, token in {@code X-Checkin-Token}) over HTTP. */
 // The default limit (60 requests a minute per client) would trip a whole test class that calls from one address.
@@ -219,7 +222,7 @@ class PublicCheckinIT extends HotelITSupport {
             for (int i = 0; i < threads; i++) {
                 String number = "P" + (1000 + i);
                 futures.add(pool.submit(() -> {
-                    barrier.await();
+                    barrier.await(10, TimeUnit.SECONDS);
                     return submit(stay, number, "Parallel Guest", null, true);
                 }));
             }
@@ -327,26 +330,96 @@ class PublicCheckinIT extends HotelITSupport {
 
     @Test
     void closed_after_checkin_or_cancel_409() {
-        for (String status : List.of("CHECKED_IN", "CANCELLED")) {
-            Stay stay = stay(3);
+        for (String closing : List.of("check-in", "cancel")) {
+            Stay stay = stay(3, 0);
             UUID submitted = UUID.fromString(data(submit(stay, "Z1", "Before Closing", null, true)).path("id").asText());
-            jdbc.update("UPDATE hotel.reservation SET status = ? WHERE id = ?", status, stay.reservationId());
+            // the real staff endpoints, not an SQL update
+            ResponseEntity<String> closed = "check-in".equals(closing)
+                ? post(HOTEL_API + "/reservations/" + stay.reservationId() + "/check-in", stay.staffToken(),
+                    Map.of("adults", List.of(adult("CCCD", "0790905" + tag(), "Closing Guest"))))
+                : post(HOTEL_API + "/reservations/" + stay.reservationId() + "/cancel", stay.staffToken(), null);
+            assertThat(closed.getStatusCode().value()).as(closing + closed.getBody()).isEqualTo(200);
 
             ResponseEntity<String> summary = pub(HttpMethod.GET, PUBLIC, stay.guestToken(), null);
             ResponseEntity<String> post = submit(stay, "Z2", "After Closing", null, true);
             ResponseEntity<String> upload = upload(stay.guestToken(), CccdQrImages.jpeg(CccdQrImages.payload()));
             ResponseEntity<String> delete = pub(HttpMethod.DELETE, PUBLIC + "/guests/" + submitted, stay.guestToken(), null);
 
-            assertThat(summary.getStatusCode().value()).as(status + summary.getBody()).isEqualTo(200);
-            assertThat(data(summary).path("open").asBoolean()).isFalse();
+            assertThat(summary.getStatusCode().value()).as(closing + summary.getBody()).isEqualTo(200);
+            assertThat(data(summary).path("open").asBoolean()).as(closing).isFalse();
+            assertThat(data(summary).path("guests")).as(closing).isEmpty();
             for (ResponseEntity<String> response : List.of(post, upload, delete)) {
-                assertThat(response.getStatusCode().value()).as(status + response.getBody()).isEqualTo(409);
+                assertThat(response.getStatusCode().value()).as(closing + response.getBody()).isEqualTo(409);
                 assertThat(json(response).path("code").asText()).isEqualTo("HOTEL_CHECKIN_CLOSED");
             }
-            assertThat(count(stay)).isEqualTo(1);
+            assertThat(count(stay)).as(closing).isZero();
             assertThat(jdbc.queryForObject("SELECT count(*) FROM hotel.id_scan WHERE reservation_id = ?", Integer.class,
-                stay.reservationId())).isZero();
+                stay.reservationId())).as(closing).isZero();
+            assertThat(jdbc.queryForObject("SELECT count(*) FROM hotel.guest_link WHERE reservation_id = ?",
+                Integer.class, stay.reservationId())).as(closing + ": the link row stays").isEqualTo(1);
         }
+    }
+
+    @Test
+    void upload_finishing_after_checkin_is_refused() {
+        Stay stay = stay(3, 0);
+        assertThat(post(HOTEL_API + "/reservations/" + stay.reservationId() + "/check-in", stay.staffToken(),
+            Map.of("adults", List.of(adult("CCCD", "0790906" + tag(), "Late Upload")))).getStatusCode().value())
+            .isEqualTo(200);
+
+        // The upload decoded before check-in and now reaches its short store transaction on a CHECKED_IN stay
+        assertThatThrownBy(() -> storeScan(stay.reservationId(), true))
+            .isInstanceOfSatisfying(PluginProblem.class, problem -> {
+                assertThat(problem.status()).isEqualTo(409);
+                assertThat(problem.code()).isEqualTo("HOTEL_CHECKIN_CLOSED");
+            });
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM hotel.id_scan WHERE reservation_id = ?", Integer.class,
+            stay.reservationId())).isZero();
+        // control: the same store through the staff path still accepts a CHECKED_IN stay
+        storeScan(stay.reservationId(), false);
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM hotel.id_scan WHERE reservation_id = ?", Integer.class,
+            stay.reservationId())).isEqualTo(1);
+    }
+
+    @Test
+    void foreign_passport_without_visa_or_entry_date_is_accepted() {
+        Stay stay = stay(3);
+        Map<String, Object> identity = identity("PASSPORT", "N1234567", "Marie Curie");
+        identity.put("nationality", "FR");
+        identity.put("address", null);
+
+        ResponseEntity<String> response = pub(HttpMethod.POST, PUBLIC + "/guests", stay.guestToken(),
+            Map.of("identity", identity, "consent", true));
+
+        assertThat(response.getStatusCode().value()).as(response.getBody()).isEqualTo(201);
+        assertThat(count(stay)).isEqualTo(1);
+    }
+
+    @Test
+    void parallel_same_document_gives_one_201_rest_200() throws Exception {
+        Stay stay = stay(3);
+        int threads = 4;
+        CyclicBarrier barrier = new CyclicBarrier(threads);
+        ExecutorService pool = Executors.newFixedThreadPool(threads);
+        try {
+            List<Future<ResponseEntity<String>>> futures = new ArrayList<>();
+            for (int i = 0; i < threads; i++) {
+                futures.add(pool.submit(() -> {
+                    barrier.await(10, TimeUnit.SECONDS);
+                    return submit(stay, "C9999999", "Same Document", null, true);
+                }));
+            }
+            List<Integer> statuses = new ArrayList<>();
+            for (Future<ResponseEntity<String>> future : futures) {
+                ResponseEntity<String> response = future.get(30, TimeUnit.SECONDS);
+                statuses.add(response.getStatusCode().value());
+                assertThat(response.getStatusCode().value()).as(response.getBody()).isLessThan(500);
+            }
+            assertThat(statuses).containsExactlyInAnyOrder(201, 200, 200, 200);
+        } finally {
+            pool.shutdownNow();
+        }
+        assertThat(count(stay)).isEqualTo(1);
     }
 
     @Test
@@ -436,10 +509,15 @@ class PublicCheckinIT extends HotelITSupport {
 
     /** A confirmed reservation of one adult for tomorrow..+3 days, in a room type sleeping {@code maxGuests}. */
     private Stay stay(int maxGuests) {
+        return stay(maxGuests, 1);
+    }
+
+    /** As {@link #stay(int)} but arriving {@code startOffset} days from today (0 can really be checked in). */
+    private Stay stay(int maxGuests, int startOffset) {
         String staff = adminToken();
         String code = "PC" + tag();
         UUID room = newRoom(staff, "PC" + tag(), newRoomType(staff, code, maxGuests, 900_000, true), true);
-        UUID reservation = book(staff, room, hotelToday().plusDays(1), hotelToday().plusDays(3), 1);
+        UUID reservation = book(staff, room, hotelToday().plusDays(startOffset), hotelToday().plusDays(startOffset + 2), 1);
         ResponseEntity<String> created = post(link(reservation), staff, null);
         assertThat(created.getStatusCode().value()).as(created.getBody()).isEqualTo(201);
         String url = data(created).path("url").asText();

@@ -15,7 +15,12 @@ public interface GuestLinkRepository extends JpaRepository<GuestLink, UUID> {
     Optional<GuestLink> findByTokenHash(byte[] tokenHash);
 
     /** @return 1 if the reservation had a link, else 0 */
-    @Modifying(flushAutomatically = true, clearAutomatically = true)
+    @Modifying(flushAutomatically = true)
     @Query("delete from HotelGuestLink l where l.reservationId = :reservationId")
     int deleteByReservation(@Param("reservationId") UUID reservationId);
+
+    /** Table hygiene of the retention purge: links that expired before {@code cutoff}. */
+    @Modifying(flushAutomatically = true)
+    @Query("delete from HotelGuestLink l where l.expiresAt < :cutoff")
+    int deleteExpiredBefore(@Param("cutoff") java.time.Instant cutoff);
 }

@@ -174,7 +174,8 @@ class PreArrivalStaffIT extends HotelITSupport {
 
         assertThat(checkedIn.getStatusCode().value()).as(checkedIn.getBody()).isEqualTo(200);
         assertThat(count("pre_arrival_guest", stay)).isZero();
-        assertThat(count("guest_link", stay)).isZero();
+        // the link stays (only the submissions go), so the guest's page answers "closed", not "invalid"
+        assertThat(count("guest_link", stay)).isEqualTo(1);
         UUID stayGuest = jdbc.queryForObject(
             "SELECT id FROM hotel.stay_guest WHERE reservation_id = ?", UUID.class, stay.reservationId());
         assertThat(jdbc.queryForObject("SELECT stay_guest_id FROM hotel.id_scan WHERE id = ?", UUID.class, linkedScan))
@@ -185,11 +186,14 @@ class PreArrivalStaffIT extends HotelITSupport {
             .isEqualTo(1);
         assertThat(get(guests(stay), stay.staffToken()).getStatusCode().value()).isEqualTo(200);
         assertThat(data(get(guests(stay), stay.staffToken()))).isEmpty();
-        assertThat(pub(HttpMethod.GET, PUBLIC, stay.guestToken()).getStatusCode().value()).isEqualTo(404);
+        ResponseEntity<String> page = pub(HttpMethod.GET, PUBLIC, stay.guestToken());
+        assertThat(page.getStatusCode().value()).as(page.getBody()).isEqualTo(200);
+        assertThat(data(page).path("open").asBoolean()).isFalse();
+        assertThat(data(page).path("guests")).isEmpty();
     }
 
     @Test
-    void cancel_clears_rows_scans_and_link() {
+    void cancel_clears_rows_and_scans_but_keeps_the_link() {
         Stay stay = stay(1, 3);
         UUID scan = scanOf(stay, CccdQrImages.payload());
         UUID unsubmittedScan = scanOf(stay, CccdQrImages.payload("079090777777", "TRAN THI BICH"));
@@ -201,11 +205,13 @@ class PreArrivalStaffIT extends HotelITSupport {
 
         assertThat(cancelled.getStatusCode().value()).as(cancelled.getBody()).isEqualTo(200);
         assertThat(count("pre_arrival_guest", stay)).isZero();
-        assertThat(count("guest_link", stay)).isZero();
+        assertThat(count("guest_link", stay)).isEqualTo(1);
         assertThat(count("id_scan", stay)).isZero();
         assertThat(jdbc.queryForObject("SELECT count(*) FROM hotel.id_scan WHERE id IN (?, ?)", Integer.class,
             scan, unsubmittedScan)).isZero();
-        assertThat(pub(HttpMethod.GET, PUBLIC, stay.guestToken()).getStatusCode().value()).isEqualTo(404);
+        ResponseEntity<String> page = pub(HttpMethod.GET, PUBLIC, stay.guestToken());
+        assertThat(page.getStatusCode().value()).as(page.getBody()).isEqualTo(200);
+        assertThat(data(page).path("open").asBoolean()).isFalse();
     }
 
     // ── helpers ────────────────────────────────────────────────────────────────

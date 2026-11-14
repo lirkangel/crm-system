@@ -2,6 +2,7 @@ package com.crm.foundation.Config;
 
 import com.crm.foundation.Controller.Problems;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import jakarta.annotation.PostConstruct;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
@@ -70,6 +71,7 @@ public class PublicRateLimitFilter extends OncePerRequestFilter {
     private final Map<String, Window> windows = new ConcurrentHashMap<>();
     private final ObjectMapper objectMapper;
     private final AtomicLong lastProxyWarning = new AtomicLong(Long.MIN_VALUE);
+    private final AtomicLong lastMismatchWarning = new AtomicLong(Long.MIN_VALUE);
     private long lastSweep;
 
     @Autowired
@@ -159,8 +161,12 @@ public class PublicRateLimitFilter extends OncePerRequestFilter {
 
     private String clientKey(HttpServletRequest request) {
         String presented = request.getHeader(PROXY_SECRET_HEADER);
-        if (proxySecret.length > 0 && presented != null
-                && MessageDigest.isEqual(proxySecret, presented.getBytes(StandardCharsets.UTF_8))) {
+        boolean trusted = proxySecret.length > 0 && presented != null
+            && MessageDigest.isEqual(proxySecret, presented.getBytes(StandardCharsets.UTF_8));
+        if (presented != null && !trusted && due(lastMismatchWarning)) {
+            logProxySecretMismatch();
+        }
+        if (trusted) {
             String forwarded = request.getHeader(CLIENT_IP_HEADER);
             if (forwarded != null && !forwarded.isBlank() && forwarded.length() <= MAX_CLIENT_IP_LENGTH) {
                 return normalize(forwarded.trim());
@@ -280,11 +286,38 @@ public class PublicRateLimitFilter extends OncePerRequestFilter {
 
     /** A trusted proxy that sends no usable X-Client-IP is misconfigured; say so at most once a minute. */
     private void warnProxyWithoutClientIp() {
-        long now = clock.millis();
-        long last = lastProxyWarning.get();
-        if ((last == Long.MIN_VALUE || now - last >= WINDOW_MILLIS) && lastProxyWarning.compareAndSet(last, now)) {
+        if (due(lastProxyWarning)) {
             logProxyWarning();
         }
+    }
+
+    /** True at most once a minute per {@code lastWarning}; records the time when it is. */
+    private boolean due(AtomicLong lastWarning) {
+        long now = clock.millis();
+        long last = lastWarning.get();
+        return (last == Long.MIN_VALUE || now - last >= WINDOW_MILLIS) && lastWarning.compareAndSet(last, now);
+    }
+
+    /** One fixed line at start-up: whether a proxy secret is configured, never its value. */
+    @PostConstruct
+    public void announce() {
+        logProxyConfigured(proxySecret.length > 0);
+    }
+
+    protected void logProxyConfigured(boolean configured) {
+        if (configured) {
+            logger.info("Guest proxy secret (crm.public.proxy-secret) is configured; "
+                + "X-Client-IP is trusted only with a matching X-Guest-Proxy-Secret");
+        } else {
+            logger.info("Guest proxy secret (crm.public.proxy-secret) is not configured; "
+                + "X-Client-IP is never trusted, clients are keyed by their remote address");
+        }
+    }
+
+    /** A request carried X-Guest-Proxy-Secret that does not match (or none is configured). Fixed message only. */
+    protected void logProxySecretMismatch() {
+        logger.warn("Guest proxy secret mismatch: a request carried X-Guest-Proxy-Secret that does not match "
+            + "crm.public.proxy-secret (or none is configured); check the guest-web and server settings are equal");
     }
 
     /** Fixed message only: never the header value. */

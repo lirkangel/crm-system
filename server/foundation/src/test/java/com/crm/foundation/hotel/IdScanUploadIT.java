@@ -35,6 +35,7 @@ import java.util.concurrent.CyclicBarrier;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
+import java.util.concurrent.TimeUnit;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -259,7 +260,7 @@ class IdScanUploadIT extends HotelITSupport {
             List<Future<ResponseEntity<String>>> calls = new ArrayList<>();
             for (HttpEntity<MultiValueMap<String, Object>> request : requests) {
                 calls.add(pool.submit(() -> {
-                    start.await();
+                    start.await(10, TimeUnit.SECONDS);
                     return send(id, request);
                 }));
             }

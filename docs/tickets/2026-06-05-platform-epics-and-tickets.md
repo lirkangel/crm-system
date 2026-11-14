@@ -374,7 +374,7 @@ F-EPIC-1 (scaffold) ─► F-EPIC-2 (auth UI) ─► F-EPIC-3 (data) ─► F-EP
 
 ### H404 — Staff view and clean-up · `DONE` · P1 · (needs H403)
 **Expected:** staff read what guests submitted, and the data does not outlive its purpose.
-**Acceptance:** `GET /reservations/{id}/pre-arrival-guests` and `GET .../pre-arrival-guests/{guestId}/id-scan` (`hotel.stays.read`, `no-store`); the arrivals list carries `preArrivalAdults`; submissions are deleted at check-in, at cancel (with their unlinked photos and the link) and 30 days after submission by the existing hourly purge (audit `ID_SCAN_PURGE` holds `count` and `preArrival`); the `IdScan` entity is never loaded.
+**Acceptance:** `GET /reservations/{id}/pre-arrival-guests` and `GET .../pre-arrival-guests/{guestId}/id-scan` (`hotel.stays.read`, `no-store`); the arrivals list carries `preArrivalAdults`; submissions are deleted at check-in, at cancel (with their unlinked photos; the link row stays, so the guest's page answers `open:false`, and the purge removes links expired more than 30 days) and 30 days after submission by the existing hourly purge (audit `ID_SCAN_PURGE` holds `count` and `preArrival`); the `IdScan` entity is never loaded.
 **Done:** (af041aa) `PreArrivalController`, `FrontDeskService`, `CheckInService`, `ReservationService`, `IdScanService.purgeOlderThan`. `PreArrivalStaffIT`, `IdScanPurgeIT`. Verified 2026-11-14.
 
 ### H405 — Guest web page and deployment · `DONE` · P0 · (needs H403)

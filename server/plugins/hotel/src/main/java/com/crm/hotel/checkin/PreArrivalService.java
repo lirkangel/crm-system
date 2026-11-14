@@ -24,10 +24,14 @@ import java.util.Map;
 import java.util.UUID;
 
 /**
- * What a guest does with their personal link: read the stay, upload a CCCD photo, submit and withdraw identities.
- * Every call starts from the token (header {@code X-Checkin-Token}); a missing, blank, over-long, unknown, expired or
- * replaced token is the same {@code HOTEL_NOT_FOUND} (404). Not transactional itself: the decoding of an upload must
- * not hold a lock, and writes run in {@link PreArrivalStore}'s transactions.
+ * What a guest does with their personal link (read the stay, upload a CCCD photo, submit and withdraw identities) and
+ * what staff read back of it (the submissions and their scans' images).
+ *
+ * <p>Every guest call starts from the token (header {@code X-Checkin-Token}); a missing, blank, over-long, unknown,
+ * expired or replaced token is the same {@code HOTEL_NOT_FOUND} (404). A link whose reservation is no longer
+ * {@code CONFIRMED} still resolves: the summary says {@code open: false} and every write is
+ * {@code HOTEL_CHECKIN_CLOSED} (409). Not transactional itself: the decoding of an upload must not hold a lock, and
+ * writes run in {@link PreArrivalStore}'s transactions.
  */
 @Service
 @RequiredArgsConstructor

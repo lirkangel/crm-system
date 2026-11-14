@@ -248,4 +248,52 @@ class PublicRateLimitFilterTest {
         call(filter, request(PUBLIC_PATH, "10.0.0.5", null, "proxy-secret"));
         assertThat(warnings[0]).isEqualTo(2);
     }
+
+    @Test
+    void secret_mismatch_warns_once_a_minute_and_never_logs_values() throws Exception {
+        java.util.List<String> lines = new java.util.ArrayList<>();
+        PublicRateLimitFilter filter = new PublicRateLimitFilter(100, "proxy-secret", MAPPER, clock) {
+            @Override
+            protected void logProxySecretMismatch() {
+                lines.add("mismatch");
+            }
+
+            @Override
+            protected void logProxyConfigured(boolean configured) {
+                lines.add("configured=" + configured);
+            }
+        };
+
+        filter.announce();
+        call(filter, request(PUBLIC_PATH, "10.0.0.5", "1.1.1.1", "wrong"));
+        call(filter, request(PUBLIC_PATH, "10.0.0.5", "1.1.1.1", "other"));
+        // no header and a matching header are not mismatches
+        call(filter, request(PUBLIC_PATH, "10.0.0.5", "1.1.1.1", null));
+        call(filter, request(PUBLIC_PATH, "10.0.0.5", "1.1.1.1", "proxy-secret"));
+        assertThat(lines).containsExactly("configured=true", "mismatch");
+        clock.advance(Duration.ofSeconds(61));
+        call(filter, request(PUBLIC_PATH, "10.0.0.5", "1.1.1.1", "wrong"));
+        assertThat(lines).containsExactly("configured=true", "mismatch", "mismatch");
+    }
+
+    @Test
+    void secret_header_with_no_secret_configured_is_a_mismatch_and_startup_says_so() throws Exception {
+        java.util.List<String> lines = new java.util.ArrayList<>();
+        PublicRateLimitFilter filter = new PublicRateLimitFilter(100, "", MAPPER, clock) {
+            @Override
+            protected void logProxySecretMismatch() {
+                lines.add("mismatch");
+            }
+
+            @Override
+            protected void logProxyConfigured(boolean configured) {
+                lines.add("configured=" + configured);
+            }
+        };
+
+        filter.announce();
+        call(filter, request(PUBLIC_PATH, "10.0.0.5", "1.1.1.1", "anything"));
+
+        assertThat(lines).containsExactly("configured=false", "mismatch");
+    }
 }
