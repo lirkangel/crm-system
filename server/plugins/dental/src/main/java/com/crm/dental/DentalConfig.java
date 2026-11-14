@@ -1,5 +1,6 @@
 package com.crm.dental;
 
+import com.crm.cccd.ScanPipeline;
 import com.crm.dental.crypto.FieldCipher;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
@@ -29,6 +30,12 @@ public class DentalConfig {
             @Value("${dental.guest-base-url:${DENTAL_GUEST_BASE_URL:https://nhakhoa.mathisterben.org}}") String baseUrl,
             @Value("${dental.display-name:${DENTAL_DISPLAY_NAME:Nha khoa}}") String displayName) {
         return new DentalSite(publicEnabled, baseUrl.trim().replaceAll("/+$", ""), displayName);
+    }
+
+    /** The CCCD reader, shared with other plugins as a plain library; no Spring in it, so dental declares the bean. */
+    @Bean
+    ScanPipeline scanPipeline() {
+        return new ScanPipeline();
     }
 
     /**

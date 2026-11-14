@@ -20,38 +20,38 @@ import java.util.Map;
  * Test helper: renders a CCCD-style QR payload into a phone-photo-like JPEG (a large off-white canvas with the QR
  * code placed off-centre), so the scan ITs exercise the real decoder.
  */
-final class CccdQrImages {
+public final class CccdQrImages {
 
-    static final String ID_NUMBER = "079090123456";
-    static final String FULL_NAME = "NGUYEN VAN AN";
+    public static final String ID_NUMBER = "079090123456";
+    public static final String FULL_NAME = "NGUYEN VAN AN";
 
     private CccdQrImages() {
     }
 
     /** {@code idNumber|oldIdNumber|fullName|ddMMyyyy|sex|address|ddMMyyyy}. */
-    static String payload(String idNumber, String fullName) {
+    public static String payload(String idNumber, String fullName) {
         return idNumber + "|" + "123456789" + "|" + fullName + "|17051990|Nam|12 Le Loi, Phu Hoi, Hue|10062021";
     }
 
-    static String payload() {
+    public static String payload() {
         return payload(ID_NUMBER, FULL_NAME);
     }
 
     /** A 3000x2000 JPEG (so it is downscaled when stored) carrying {@code payload}; {@code shade} varies the bytes. */
-    static byte[] jpeg(String payload, int shade) {
+    public static byte[] jpeg(String payload, int shade) {
         return encode(canvas(payload, 3000, 2000, shade), "jpg");
     }
 
-    static byte[] jpeg(String payload) {
+    public static byte[] jpeg(String payload) {
         return jpeg(payload, 0);
     }
 
-    static byte[] png(String payload) {
+    public static byte[] png(String payload) {
         return encode(canvas(payload, 1200, 800, 0), "png");
     }
 
     /** A photo with text-ish clutter and no QR code (the front of the card). */
-    static byte[] jpegWithoutQr(int shade) {
+    public static byte[] jpegWithoutQr(int shade) {
         BufferedImage image = new BufferedImage(1600, 1000, BufferedImage.TYPE_INT_RGB);
         Graphics2D g = image.createGraphics();
         g.setColor(new Color(235 - shade * 5, 232, 225));

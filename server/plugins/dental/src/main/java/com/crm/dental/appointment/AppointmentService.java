@@ -3,9 +3,12 @@ package com.crm.dental.appointment;
 import com.crm.dental.DentalConfig;
 import com.crm.dental.DentalErrors;
 import com.crm.dental.IfMatch;
+import com.crm.dental.link.VisitLinkRepository;
+import com.crm.dental.link.VisitLinkService;
 import com.crm.dental.patient.Patient;
 import com.crm.dental.patient.PatientService;
 import com.crm.dental.patient.PatientRepository;
+import com.crm.dental.scan.DentalIdScanRepository;
 import com.crm.foundation.Plugin.AuditRecorder;
 import com.crm.foundation.Plugin.ChangeOp;
 import com.crm.foundation.Plugin.ChangeRecorder;
@@ -50,6 +53,8 @@ public class AppointmentService {
     private final AppointmentRepository appointments;
     private final PatientRepository patients;
     private final PatientService patientService;
+    private final VisitLinkRepository visitLinks;
+    private final DentalIdScanRepository idScans;
     private final ChangeRecorder changes;
     private final AuditRecorder audit;
     private final CurrentUser currentUser;
@@ -124,6 +129,8 @@ public class AppointmentService {
         if (request.dentist() != null) {
             appointment.setDentist(blankToNull(request.dentist()));
         }
+        // The visit link stays and follows the appointment to its new day
+        visitLinks.updateExpiry(id, VisitLinkService.expiryFor(appointment.getStartsAt()));
         return saveChange(appointment, AUDIT_RESCHEDULE, before);
     }
 
@@ -152,6 +159,11 @@ public class AppointmentService {
         }
         String before = json(auditState(appointment));
         appointment.setStatus(target);
+        if (target == AppointmentStatus.CANCELLED) {
+            // Retention: a cancelled appointment's form and photos go; the link stays so the public page says "closed"
+            appointments.deleteFormOf(id);
+            idScans.deleteByAppointment(id);
+        }
         return saveChange(appointment, auditOp, before);
     }
 
