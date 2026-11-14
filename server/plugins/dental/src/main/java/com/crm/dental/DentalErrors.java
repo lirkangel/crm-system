@@ -9,6 +9,7 @@ import com.crm.foundation.Plugin.PluginProblem;
 public final class DentalErrors {
 
     public static final String NOT_FOUND = "DENTAL_NOT_FOUND";
+    public static final String INVALID_PHONE = "DENTAL_INVALID_PHONE";
     public static final String INVALID_PATIENT = "DENTAL_INVALID_PATIENT";
     public static final String INVALID_APPOINTMENT = "DENTAL_INVALID_APPOINTMENT";
     public static final String INVALID_QUERY = "DENTAL_INVALID_QUERY";
@@ -28,6 +29,11 @@ public final class DentalErrors {
     /** 400: patient data failed the clinic's rules (name, phone, date of birth). */
     public static PluginProblem invalidPatient(String detail) {
         return new PluginProblem(400, INVALID_PATIENT, detail);
+    }
+
+    /** 400: the phone is not a Vietnamese mobile number. The value is never echoed. */
+    public static PluginProblem invalidPhone(String detail) {
+        return new PluginProblem(400, INVALID_PHONE, detail);
     }
 
     /** 400: appointment data failed the clinic's rules (time, duration). */
