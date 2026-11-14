@@ -229,9 +229,10 @@ echo)
   got=$(curl -s $WEBE$PUB/checkin -H 'X-Client-IP: 1.1.1.1' -H 'x-client-ip: 2.2.2.2' \
     -H 'X-Guest-Proxy-Secret: forged1' -H 'x-GUEST-proxy-secret: forged2' -H 'Forwarded: for=9.9.9.9' \
     -H 'X-Forwarded-For: 8.8.8.8' -H 'X-Forwarded-Host: evil.example' -H 'X-Forwarded-Proto: http' \
-    -H 'X-Forwarded-Port: 1' -H 'X-Real-IP: 7.7.7.7' -H 'CF-Connecting-IP: 6.6.6.6')
-  want="$(hostname -i | tr -d ' ')|$CRM_PUBLIC_PROXY_SECRET||||||/api/v1/plugins/hotel/public/checkin"
-  if [ "$got" = "$want" ]; then ok "header echo: exactly the nginx-set values, forwarding headers empty, normalised path"
+    -H 'X-Forwarded-Port: 1' -H 'X-Real-IP: 7.7.7.7' -H 'CF-Connecting-IP: 6.6.6.6' \
+    -H 'Authorization: Bearer forged' -H 'Cookie: sid=forged')
+  want="$(hostname -i | tr -d ' ')|$CRM_PUBLIC_PROXY_SECRET||||||||/api/v1/plugins/hotel/public/checkin"
+  if [ "$got" = "$want" ]; then ok "header echo: exactly the nginx-set values, forwarding headers, Authorization and Cookie empty, normalised path"
   else bad "header echo" "upstream saw: $(echo "$got" | sed "s|$CRM_PUBLIC_PROXY_SECRET|<secret>|")"; fi
   summary echo
   ;;
@@ -282,7 +283,7 @@ server {
     listen 8080;
     location / {
         default_type text/plain;
-        return 200 "$http_x_client_ip|$http_x_guest_proxy_secret|$http_forwarded|$http_x_forwarded_for|$http_x_forwarded_host|$http_x_forwarded_proto|$http_x_forwarded_port|$uri";
+        return 200 "$http_x_client_ip|$http_x_guest_proxy_secret|$http_forwarded|$http_x_forwarded_for|$http_x_forwarded_host|$http_x_forwarded_proto|$http_x_forwarded_port|$http_authorization|$http_cookie|$uri";
     }
 }
 ECHOEOF
@@ -320,6 +321,9 @@ step "startup guards (driver side)"
   guard "CRM_SERVER_URL with a trailing slash" -e CRM_SERVER_URL=http://server:8080/ -e CRM_PUBLIC_PROXY_SECRET
   guard "secret too short" -e CRM_SERVER_URL=http://server:8080 -e CRM_PUBLIC_PROXY_SECRET=short
   guard "secret with a quote" -e CRM_SERVER_URL=http://server:8080 -e CRM_PUBLIC_PROXY_SECRET='aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"x'
+  guard "CRM_SERVER_URL with a trailing newline" -e "CRM_SERVER_URL=http://server:8080"$'\n' -e CRM_PUBLIC_PROXY_SECRET
+  guard "secret with an embedded newline" -e CRM_SERVER_URL=http://server:8080 -e "CRM_PUBLIC_PROXY_SECRET=${CRM_PUBLIC_PROXY_SECRET}"$'\nx'
+  guard "REAL_IP_FROM with a trailing newline" -e CRM_SERVER_URL=http://server:8080 -e CRM_PUBLIC_PROXY_SECRET -e "REAL_IP_FROM=127.0.0.1/32"$'\n'
   guard "REAL_IP_FROM not an address" -e CRM_SERVER_URL=http://server:8080 -e CRM_PUBLIC_PROXY_SECRET -e 'REAL_IP_FROM=0.0.0.0/0; x'
 } | tee out-guards.txt
 

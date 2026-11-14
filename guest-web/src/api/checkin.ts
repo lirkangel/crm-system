@@ -70,7 +70,7 @@ export function resetToken(): void {
   token = null;
 }
 
-async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
+async function call<T>(path: string, init: RequestInit = {}): Promise<{ status: number; data: T }> {
   const headers: Record<string, string> = { "X-Checkin-Token": token ?? "" };
   if (init.body && !(init.body instanceof FormData)) headers["Content-Type"] = "application/json";
   let res: Response;
@@ -88,9 +88,11 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
     }
     throw new ApiError(res.status, code);
   }
-  if (res.status === 204) return undefined as T;
-  return (await res.json()).data as T;
+  if (res.status === 204) return { status: 204, data: undefined as T };
+  return { status: res.status, data: (await res.json()).data as T };
 }
+
+const request = async <T>(path: string, init: RequestInit = {}): Promise<T> => (await call<T>(path, init)).data;
 
 export const getSummary = () => request<Summary>("");
 
@@ -100,11 +102,13 @@ export function uploadScan(image: Blob): Promise<ScanResult> {
   return request<ScanResult>("/id-scans", { method: "POST", body: form });
 }
 
-export function submitGuest(identity: Identity): Promise<GuestRef> {
-  return request<GuestRef>("/guests", {
+/** The server answers 201 for a new submission and 200 with the stored one when the same document was sent before. */
+export async function submitGuest(identity: Identity): Promise<{ guest: GuestRef; created: boolean; status: number }> {
+  const { status, data } = await call<GuestRef>("/guests", {
     method: "POST",
     body: JSON.stringify({ identity, consent: true }),
   });
+  return { guest: data, created: status === 201, status };
 }
 
 export const deleteGuest = (id: string) =>

@@ -1,5 +1,5 @@
 {
-  "app": { "title": "Online check-in" },
+  "app": { "title": "Online check-in", "docTitle": "Pre-arrival registration" },
   "lang": { "switch": "Tiếng Việt" },
   "common": {
     "busy": "The system is busy. Please try again in a few minutes.",
@@ -7,7 +7,7 @@
     "loading": "Loading…",
     "retry": "Try again"
   },
-  "invalid": "This link is no longer valid. Please ask the hotel to send you a new one.",
+  "invalid": "This link couldn't be opened. Open it again from the hotel's message; if it still fails, contact the hotel.",
   "invalidTitle": "Invalid link",
   "closed": "Pre-arrival registration is closed for this booking. Please register when you arrive at the hotel.",
   "closedTitle": "Registration closed",
@@ -20,7 +20,14 @@
     "add": "Add an adult",
     "addAnother": "Add another guest",
     "remove": "Remove",
-    "removeAria": "Remove {{name}}"
+    "removeAria": "Remove {{name}}",
+    "removeConfirm": "Remove this guest's details and photo?"
+  },
+  "guests": { "alreadySent": "Already sent — remove it to change the details" },
+  "docType": { "CCCD": "CCCD", "PASSPORT": "Passport", "OTHER": "Other" },
+  "identity": {
+    "invalidDoc": "Check the document details",
+    "invalid": "Some details are missing or invalid"
   },
   "done": {
     "title": "All details received",
@@ -39,12 +46,14 @@
     "unreadable": "The photo could not be read. Please retake it clearly or type the details.",
     "unreadablePhoto": "This photo could not be read. Please use the camera to take it directly.",
     "mismatch": "The details do not match the uploaded photo. Please retake the photo.",
+    "limit": "Too many photos for this booking — please contact the hotel",
     "reviewTitle": "Check the details",
     "reviewHint": "Compare with the document and correct any mistake."
   },
   "passport": {
     "title": "Passport",
-    "hint": "Type the details from your passport."
+    "hint": "Type the details from your passport.",
+    "visaLater": "You can leave visa and entry date empty; the front desk will complete them."
   },
   "field": {
     "idNumber": "Document number",

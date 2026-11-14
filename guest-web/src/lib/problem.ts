@@ -16,6 +16,12 @@ export function messageKey(problem: ProblemLike): string {
       return "adults.full";
     case "HOTEL_SCAN_MISMATCH":
       return "scan.mismatch";
+    case "HOTEL_SCAN_LIMIT":
+      return "scan.limit";
+    case "HOTEL_INVALID_ID_DOC":
+      return "identity.invalidDoc";
+    case "VALIDATION_ERROR":
+      return "identity.invalid";
   }
   if (problem.status === 429) return "common.busy";
   if (problem.status === 404) return "invalid";

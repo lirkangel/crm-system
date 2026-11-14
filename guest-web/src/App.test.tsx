@@ -54,14 +54,21 @@ function calls(method: string, suffix: string) {
   );
 }
 
-beforeEach(() => {
+let confirmMock: ReturnType<typeof vi.spyOn>;
+
+beforeEach(async () => {
+  await i18n.changeLanguage("vi");
+  confirmMock = vi.spyOn(window, "confirm").mockReturnValue(true);
   resetToken();
   window.history.replaceState(null, "", "/#tok-123");
   mockToJpeg.mockReset();
   fetchMock = vi.fn();
   vi.stubGlobal("fetch", fetchMock);
 });
-afterEach(() => vi.unstubAllGlobals());
+afterEach(() => {
+  vi.unstubAllGlobals();
+  confirmMock.mockRestore();
+});
 
 function serve(get: () => Response) {
   fetchMock.mockImplementation(async (url: string, init?: RequestInit) => {
@@ -336,6 +343,182 @@ describe("App", () => {
     await userEvent.dblClick(send);
     expect(calls("POST", "/guests")).toHaveLength(1);
     release();
+  });
+
+  it("visa_exempt_foreigner_submits_without_visa_or_entry_date", async () => {
+    await openPassport();
+    expect(screen.getByText(i18n.t("passport.visaLater"))).toBeInTheDocument();
+    expect(screen.getByLabelText(i18n.t("field.visaNumber"))).not.toBeRequired();
+    expect(screen.getByLabelText(i18n.t("field.entryDate"))).not.toBeRequired();
+    fetchMock.mockImplementation(async (url: string, init?: RequestInit) => {
+      if (String(url).endsWith("/guests") && init?.method === "POST")
+        return ok({ id: "g2", maskedName: "J**** S****", documentType: "PASSPORT" }, 201);
+      return ok(summary);
+    });
+    await userEvent.type(screen.getByLabelText(i18n.t("field.idNumber")), "B1234567");
+    await userEvent.type(screen.getByLabelText(i18n.t("field.fullName")), "JOHN SMITH");
+    await userEvent.type(screen.getByLabelText(i18n.t("field.dateOfBirth")), "1985-03-02");
+    await userEvent.selectOptions(screen.getByLabelText(i18n.t("field.nationality")), "US");
+    await userEvent.click(screen.getByLabelText(i18n.t("consent.label")));
+
+    const send = screen.getByRole("button", { name: i18n.t("action.send") });
+    expect(send).toBeEnabled();
+    await userEvent.click(send);
+
+    await waitFor(() => expect(calls("POST", "/guests")).toHaveLength(1));
+    const body = JSON.parse(calls("POST", "/guests")[0][1].body);
+    expect(body.identity.visaNumber).toBeNull();
+    expect(body.identity.entryDate).toBeNull();
+    expect(body.identity.nationality).toBe("US");
+  });
+
+  it("vietnamese_citizen_still_needs_an_address", async () => {
+    await openPassport();
+    await userEvent.type(screen.getByLabelText(i18n.t("field.idNumber")), "B1234567");
+    await userEvent.type(screen.getByLabelText(i18n.t("field.fullName")), "NGUYEN VAN B");
+    await userEvent.type(screen.getByLabelText(i18n.t("field.dateOfBirth")), "1985-03-02");
+    await userEvent.selectOptions(screen.getByLabelText(i18n.t("field.nationality")), "VN");
+    await userEvent.click(screen.getByLabelText(i18n.t("consent.label")));
+    expect(screen.getByRole("button", { name: i18n.t("action.send") })).toBeDisabled();
+    await userEvent.type(screen.getByLabelText(i18n.t("field.address")), "Hue");
+    expect(screen.getByRole("button", { name: i18n.t("action.send") })).toBeEnabled();
+  });
+
+  function serveWithDelete(del: () => Response | Promise<Response>, afterDelete = summary) {
+    let deleted = false;
+    fetchMock.mockImplementation(async (url: string, init?: RequestInit) => {
+      if (String(url).endsWith("/guests/g1") && init?.method === "DELETE") {
+        deleted = true;
+        return del();
+      }
+      if (String(url).endsWith("/public/checkin") && !init?.method) return ok(deleted ? afterDelete : summary);
+      throw new Error("unexpected " + url);
+    });
+  }
+
+  it("delete_404_reloads_summary_not_invalid", async () => {
+    // someone removed it already (another tap or device): the list reloads, the page stays usable
+    serveWithDelete(() => problem(404, "HOTEL_NOT_FOUND"), { ...summary, guests: [] });
+    render(<App />);
+    await userEvent.click(await screen.findByRole("button", { name: /Xóa/ }));
+
+    expect(await screen.findByText(i18n.t("stay.none"))).toBeInTheDocument();
+    expect(screen.queryByText(i18n.t("invalid"))).toBeNull();
+    expect(calls("DELETE", "/guests/g1")).toHaveLength(1);
+    expect(calls("GET", "/public/checkin")).toHaveLength(2);
+  });
+
+  it("delete_404_then_summary_404_means_the_link_is_dead", async () => {
+    let dead = false;
+    fetchMock.mockImplementation(async (_url: string, init?: RequestInit) => {
+      if (init?.method === "DELETE") {
+        dead = true;
+        return problem(404, "HOTEL_NOT_FOUND");
+      }
+      return dead ? problem(404, "HOTEL_NOT_FOUND") : ok(summary);
+    });
+    render(<App />);
+    await userEvent.click(await screen.findByRole("button", { name: /Xóa/ }));
+
+    expect(await screen.findByText(i18n.t("invalid"))).toBeInTheDocument();
+  });
+
+  it("remove_asks_confirmation_and_guards_double_tap", async () => {
+    let release!: () => void;
+    serveWithDelete(
+      () =>
+        new Promise<Response>((res) => {
+          release = () => res(new Response(null, { status: 204 }));
+        }),
+      { ...summary, guests: [] },
+    );
+    render(<App />);
+    const remove = await screen.findByRole("button", { name: /Xóa/ });
+
+    // declined: nothing is sent
+    confirmMock.mockReturnValueOnce(false);
+    await userEvent.click(remove);
+    expect(confirmMock).toHaveBeenCalledWith(i18n.t("stay.removeConfirm"));
+    expect(calls("DELETE", "/guests/g1")).toHaveLength(0);
+
+    // accepted, then tapped twice while the request is in flight
+    await userEvent.dblClick(remove);
+    expect(calls("DELETE", "/guests/g1")).toHaveLength(1);
+    expect(confirmMock).toHaveBeenCalledTimes(2);
+    expect(remove).toBeDisabled();
+    release();
+    expect(await screen.findByText(i18n.t("stay.none"))).toBeInTheDocument();
+  });
+
+  it("same_document_again_says_already_sent", async () => {
+    await openPassport();
+    fetchMock.mockImplementation(async (url: string, init?: RequestInit) => {
+      if (String(url).endsWith("/guests") && init?.method === "POST")
+        return ok({ id: "g1", maskedName: "N***** V** A*", documentType: "CCCD" }, 200);
+      return ok(summary);
+    });
+    await fillPassport();
+    await userEvent.click(screen.getByRole("button", { name: i18n.t("action.send") }));
+
+    expect(await screen.findByText(i18n.t("guests.alreadySent"))).toBeInTheDocument();
+    expect(i18n.t("guests.alreadySent")).toMatch(/remove|xóa/i);
+    // a fresh submission shows no such notice
+    await userEvent.click(await screen.findByRole("button", { name: i18n.t("stay.add") }));
+    expect(screen.queryByText(i18n.t("guests.alreadySent"))).toBeNull();
+  });
+
+  it.each([
+    ["HOTEL_INVALID_ID_DOC", 400, "identity.invalidDoc"],
+    ["VALIDATION_ERROR", 400, "identity.invalid"],
+    ["HOTEL_SCAN_LIMIT", 409, "scan.limit"],
+  ])("submit_%s_shows_its_message", async (code, status, key) => {
+    await openPassport();
+    fetchMock.mockImplementation(async () => problem(status, code));
+    await fillPassport();
+    await userEvent.click(screen.getByRole("button", { name: i18n.t("action.send") }));
+    expect(await screen.findByRole("alert")).toHaveTextContent(i18n.t(key));
+  });
+
+  it("invalid_text_says_reopen_the_link", () => {
+    expect(i18n.getFixedT("vi")("invalid")).toBe(
+      "Không mở được liên kết. Hãy mở lại liên kết từ tin nhắn của khách sạn; nếu vẫn lỗi, vui lòng liên hệ khách sạn.",
+    );
+    expect(i18n.getFixedT("en")("invalid")).toBe(
+      "This link couldn't be opened. Open it again from the hotel's message; if it still fails, contact the hotel.",
+    );
+  });
+
+  it("dates_and_document_type_are_displayed_for_people", async () => {
+    serve(() =>
+      ok({
+        ...summary,
+        guests: [
+          { id: "g1", maskedName: "N***** V** A*", documentType: "CCCD" },
+          { id: "g2", maskedName: "J**** S****", documentType: "PASSPORT" },
+          { id: "g3", maskedName: "O***", documentType: "OTHER" },
+        ],
+      }),
+    );
+    render(<App />);
+    expect(await screen.findByText(/15\/11\/2026 đến 17\/11\/2026/)).toBeInTheDocument();
+    expect(screen.getByText("(CCCD)")).toBeInTheDocument();
+    expect(screen.getByText("(Hộ chiếu)")).toBeInTheDocument();
+    expect(screen.getByText("(Khác)")).toBeInTheDocument();
+    expect(screen.queryByText(/PASSPORT/)).toBeNull();
+
+    await userEvent.click(screen.getByRole("button", { name: "English" }));
+    const local = (d: number) => new Date(2026, 10, d).toLocaleDateString();
+    expect(await screen.findByText(`${local(15)} to ${local(17)}`)).toBeInTheDocument();
+    expect(screen.getByText("(Passport)")).toBeInTheDocument();
+  });
+
+  it("document_title_is_vietnamese_and_follows_the_language", async () => {
+    serve(() => ok(summary));
+    render(<App />);
+    await screen.findByText("N***** V** A*");
+    expect(document.title).toBe("Khai báo lưu trú trước");
+    await userEvent.click(screen.getByRole("button", { name: "English" }));
+    await waitFor(() => expect(document.title).toBe("Pre-arrival registration"));
   });
 
   it("error_boundary_renders_failed_view", () => {

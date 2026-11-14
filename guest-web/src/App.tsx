@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import {
   ApiError,
@@ -33,10 +33,14 @@ export default function App() {
   const [view, setView] = useState<View>({ name: "loading" });
   const [summary, setSummary] = useState<Summary | null>(null);
   const [stayError, setStayError] = useState<string | null>(null);
+  const [stayNotice, setStayNotice] = useState<string | null>(null);
+  const [removing, setRemoving] = useState(false);
+  const removingRef = useRef(false);
 
   useEffect(() => {
     document.documentElement.lang = i18n.language;
-  }, [i18n.language]);
+    document.title = t("app.docTitle");
+  }, [i18n.language, t]);
 
   const fatal = useCallback((key: string) => {
     setView(key === "closed" ? { name: "closed" } : { name: "invalid" });
@@ -61,8 +65,9 @@ export default function App() {
   }, [load]);
 
   async function submit(identity: Identity) {
+    let created: boolean;
     try {
-      await submitGuest(identity);
+      created = (await submitGuest(identity)).created;
     } catch (err) {
       if (err instanceof ApiError && (err.messageKey === "closed" || err.messageKey === "invalid")) {
         fatal(err.messageKey);
@@ -71,18 +76,33 @@ export default function App() {
       throw err;
     }
     setStayError(null);
+    // The same document sent again is answered with the stored submission (200), not a new one (201)
+    setStayNotice(created ? null : "guests.alreadySent");
     await load();
   }
 
   async function remove(id: string) {
+    if (removingRef.current) return;
+    removingRef.current = true;
+    setRemoving(true);
     setStayError(null);
+    setStayNotice(null);
     try {
       await deleteGuest(id);
       await load();
     } catch (err) {
-      const key = err instanceof ApiError ? err.messageKey : "common.error";
-      if (key === "closed" || key === "invalid") fatal(key);
-      else setStayError(key);
+      if (err instanceof ApiError && err.status === 404) {
+        // Already gone (another tap, another device) or the link died: the summary tells which. Only a 404 on the
+        // summary itself makes the link invalid.
+        await load();
+      } else {
+        const key = err instanceof ApiError ? err.messageKey : "common.error";
+        if (key === "closed") fatal(key);
+        else setStayError(key);
+      }
+    } finally {
+      removingRef.current = false;
+      setRemoving(false);
     }
   }
 
@@ -112,7 +132,17 @@ export default function App() {
       break;
     case "stay":
       body = summary && (
-        <Stay summary={summary} error={stayError} onAdd={() => setView({ name: "adult" })} onRemove={(id) => void remove(id)} />
+        <Stay
+          summary={summary}
+          error={stayError}
+          notice={stayNotice}
+          removing={removing}
+          onAdd={() => {
+            setStayNotice(null);
+            setView({ name: "adult" });
+          }}
+          onRemove={(id) => void remove(id)}
+        />
       );
       break;
     case "adult":

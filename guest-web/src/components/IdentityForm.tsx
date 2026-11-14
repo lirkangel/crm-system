@@ -27,8 +27,8 @@ const localDate = (daysAgo = 0) => {
 
 /**
  * The editable identity fields plus consent and Send. Client hints mirror the server's rules (a Vietnamese citizen
- * needs an address, an entry date is not in the future; a typed passport also asks for visa and entry date); the
- * server stays authoritative.
+ * needs an address, an entry date is not in the future). A foreign passport holder may leave visa and entry date
+ * empty before arrival: the front desk completes them. The server stays authoritative.
  */
 export function IdentityForm({
   initial,
@@ -64,8 +64,7 @@ export function IdentityForm({
     v.fullName.trim() !== "" &&
     v.dateOfBirth !== "" &&
     v.nationality !== "" &&
-    (!isVn || v.address.trim() !== "") &&
-    (!passport || isVn || (v.visaNumber.trim() !== "" && v.entryDate !== ""));
+    (!isVn || v.address.trim() !== "");
   const canSend = complete && consent && !busy;
 
   async function onSubmit(e: React.FormEvent) {
@@ -123,11 +122,12 @@ export function IdentityForm({
       {passport && (
         <>
           <Field id="f-visa" label={t("field.visaNumber")}>
-            <input id="f-visa" className={input} value={v.visaNumber} onChange={set("visaNumber")} maxLength={32} autoComplete="off" required={!isVn} />
+            <input id="f-visa" className={input} value={v.visaNumber} onChange={set("visaNumber")} maxLength={32} autoComplete="off" />
           </Field>
           <Field id="f-entry" label={t("field.entryDate")}>
-            <input id="f-entry" type="date" className={input} value={v.entryDate} onChange={set("entryDate")} max={localDate()} required={!isVn} />
+            <input id="f-entry" type="date" className={input} value={v.entryDate} onChange={set("entryDate")} max={localDate()} />
           </Field>
+          <p className="text-sm text-slate-600">{t("passport.visaLater")}</p>
         </>
       )}
       <ConsentNotice checked={consent} onChange={setConsent} />

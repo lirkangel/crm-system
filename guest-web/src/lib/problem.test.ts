@@ -12,6 +12,9 @@ describe("messageKey", () => {
     [{ status: 404 }, "invalid"],
     [{ code: "HOTEL_TOO_MANY_GUESTS", status: 400 }, "adults.full"],
     [{ code: "HOTEL_SCAN_MISMATCH", status: 409 }, "scan.mismatch"],
+    [{ code: "HOTEL_INVALID_ID_DOC", status: 400 }, "identity.invalidDoc"],
+    [{ code: "VALIDATION_ERROR", status: 400 }, "identity.invalid"],
+    [{ code: "HOTEL_SCAN_LIMIT", status: 409 }, "scan.limit"],
     [{ code: "SOMETHING_ELSE", status: 500 }, "common.error"],
     [{ status: 500 }, "common.error"],
   ])("%j -> %s", (problem, key) => {
