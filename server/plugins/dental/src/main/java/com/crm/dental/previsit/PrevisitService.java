@@ -67,7 +67,7 @@ public class PrevisitService {
      *         the scan errors of {@link DentalIdScanService#upload}
      */
     public DentalIdScanService.UploadResult upload(String token, byte[] bytes) {
-        return scans.upload(visitLinks.resolve(token).getId(), bytes);
+        return scans.uploadViaLink(visitLinks.resolve(token).getId(), VisitLinkService.hashOf(token), bytes);
     }
 
     /**
@@ -77,7 +77,7 @@ public class PrevisitService {
      *         {@code DENTAL_INVALID_FORM} (400)
      */
     public SubmitResult submit(String token, PrevisitRequest request) {
-        return new SubmitResult(store.submit(visitLinks.resolve(token).getId(), request).created());
+        return new SubmitResult(store.submit(visitLinks.resolve(token).getId(), VisitLinkService.hashOf(token), request).created());
     }
 
     /**
@@ -89,7 +89,7 @@ public class PrevisitService {
      */
     public PreviousAnswers previous(String token, PreviousRequest request) {
         PrevisitStore.Outcome checked = store.previous(visitLinks.resolve(token).getId(),
-            request == null ? null : request.dateOfBirth());
+            VisitLinkService.hashOf(token), request == null ? null : request.dateOfBirth());
         return switch (checked.result()) {
             case MATCH -> checked.answers();
             case WRONG -> throw DentalErrors.checkFailed("That date of birth does not match");

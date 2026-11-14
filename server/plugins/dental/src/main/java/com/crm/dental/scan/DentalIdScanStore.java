@@ -4,6 +4,7 @@ import com.crm.dental.DentalErrors;
 import com.crm.dental.appointment.Appointment;
 import com.crm.dental.appointment.AppointmentRepository;
 import com.crm.dental.appointment.AppointmentStatus;
+import com.crm.dental.link.VisitLinkService;
 import com.crm.foundation.Plugin.AuditRecorder;
 import com.crm.foundation.Plugin.CurrentUser;
 import lombok.RequiredArgsConstructor;
@@ -32,14 +33,18 @@ class DentalIdScanStore {
     private final Clock dentalClock;
     private final AppointmentRepository appointments;
     private final DentalIdScanRepository scans;
+    private final VisitLinkService visitLinks;
     private final CurrentUser currentUser;
     private final AuditRecorder audit;
 
     /** Stores the scan, or returns the id of the appointment's existing scan of the same original bytes. */
     @Transactional
-    StoreResult store(UUID appointmentId, byte[] sha256, String contentType, byte[] jpeg, String qrDigest) {
+    StoreResult store(UUID appointmentId, byte[] tokenHash, byte[] sha256, String contentType, byte[] jpeg, String qrDigest) {
         Appointment appointment = appointments.lockById(appointmentId)
             .orElseThrow(() -> DentalErrors.notFound("Appointment not found"));
+        if (tokenHash != null) {
+            visitLinks.requireLive(appointmentId, tokenHash);
+        }
         DentalIdScanService.requireOpen(appointment);
 
         Optional<UUID> existing = scans.findIdByAppointmentAndSha256(appointmentId, sha256);

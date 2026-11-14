@@ -143,6 +143,25 @@ public class VisitLinkService {
             .orElseThrow(() -> DentalErrors.notFound("Link not found"));
     }
 
+    /** The SHA-256 under which a token's link is stored. */
+    public static byte[] hashOf(String token) {
+        return sha256(token);
+    }
+
+    /**
+     * Inside the caller's locked transaction: the appointment's link, provided it still exists, still has the
+     * token hash the request resolved with, and has not expired (a link revoked, regenerated or expired between
+     * {@link #resolve} and the lock is the same 404 as any bad token).
+     */
+    public VisitLink requireLive(UUID appointmentId, byte[] tokenHash) {
+        VisitLink link = links.findById(appointmentId).orElseThrow(() -> DentalErrors.notFound("Link not found"));
+        if (tokenHash == null || !MessageDigest.isEqual(link.getTokenHash(), tokenHash)
+                || !Instant.now(dentalClock).isBefore(link.getExpiresAt())) {
+            throw DentalErrors.notFound("Link not found");
+        }
+        return link;
+    }
+
     private static byte[] sha256(String token) {
         try {
             return MessageDigest.getInstance("SHA-256").digest(token.getBytes(StandardCharsets.UTF_8));

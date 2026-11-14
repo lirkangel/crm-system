@@ -2,6 +2,7 @@ package com.crm.dental.scan;
 
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Qualifier;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 
@@ -10,6 +11,8 @@ import java.time.temporal.ChronoUnit;
 
 /** Hourly retention: CCCD photos are deleted 30 days after upload (forms are kept). */
 @Slf4j
+/** Switched off by {@code dental.purge.enabled=false} (default on), so a test can run without the cron. */
+@ConditionalOnProperty(name = "dental.purge.enabled", havingValue = "true", matchIfMissing = true)
 @Component
 class DentalIdScanPurgeJob {
 

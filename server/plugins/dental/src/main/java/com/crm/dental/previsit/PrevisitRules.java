@@ -31,11 +31,25 @@ final class PrevisitRules {
             AllergyAnswer allergies,
             MedicineAnswer medicines,
             ReasonAnswer reason) {
+
+        @Override
+        public String toString() {
+            return "Checked[redacted]";
+        }
     }
 
-    /** A patient is a child if under 14 on the visit's clinic-local date. */
+    /**
+     * A patient is a child if under 14 on the visit's clinic-local date: the day before the 14th birthday is a
+     * child, the birthday itself an adult. Someone born on 29 February turns 14 on 1 March of a common year (stated
+     * here explicitly: {@code plusYears} would answer 28 February).
+     */
     static boolean isChild(LocalDate dateOfBirth, LocalDate visitDate) {
-        return dateOfBirth.plusYears(CHILD_UNDER).isAfter(visitDate);
+        LocalDate fourteenth = dateOfBirth.plusYears(CHILD_UNDER);
+        if (dateOfBirth.getMonth() == java.time.Month.FEBRUARY && dateOfBirth.getDayOfMonth() == 29
+                && !fourteenth.isLeapYear()) {
+            fourteenth = LocalDate.of(fourteenth.getYear(), 3, 1);
+        }
+        return fourteenth.isAfter(visitDate);
     }
 
     static Checked check(PrevisitRequest request, boolean child, LocalDate today) {
@@ -144,10 +158,12 @@ final class PrevisitRules {
     }
 
     private static String text(String value, int max, String message) {
-        if (isBlank(value) || value.trim().length() > max) {
+        // The control-character check is on the raw value: String.trim() would silently strip a trailing NUL
+        String trimmed = value == null ? "" : value.trim();
+        if (trimmed.isEmpty() || trimmed.length() > max || value.chars().anyMatch(Character::isISOControl)) {
             throw invalid(message);
         }
-        return value.trim();
+        return trimmed;
     }
 
     private static boolean isBlank(String value) {

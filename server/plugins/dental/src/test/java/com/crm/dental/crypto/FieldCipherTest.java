@@ -100,4 +100,20 @@ class FieldCipherTest {
         assertThatThrownBy(() -> cipher.encrypt("x")).isInstanceOf(IllegalStateException.class);
         assertThatThrownBy(() -> cipher.decrypt(new byte[40])).isInstanceOf(IllegalStateException.class);
     }
+
+    @Test
+    void aad_round_trip_and_wrong_aad_fails() {
+        FieldCipher cipher = new FieldCipher(key(7));
+        byte[] aad = "appointment-1:allergies_enc".getBytes(java.nio.charset.StandardCharsets.UTF_8);
+        byte[] sealed = cipher.encrypt("secret answer", aad);
+
+        assertThat(cipher.decrypt(sealed, aad)).isEqualTo("secret answer");
+        byte[] other = "appointment-2:allergies_enc".getBytes(java.nio.charset.StandardCharsets.UTF_8);
+        byte[] otherColumn = "appointment-1:reason_enc".getBytes(java.nio.charset.StandardCharsets.UTF_8);
+        assertThatThrownBy(() -> cipher.decrypt(sealed, other)).isInstanceOf(IllegalStateException.class)
+            .hasMessageNotContaining("secret");
+        assertThatThrownBy(() -> cipher.decrypt(sealed, otherColumn)).isInstanceOf(IllegalStateException.class);
+        assertThatThrownBy(() -> cipher.decrypt(sealed, new byte[0])).isInstanceOf(IllegalStateException.class);
+        assertThatThrownBy(() -> cipher.decrypt(sealed)).isInstanceOf(IllegalStateException.class);
+    }
 }

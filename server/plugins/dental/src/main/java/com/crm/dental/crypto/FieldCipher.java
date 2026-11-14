@@ -42,13 +42,23 @@ public final class FieldCipher {
         return key != null;
     }
 
+    /** Encrypts with no associated data: binds the ciphertext to nothing, so production code uses the AAD form. */
     public byte[] encrypt(String plaintext) {
+        return encrypt(plaintext, new byte[0]);
+    }
+
+    /**
+     * Encrypts and authenticates {@code aad} (not stored): the ciphertext only decrypts with the same bytes, so
+     * a value copied to another row or column fails closed.
+     */
+    public byte[] encrypt(String plaintext, byte[] aad) {
         requireKey();
         try {
             byte[] iv = new byte[IV_BYTES];
             RANDOM.nextBytes(iv);
             Cipher cipher = Cipher.getInstance(TRANSFORMATION);
             cipher.init(Cipher.ENCRYPT_MODE, key, new GCMParameterSpec(TAG_BITS, iv));
+            cipher.updateAAD(aad);
             byte[] sealed = cipher.doFinal(plaintext.getBytes(StandardCharsets.UTF_8));
             byte[] out = new byte[IV_BYTES + sealed.length];
             System.arraycopy(iv, 0, out, 0, IV_BYTES);
@@ -60,6 +70,11 @@ public final class FieldCipher {
     }
 
     public String decrypt(byte[] data) {
+        return decrypt(data, new byte[0]);
+    }
+
+    /** @throws IllegalStateException (fixed message) for tampered data, a wrong key or different {@code aad} */
+    public String decrypt(byte[] data, byte[] aad) {
         requireKey();
         if (data == null || data.length < IV_BYTES + TAG_BITS / 8) {
             throw new IllegalStateException("Field decryption failed");
@@ -67,6 +82,7 @@ public final class FieldCipher {
         try {
             Cipher cipher = Cipher.getInstance(TRANSFORMATION);
             cipher.init(Cipher.DECRYPT_MODE, key, new GCMParameterSpec(TAG_BITS, data, 0, IV_BYTES));
+            cipher.updateAAD(aad);
             return new String(cipher.doFinal(data, IV_BYTES, data.length - IV_BYTES), StandardCharsets.UTF_8);
         } catch (GeneralSecurityException e) {
             throw new IllegalStateException("Field decryption failed");

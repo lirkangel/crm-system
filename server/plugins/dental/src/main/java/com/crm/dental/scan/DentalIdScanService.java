@@ -55,6 +55,18 @@ public class DentalIdScanService {
      *         oversized image; nothing is stored); {@code DENTAL_SCAN_BUSY} (503); {@code DENTAL_SCAN_LIMIT} (409)
      */
     public UploadResult upload(UUID appointmentId, byte[] bytes) {
+        return upload(appointmentId, null, bytes);
+    }
+
+    /**
+     * An upload through a patient's link: as {@link #upload(UUID, byte[])}, and the link (identified by the hash of
+     * the token the request resolved with) is re-checked under the appointment lock when the scan is stored.
+     */
+    public UploadResult uploadViaLink(UUID appointmentId, byte[] tokenHash, byte[] bytes) {
+        return upload(appointmentId, java.util.Objects.requireNonNull(tokenHash), bytes);
+    }
+
+    private UploadResult upload(UUID appointmentId, byte[] tokenHash, byte[] bytes) {
         requireOpen(appointments.findById(appointmentId)
             .orElseThrow(() -> DentalErrors.notFound("Appointment not found")));
         if (bytes.length > MAX_BYTES) {
@@ -75,7 +87,8 @@ public class DentalIdScanService {
         ScanFields fields = ScanFields.of(data);
 
         DentalIdScanStore.StoreResult stored = store.store(
-            appointmentId, sha256(bytes), "image/jpeg", processed.storedJpeg(), QrDigest.of(fields.digestFields()));
+            appointmentId, tokenHash, sha256(bytes), "image/jpeg", processed.storedJpeg(),
+            QrDigest.of(fields.digestFields()));
         return new UploadResult(stored.scanId(), fields, stored.created());
     }
 

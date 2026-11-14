@@ -241,7 +241,7 @@ class PublicVisitIT extends VisitLinkITSupport {
         }
         assertThat(jdbc.queryForObject("""
             SELECT count(*) FROM dental.previsit_form WHERE appointment_id = ?
-              AND (convert_from(allergies_enc, 'LATIN1') LIKE '%PENICILLIN%' OR convert_from(reason_enc, 'LATIN1') LIKE '%SECRETWHY%')
+              AND (position(convert_to('PENICILLIN', 'UTF8') in allergies_enc) > 0 OR position(convert_to('SECRETWHY', 'UTF8') in reason_enc) > 0)
             """, Integer.class, v.id())).isZero();
     }
 
@@ -311,6 +311,7 @@ class PublicVisitIT extends VisitLinkITSupport {
             assertThat(exchange(HttpMethod.GET, PUBLIC, null, null, HEADER, token).getStatusCode().value()).isEqualTo(404);
             assertThat(exchange(HttpMethod.POST, PUBLIC + "/form", null, form(), HEADER, token).getStatusCode().value()).isEqualTo(404);
             assertThat(exchange(HttpMethod.POST, PUBLIC + "/previous", null, dob, HEADER, token).getStatusCode().value()).isEqualTo(404);
+            assertThat(upload(token, CccdQrImages.jpeg(CccdQrImages.payload(), 1)).getStatusCode().value()).as("id-scans").isEqualTo(404);
         }
         // The token is never accepted from the path or the query
         assertThat(exchange(HttpMethod.GET, PUBLIC + "?token=" + v.token(), null, null).getStatusCode().value()).isEqualTo(404);
@@ -403,9 +404,21 @@ class PublicVisitIT extends VisitLinkITSupport {
     @Test
     void no_store_and_noindex() {
         Visit v = adult();
+        Visit locked = adult();
+        assertThat(submit(locked.token(), form()).getStatusCode().value()).isEqualTo(201);
+        jdbc.update("UPDATE dental.visit_link SET dob_attempts = 5 WHERE appointment_id = ?", locked.id());
+        Visit closed = adult();
+        jdbc.update("UPDATE dental.appointment SET status = 'CANCELLED' WHERE id = ?", closed.id());
+        ResponseEntity<String> uploaded = upload(v.token(), CccdQrImages.jpeg(CccdQrImages.payload(), 7));
+        assertThat(uploaded.getStatusCode().value()).isEqualTo(201);
+        ResponseEntity<String> lockedResponse = previous(locked.token(), "1990-05-17");
+        ResponseEntity<String> closedResponse = submit(closed.token(), form());
+        assertThat(lockedResponse.getStatusCode().value()).isEqualTo(423);
+        assertThat(closedResponse.getStatusCode().value()).isEqualTo(409);
         List<ResponseEntity<String>> responses = List.of(
             summary(v.token()), summary("nope"), submit(v.token(), form()), submit(v.token(), with(form(), "consent", false)),
-            previous(v.token(), "1991-01-01"));
+            previous(v.token(), "1991-01-01"), uploaded, lockedResponse, closedResponse,
+            upload("nope", CccdQrImages.jpeg(CccdQrImages.payload(), 8)));
         for (ResponseEntity<String> response : responses) {
             assertThat(response.getHeaders().getCacheControl()).contains("no-store");
             assertThat(response.getHeaders().getFirst("X-Robots-Tag")).contains("noindex");
@@ -434,7 +447,187 @@ class PublicVisitIT extends VisitLinkITSupport {
         assertThat(jdbc.queryForObject("""
             SELECT count(*) FROM audit_event WHERE after_json::text LIKE ANY (ARRAY['%079090123456%', '%SECRETMED%',
               '%PENICILLIN%', '%' || ? || '%'])
-            """, Integer.class, v.token())).isZero();
+              OR before_json::text LIKE ANY (ARRAY['%079090123456%', '%SECRETMED%', '%PENICILLIN%', '%' || ? || '%'])
+            """, Integer.class, v.token(), v.token())).isZero();
+    }
+
+
+    // ── hardening ────────────────────────────────────────────────────────────────────────────────
+
+    /** Runs {@code count} copies of {@code call} released together by a barrier. */
+    private <T> List<T> parallel(int count, java.util.concurrent.Callable<T> call) throws Exception {
+        java.util.concurrent.CyclicBarrier barrier = new java.util.concurrent.CyclicBarrier(count);
+        java.util.concurrent.ExecutorService pool = java.util.concurrent.Executors.newFixedThreadPool(count);
+        try {
+            List<java.util.concurrent.Future<T>> futures = new java.util.ArrayList<>();
+            for (int i = 0; i < count; i++) {
+                futures.add(pool.submit(() -> {
+                    barrier.await(10, java.util.concurrent.TimeUnit.SECONDS);
+                    return call.call();
+                }));
+            }
+            List<T> results = new java.util.ArrayList<>();
+            for (java.util.concurrent.Future<T> future : futures) {
+                results.add(future.get(60, java.util.concurrent.TimeUnit.SECONDS));
+            }
+            return results;
+        } finally {
+            pool.shutdownNow();
+        }
+    }
+
+    @Test
+    void previous_parallel_wrong_guesses_stop_at_five() throws Exception {
+        Visit v = adult();
+        assertThat(submit(v.token(), form()).getStatusCode().value()).isEqualTo(201);
+
+        List<ResponseEntity<String>> responses = parallel(10, () -> previous(v.token(), "1991-01-01"));
+
+        assertThat(responses).extracting(r -> r.getStatusCode().value()).containsOnly(403, 423);
+        assertThat(responses.stream().filter(r -> r.getStatusCode().value() == 403).count()).isEqualTo(4);
+        assertThat(jdbc.queryForObject("SELECT dob_attempts FROM dental.visit_link WHERE appointment_id = ?",
+            Integer.class, v.id())).isEqualTo(5);
+    }
+
+    @Test
+    void parallel_submit_one_row() throws Exception {
+        Visit v = adult();
+
+        List<ResponseEntity<String>> responses = parallel(3, () -> submit(v.token(), form()));
+
+        assertThat(responses).extracting(r -> r.getStatusCode().value()).containsExactlyInAnyOrder(201, 200, 200);
+        assertThat(count("previsit_form", "appointment_id", v.id())).isEqualTo(1);
+    }
+
+    @Test
+    void revoked_between_resolve_and_lock_is_404() {
+        Visit v = adult();
+        assertThat(submit(v.token(), form()).getStatusCode().value()).isEqualTo(201);
+        byte[] oldHash = sha256(v.token());
+        assertThat(storePrevious(v.id(), oldHash, "1990-05-17")).as("live link").isEqualTo(200);
+
+        // Revoked after the request resolved its token
+        assertThat(exchange(HttpMethod.DELETE, linkPath(v.id()), v.staff(), null).getStatusCode().value()).isEqualTo(204);
+        assertThat(storePrevious(v.id(), oldHash, "1990-05-17")).isEqualTo(404);
+        assertThat(storeScan(v.id(), oldHash)).as("scan store").isEqualTo(404);
+
+        // Replaced: the old hash is refused and the new link's counter is untouched
+        String fresh = data(post(linkPath(v.id()), v.staff(), null)).path("url").asText().substring(BASE.length());
+        assertThat(storePrevious(v.id(), oldHash, "1991-01-01")).isEqualTo(404);
+        assertThat(storeScan(v.id(), oldHash)).isEqualTo(404);
+        assertThat(jdbc.queryForObject("SELECT dob_attempts FROM dental.visit_link WHERE appointment_id = ?",
+            Integer.class, v.id())).isZero();
+        assertThat(storePrevious(v.id(), sha256(fresh), "1991-01-01")).as("the matched link counts").isEqualTo(200);
+        assertThat(jdbc.queryForObject("SELECT dob_attempts FROM dental.visit_link WHERE appointment_id = ?",
+            Integer.class, v.id())).isEqualTo(1);
+
+        // Expired
+        jdbc.update("UPDATE dental.visit_link SET expires_at = now() - interval '1 hour' WHERE appointment_id = ?", v.id());
+        assertThat(storePrevious(v.id(), sha256(fresh), "1990-05-17")).isEqualTo(404);
+    }
+
+    @Test
+    void no_answers_means_404_without_counting() {
+        Visit v = adult();
+
+        assertThat(previous(v.token(), "1991-01-01").getStatusCode().value()).isEqualTo(404);
+        assertThat(previous(v.token(), "1990-05-17").getStatusCode().value()).as("right date too").isEqualTo(404);
+        assertThat(jdbc.queryForObject("SELECT dob_attempts FROM dental.visit_link WHERE appointment_id = ?",
+            Integer.class, v.id())).isZero();
+        assertThat(data(summary(v.token())).path("returning").asText()).isEqualTo("NONE");
+    }
+
+    @Test
+    void nul_in_text_is_400() {
+        Visit v = adult();
+        assertInvalid(v.token(), with(form(), "medicines", Map.of("none", false, "text", "aspirin\u0000 SECRETMED")));
+        Map<String, Object> id = identity();
+        id.put("address", "12 Le Loi\u0000");
+        assertInvalid(v.token(), with(form(), "identity", id));
+        assertThat(count("previsit_form", "appointment_id", v.id())).isZero();
+    }
+
+    @Test
+    void copied_ciphertext_fails_closed() {
+        Visit a = adult();
+        Visit b = adult();
+        assertThat(submit(a.token(), form()).getStatusCode().value()).isEqualTo(201);
+        assertThat(submit(b.token(), with(form(), "allergies", Map.of("none", true))).getStatusCode().value()).isEqualTo(201);
+        jdbc.update("""
+            UPDATE dental.previsit_form SET allergies_enc = (SELECT allergies_enc FROM dental.previsit_form WHERE appointment_id = ?)
+            WHERE appointment_id = ?
+            """, a.id(), b.id());
+
+        ResponseEntity<String> response = previous(b.token(), "1990-05-17");
+
+        assertThat(response.getStatusCode().value()).isEqualTo(500);
+        assertThat(code(response)).isEqualTo("DENTAL_FIELD_UNREADABLE");
+        assertThat(response.getBody()).doesNotContain("Kiwi").doesNotContain("PENICILLIN");
+        // The untouched columns of the same row still belong to it
+        assertThat(previous(a.token(), "1990-05-17").getStatusCode().value()).isEqualTo(200);
+    }
+
+    @Test
+    void scan_of_same_patients_other_appointment_400() {
+        Visit a = adult();
+        Visit b = adult();
+        UUID patient = jdbc.queryForObject("SELECT patient_id FROM dental.appointment WHERE id = ?", UUID.class, a.id());
+        jdbc.update("UPDATE dental.appointment SET patient_id = ? WHERE id = ?", patient, b.id());
+        ResponseEntity<String> scan = upload(a.token(), CccdQrImages.jpeg(CccdQrImages.payload(), 9));
+        assertThat(scan.getStatusCode().value()).as(scan.getBody()).isEqualTo(201);
+
+        ResponseEntity<String> response = submit(b.token(), with(form(), "idScanId", data(scan).path("scanId").asText()));
+
+        assertThat(response.getStatusCode().value()).isEqualTo(400);
+        assertThat(code(response)).isEqualTo("DENTAL_INVALID_FORM");
+        assertThat(count("previsit_form", "appointment_id", b.id())).isZero();
+    }
+
+    private static byte[] sha256(String text) {
+        try {
+            return java.security.MessageDigest.getInstance("SHA-256").digest(text.getBytes(java.nio.charset.StandardCharsets.UTF_8));
+        } catch (java.security.NoSuchAlgorithmException e) {
+            throw new IllegalStateException(e);
+        }
+    }
+
+    /** The store's locked check, called directly with a token hash the request "resolved" earlier. */
+    private int storePrevious(UUID appointment, byte[] hash, String dob) {
+        return storeStatus("previsitStore", "previous", new Class<?>[] {UUID.class, byte[].class, LocalDate.class},
+            appointment, hash, LocalDate.parse(dob));
+    }
+
+    private int storeScan(UUID appointment, byte[] hash) {
+        return storeStatus("dentalIdScanStore", "store",
+            new Class<?>[] {UUID.class, byte[].class, byte[].class, String.class, byte[].class, String.class},
+            appointment, hash, new byte[32], "image/jpeg", new byte[] {1, 2, 3}, null);
+    }
+
+    private int storeStatus(String beanName, String method, Class<?>[] types, Object... args) {
+        Object store = bean(beanName);
+        try {
+            Class<?> type = store.getClass();
+            java.lang.reflect.Method found = null;
+            while (type != null && found == null) {
+                try {
+                    found = type.getDeclaredMethod(method, types);
+                } catch (NoSuchMethodException e) {
+                    type = type.getSuperclass();
+                }
+            }
+            assertThat(found).as(beanName + "." + method).isNotNull();
+            found.setAccessible(true);
+            found.invoke(store, args);
+            return 200;
+        } catch (java.lang.reflect.InvocationTargetException e) {
+            if (e.getCause() instanceof com.crm.foundation.Plugin.PluginProblem problem) {
+                return problem.status();
+            }
+            // A wrong date is an outcome, not a problem; anything else is a bug
+            throw new IllegalStateException(e.getCause());
+        } catch (ReflectiveOperationException e) {
+            throw new IllegalStateException(e);
+        }
     }
 
     // ── helpers ──────────────────────────────────────────────────────────────────────────────────
@@ -448,7 +641,9 @@ class PublicVisitIT extends VisitLinkITSupport {
             }
         });
         HttpHeaders headers = new HttpHeaders();
-        headers.set(HEADER, token);
+        if (token != null) {
+            headers.set(HEADER, token);
+        }
         headers.setContentType(MediaType.MULTIPART_FORM_DATA);
         return rest.postForEntity(PUBLIC + "/id-scans", new HttpEntity<>(body, headers), String.class);
     }

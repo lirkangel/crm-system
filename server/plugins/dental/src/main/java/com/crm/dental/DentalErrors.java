@@ -18,6 +18,7 @@ public final class DentalErrors {
     public static final String PUBLIC_DISABLED = "DENTAL_PUBLIC_DISABLED";
     public static final String INVALID_FORM = "DENTAL_INVALID_FORM";
     public static final String VISIT_CLOSED = "DENTAL_VISIT_CLOSED";
+    public static final String FIELD_UNREADABLE = "DENTAL_FIELD_UNREADABLE";
     public static final String CHECK_FAILED = "DENTAL_CHECK_FAILED";
     public static final String CHECK_LOCKED = "DENTAL_CHECK_LOCKED";
     public static final String SCAN_UNREADABLE = "DENTAL_SCAN_UNREADABLE";
@@ -76,6 +77,11 @@ public final class DentalErrors {
     /** 409: the pre-visit link or form is closed: the visit day is over or the appointment is no longer booked. */
     public static PluginProblem visitClosed(String detail) {
         return new PluginProblem(409, VISIT_CLOSED, detail);
+    }
+
+    /** 500: stored health answers failed authentication or could not be read; nothing is returned. */
+    public static PluginProblem fieldUnreadable() {
+        return new PluginProblem(500, FIELD_UNREADABLE, "The stored answers could not be read");
     }
 
     /** 403: the date of birth of the previous-answers check does not match the patient record. */

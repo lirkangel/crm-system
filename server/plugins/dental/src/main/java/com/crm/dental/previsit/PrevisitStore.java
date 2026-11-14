@@ -9,6 +9,7 @@ import com.crm.dental.appointment.AppointmentStatus;
 import com.crm.dental.crypto.FieldCipher;
 import com.crm.dental.link.VisitLink;
 import com.crm.dental.link.VisitLinkRepository;
+import com.crm.dental.link.VisitLinkService;
 import com.crm.dental.patient.Patient;
 import com.crm.dental.patient.PatientRepository;
 import com.crm.dental.scan.DentalIdScanRepository;
@@ -44,6 +45,9 @@ class PrevisitStore {
     static final String NOTICE_VERSION = "2026-11-14";
     /** Wrong dates of birth after which a link's previous-answers check is locked. */
     static final int MAX_DOB_ATTEMPTS = 5;
+    static final String COL_ALLERGIES = "allergies_enc";
+    static final String COL_MEDICINES = "medicines_enc";
+    static final String COL_REASON = "reason_enc";
 
     // The field name doubles as the bean name, which disambiguates from any Clock in the parent context.
     private final Clock dentalClock;
@@ -51,6 +55,7 @@ class PrevisitStore {
     private final PatientRepository patients;
     private final PrevisitFormRepository forms;
     private final DentalIdScanRepository scans;
+    private final VisitLinkService visitLinks;
     private final VisitLinkRepository links;
     private final FieldCipher fieldCipher;
     private final ObjectMapper objectMapper;
@@ -69,8 +74,8 @@ class PrevisitStore {
      * existing one.
      */
     @Transactional
-    Submitted submit(UUID appointmentId, PrevisitRequest request) {
-        Appointment appointment = lockOpen(appointmentId);
+    Submitted submit(UUID appointmentId, byte[] tokenHash, PrevisitRequest request) {
+        Appointment appointment = lockOpen(appointmentId, tokenHash).appointment();
         Patient patient = patients.findById(appointment.getPatientId())
             .orElseThrow(() -> DentalErrors.notFound("Link not found"));
         LocalDate visitDate = appointment.getStartsAt().atZone(DentalConfig.CLINIC_ZONE).toLocalDate();
@@ -109,9 +114,9 @@ class PrevisitStore {
         form.setParentName(checked.parentName());
         form.setParentPhone(checked.parentPhone());
         form.setPhone(checked.phone());
-        form.setAllergiesEnc(seal(checked.allergies()));
-        form.setMedicinesEnc(seal(checked.medicines()));
-        form.setReasonEnc(seal(checked.reason()));
+        form.setAllergiesEnc(seal(checked.allergies(), appointmentId, COL_ALLERGIES));
+        form.setMedicinesEnc(seal(checked.medicines(), appointmentId, COL_MEDICINES));
+        form.setReasonEnc(seal(checked.reason(), appointmentId, COL_REASON));
         form.setIdScanId(scanId);
         form.setEditedFields(editedFields);
         form.setConsentAt(now);
@@ -129,17 +134,22 @@ class PrevisitStore {
      * link refuses even the right date.
      */
     @Transactional
-    Outcome previous(UUID appointmentId, LocalDate dateOfBirth) {
-        Appointment appointment = lockOpen(appointmentId);
+    Outcome previous(UUID appointmentId, byte[] tokenHash, LocalDate dateOfBirth) {
+        Locked locked = lockOpen(appointmentId, tokenHash);
+        Appointment appointment = locked.appointment();
+        VisitLink link = locked.link();
+        Patient patient = patients.findById(appointment.getPatientId())
+            .orElseThrow(() -> DentalErrors.notFound("Link not found"));
+        // No answers at all: 404 before the date is looked at and without counting (no date-of-birth oracle)
+        if (!forms.existsAnswersOfPatient(patient.getId())) {
+            throw DentalErrors.notFound("No earlier answers");
+        }
         if (dateOfBirth == null) {
             throw DentalErrors.invalidForm("The date of birth is required");
         }
-        VisitLink link = links.findById(appointmentId).orElseThrow(() -> DentalErrors.notFound("Link not found"));
         if (link.getDobAttempts() >= MAX_DOB_ATTEMPTS) {
             return new Outcome(Outcome.Result.LOCKED, null);
         }
-        Patient patient = patients.findById(appointment.getPatientId())
-            .orElseThrow(() -> DentalErrors.notFound("Link not found"));
         if (!patient.getDateOfBirth().equals(dateOfBirth)) {
             link.setDobAttempts(link.getDobAttempts() + 1);
             links.saveAndFlush(link);
@@ -152,34 +162,48 @@ class PrevisitStore {
             throw DentalErrors.notFound("No earlier answers");
         }
         return new Outcome(Outcome.Result.MATCH, new PreviousAnswers(
-            open(source.getAllergiesEnc(), AllergyAnswer.class),
-            open(source.getMedicinesEnc(), MedicineAnswer.class),
-            open(source.getReasonEnc(), ReasonAnswer.class),
+            open(source.getAllergiesEnc(), source.getAppointmentId(), COL_ALLERGIES, AllergyAnswer.class),
+            open(source.getMedicinesEnc(), source.getAppointmentId(), COL_MEDICINES, MedicineAnswer.class),
+            open(source.getReasonEnc(), source.getAppointmentId(), COL_REASON, ReasonAnswer.class),
             own != null));
     }
 
-    private Appointment lockOpen(UUID appointmentId) {
+    private record Locked(Appointment appointment, VisitLink link) {
+    }
+
+    /**
+     * Locks the appointment, then re-checks the link the request resolved with (same 404 if it is gone, replaced
+     * or expired), then that the appointment is still {@code BOOKED}.
+     */
+    private Locked lockOpen(UUID appointmentId, byte[] tokenHash) {
         Appointment appointment = appointments.lockById(appointmentId)
             .orElseThrow(() -> DentalErrors.notFound("Link not found"));
+        VisitLink link = visitLinks.requireLive(appointmentId, tokenHash);
         if (appointment.getStatus() != AppointmentStatus.BOOKED) {
             throw DentalErrors.visitClosed("The pre-visit form is closed for this appointment");
         }
-        return appointment;
+        return new Locked(appointment, link);
     }
 
-    private byte[] seal(Object answer) {
+    /** The AAD binds a ciphertext to its appointment and column, so copying it elsewhere fails closed. */
+    private static byte[] aad(UUID appointmentId, String column) {
+        return (appointmentId + ":" + column).getBytes(java.nio.charset.StandardCharsets.UTF_8);
+    }
+
+    private byte[] seal(Object answer, UUID appointmentId, String column) {
         try {
-            return fieldCipher.encrypt(objectMapper.writeValueAsString(answer));
+            return fieldCipher.encrypt(objectMapper.writeValueAsString(answer), aad(appointmentId, column));
         } catch (JsonProcessingException e) {
             throw new IllegalStateException("An answer could not be serialized");
         }
     }
 
-    private <T> T open(byte[] sealed, Class<T> type) {
+    private <T> T open(byte[] sealed, UUID appointmentId, String column, Class<T> type) {
         try {
-            return objectMapper.readValue(fieldCipher.decrypt(sealed), type);
-        } catch (JsonProcessingException e) {
-            throw new IllegalStateException("A stored answer could not be read");
+            return objectMapper.readValue(fieldCipher.decrypt(sealed, aad(appointmentId, column)), type);
+        } catch (JsonProcessingException | IllegalStateException e) {
+            // Tampered, copied from another row, or unreadable: nothing is returned, and nothing is logged of it
+            throw DentalErrors.fieldUnreadable();
         }
     }
 
