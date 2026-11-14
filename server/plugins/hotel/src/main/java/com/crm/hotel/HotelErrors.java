@@ -32,6 +32,7 @@ public final class HotelErrors {
     public static final String SCAN_MISMATCH = "HOTEL_SCAN_MISMATCH";
     public static final String SCAN_LIMIT = "HOTEL_SCAN_LIMIT";
     public static final String SCAN_BUSY = "HOTEL_SCAN_BUSY";
+    public static final String CHECKIN_CLOSED = "HOTEL_CHECKIN_CLOSED";
 
     private HotelErrors() {
     }
@@ -159,5 +160,10 @@ public final class HotelErrors {
     /** 503: too many QR decodes are running; retry shortly. */
     public static PluginProblem scanBusy(String detail) {
         return new PluginProblem(503, SCAN_BUSY, detail);
+    }
+
+    /** 409: online check-in is closed: the guest link is past its expiry or the reservation is no longer confirmed. */
+    public static PluginProblem checkinClosed(String detail) {
+        return new PluginProblem(409, CHECKIN_CLOSED, detail);
     }
 }

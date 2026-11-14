@@ -21,6 +21,14 @@ public class HotelConfig {
         return Clock.system(HOTEL_ZONE);
     }
 
+    /** Where guests open their personal check-in link, and the hotel name shown to them. */
+    @Bean
+    GuestSite guestSite(
+            @Value("${hotel.guest-base-url:https://checkin.mathisterben.org}") String baseUrl,
+            @Value("${hotel.display-name:Khách sạn}") String displayName) {
+        return new GuestSite(baseUrl.trim().replaceAll("/+$", ""), displayName);
+    }
+
     /** The cutoff comes from Foundation's environment; a malformed one fails the plugin's start (LOAD_FAILED). */
     @Bean
     BusinessDay businessDay(

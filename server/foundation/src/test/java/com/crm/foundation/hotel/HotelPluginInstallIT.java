@@ -44,7 +44,7 @@ class HotelPluginInstallIT extends HotelITSupport {
 
         assertThat(entry.getState()).as(entry.getErrorMessage()).isEqualTo(PluginState.ACTIVE.name());
         assertThat(entry.getSchemaName()).isEqualTo(HOTEL_SCHEMA);
-        assertThat(entry.getVersion()).isEqualTo("0.3.0");
+        assertThat(entry.getVersion()).isEqualTo("0.4.0");
     }
 
     @Test
@@ -74,7 +74,8 @@ class HotelPluginInstallIT extends HotelITSupport {
 
         assertThat(hotelEntities).containsExactly(
             "HotelFolioCharge=FolioCharge", "HotelFolioPayment=FolioPayment", "HotelGuest=Guest",
-            "HotelIdScan=IdScan", "HotelReservation=Reservation", "HotelRoom=Room", "HotelRoomType=RoomType", "HotelStayGuest=StayGuest");
+            "HotelGuestLink=GuestLink", "HotelIdScan=IdScan", "HotelPreArrivalGuest=PreArrivalGuest",
+            "HotelReservation=Reservation", "HotelRoom=Room", "HotelRoomType=RoomType", "HotelStayGuest=StayGuest");
     }
 
     @Test

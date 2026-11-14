@@ -87,4 +87,14 @@ class BusinessDayTest {
                 .hasMessageContaining("hotel.business-day-cutoff");
         }
     }
+
+    @Test
+    void cutoff_instant_is_the_cutoff_of_that_hotel_local_date() {
+        BusinessDay day = at("2026-11-11T12:00", SIX);
+
+        assertThat(day.cutoffInstantOn(LocalDate.of(2026, 11, 20)))
+            .isEqualTo(Instant.parse("2026-11-19T23:00:00Z"));
+        assertThat(at("2026-11-11T12:00", LocalTime.of(5, 30)).cutoffInstantOn(LocalDate.of(2026, 11, 20)))
+            .isEqualTo(Instant.parse("2026-11-19T22:30:00Z"));
+    }
 }

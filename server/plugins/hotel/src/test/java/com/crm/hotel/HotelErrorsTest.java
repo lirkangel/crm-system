@@ -40,6 +40,7 @@ class HotelErrorsTest {
         assertProblem(HotelErrors.scanMismatch("detail"), 409, "HOTEL_SCAN_MISMATCH");
         assertProblem(HotelErrors.scanLimit("detail"), 409, "HOTEL_SCAN_LIMIT");
         assertProblem(HotelErrors.scanBusy("detail"), 503, "HOTEL_SCAN_BUSY");
+        assertProblem(HotelErrors.checkinClosed("detail"), 409, "HOTEL_CHECKIN_CLOSED");
     }
 
     @Test

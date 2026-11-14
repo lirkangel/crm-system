@@ -44,6 +44,10 @@ public class IdScan {
     @Column(name = "size_bytes", nullable = false)
     private int sizeBytes;
 
+    /** The CCCD QR text, digested for the pre-arrival match (filled by the guest submission). */
+    @Column(name = "qr_digest", length = 600)
+    private String qrDigest;
+
     @Column(name = "uploaded_by")
     private UUID uploadedBy;
 

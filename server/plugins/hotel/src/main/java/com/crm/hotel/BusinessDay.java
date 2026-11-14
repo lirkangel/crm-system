@@ -40,6 +40,11 @@ public final class BusinessDay {
         return LocalDateTime.ofInstant(instant, HotelConfig.HOTEL_ZONE).minusSeconds(cutoffSeconds).toLocalDate();
     }
 
+    /** The moment the business day cutoff falls on the hotel-local calendar {@code date} (06:00 by default). */
+    public Instant cutoffInstantOn(LocalDate date) {
+        return date.atTime(LocalTime.ofSecondOfDay(cutoffSeconds)).atZone(HotelConfig.HOTEL_ZONE).toInstant();
+    }
+
     /** The hotel-local calendar date, whatever the cutoff. */
     public LocalDate calendarToday() {
         return LocalDate.now(clock.withZone(HotelConfig.HOTEL_ZONE));
