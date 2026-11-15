@@ -39,6 +39,8 @@ F-EPIC-1 (scaffold) ─► F-EPIC-2 (auth UI) ─► F-EPIC-3 (data) ─► F-EP
 
 > **State (2026-11-14):** guest online check-in (H-EPIC-4, plugin 0.4.0 and `guest-web/`) is done and passes the gate; going live (manifests, secret, Cloudflare hostname) is a separate step. Full gate: 610 tests (525 foundation + 85 hotel unit), 0 failures, 0 skipped; guest-web 36 tests; docker-host smoke 93 checks.
 
+> **State (2026-11-15):** the dental pre-visit slice (D-EPIC-7, plugin `dental` 0.1.0 and the dental flow in `guest-web/`) is done and passes the gate; it ships switched off (`dental.public.enabled=false`) and going live is a separate step. Full gate: 732 tests (601 foundation + 45 dental, 46 hotel and 40 cccd-scan unit), 0 failures, 0 skipped; guest-web 104 tests; docker-host smoke 212 checks.
+
 ## B-EPIC-1 — Identity & Auth
 *Goal: a usable, rotation-safe token contract.*
 
@@ -383,6 +385,48 @@ F-EPIC-1 (scaffold) ─► F-EPIC-2 (auth UI) ─► F-EPIC-3 (data) ─► F-EP
 **Done:** (7dcb41f, f287166, 21949e6, cb2270a, this commit) `guest-web/`, `nginx/`, `Dockerfile`, `scripts/smoke-guest-checkin.sh` (93 checks on the docker-host), `.gitlab-ci.yml`. 36 Vitest tests. Go-live (manifests, secret, Cloudflare hostname) is a separate step.
 
 **Not in this slice:** desktop screens for links and submissions, sending the link by SMS or email, the real consent text (legal review), a browser run of the CSP on a real device.
+
+
+## D-EPIC-7 — Dental pre-visit
+*Goal: a dental clinic books appointments, gives each patient a personal link, and the patient fills in identity (CCCD photo or passport), allergies, medicines and the reason for the visit before arriving; staff read the answers and apply them to the patient record. Plugin `dental` 0.1.0 plus the dental flow in `guest-web/`, served at `nhakhoa.mathisterben.org`. Ships with the public route off.*
+*Ticket ids are DN1xx so they do not clash with the desktop D-tickets (D101-D602). Spec: `2026-11-14-dental-previsit-design.md`, kept locally (docs/superpowers is git-ignored). Migration `V1__dental_init.sql` (schema `dental`); permissions `dental.patients.read|write`, `dental.appointments.read|write`, `dental.previsit.read`.*
+
+### DN101 — Plugin skeleton, field encryption and the CCCD library · `DONE` · P0 · (needs H-EPIC-3)
+**Expected:** a `dental` plugin that loads beside hotel, with AES-GCM field encryption and the CCCD reader shared as a library.
+**Acceptance:** manifest id `com.crm.dental`, route and schema `dental`; `DENTAL_FIELD_KEY` (base64 of 32 bytes) validated when present and required when `dental.public.enabled=true` (otherwise LOAD_FAILED); the CCCD scan code lives in `libs/cccd-scan` and hotel uses it unchanged.
+**Done:** `DentalPlugin`, `DentalConfig`, `FieldCipher`, `libs/cccd-scan`. `FieldCipherTest`, `DentalPluginInstallIT`, `DentalPublicWithoutKeyIT`.
+
+### DN102 — Patients and bookings · `DONE` · P0 · (needs DN101)
+**Expected:** staff register patients and book, reschedule, cancel and mark appointments.
+**Acceptance:** `POST|PUT /patients`, `GET /patients?phone=|q=` (accent-insensitive; shared phones return every match; `+` sent as `%2B`); `POST /appointments` (existing or inline new patient; date of birth required), `GET /appointments?date=`, `PATCH` reschedule with `If-Match`, `cancel`, `arrive`, `no-show`; only `BOOKED` can change; errors are problem+json `DENTAL_*`.
+**Done:** `PatientController`, `AppointmentController` and services. `PatientAppointmentIT`.
+
+### DN103 — Visit links and the public switch · `DONE` · P0 · (needs DN102)
+**Expected:** staff give a patient a personal link, behind a switch that ships off.
+**Acceptance:** `POST|DELETE|GET /appointments/{id}/visit-link`; token of 32 random bytes, only its SHA-256 stored, shown once, expiry 23:59 clinic time on the appointment date; `dental.public.enabled=false` makes every dental public endpoint 404 and link creation `409 DENTAL_PUBLIC_DISABLED`.
+**Done:** `VisitLinkService`, `VisitLinkController`, `DentalSite`. `VisitLinkIT`, `VisitLinkDisabledIT`.
+
+### DN104 — Public pre-visit API · `DONE` · P0 · (needs DN103)
+**Expected:** a patient with the link reads the summary, uploads a CCCD photo, submits the form and checks earlier answers.
+**Acceptance:** `GET /public/visit`, `POST /public/visit/id-scans`, `/form`, `/previous` under `/api/v1/plugins/dental/public`, token in `X-Visit-Token`; summary shows a masked name only; a blank allergy or medicine answer is 400, never "none"; `consent: true` required; a child under 14 needs a parent's name and phone; allergies, medicines and reason stored AES-GCM encrypted; 5 wrong birth dates lock the previous-answers check; no identity or health value in audit, logs, change feed or errors.
+**Done:** `PublicVisitController`, `PrevisitService`, `PrevisitRules`, `PrevisitStore`. `PublicVisitIT`.
+
+### DN105 — Staff view of the form · `DONE` · P1 · (needs DN104)
+**Expected:** staff holding `dental.previsit.read` read and apply what the patient sent.
+**Acceptance:** `GET /appointments/{id}/previsit` and `.../previsit/id-scan` (`no-store`, audited `PREVISIT_VIEW` and `PREVISIT_PHOTO_VIEW`); applying the reviewed form to the patient record is bound to the form version; the day list carries a `previsit` flag; cancelling deletes the form and photo; CCCD photos are purged 30 days after upload.
+**Done:** `PrevisitController`, `PrevisitStaffService`, `DentalIdScanPurgeJob`. `PrevisitStaffIT`.
+
+### DN106 — Dental flow in guest-web · `DONE` · P0 · (needs DN104)
+**Expected:** a mobile page for the dental link at `/#d/<token>`.
+**Acceptance:** token read from the fragment into memory only; adult and child paths; CCCD photo or passport; allergy, medicine and reason questions that must be answered; consent text marked `TODO(legal)`; the answers are cleared after sending; Vietnamese default and English.
+**Done:** `guest-web/src/dental/`. `DentalApp.test.tsx` and the shared component tests.
+
+### DN107 — Host-routed guest pages, smoke and docs · `DONE` · P0 · (needs DN105, DN106)
+**Expected:** one container serves both hosts without letting either reach the other's API, and the whole path is proven on the docker-host.
+**Acceptance:** nginx has one `server` per host (`HOTEL_HOST`, default `checkin.mathisterben.org`, proxies only the hotel public API; `DENTAL_HOST`, default `nhakhoa.mathisterben.org`, only the dental one; any other Host is 404 for everything); both keep the hardening (normalised-path proxy, `;`/`%3b`/`%5c` guard, explicit secret and client address with forwarding headers, `Authorization` and `Cookie` blanked, realip from `REAL_IP_FROM` only, 11 MB body limit, no access log on the API, security headers and CSP on every response); `05-check-env.sh` validates both hosts as DNS names and that they differ; the smoke books an appointment, makes a link, reads the summary, submits a passport form with `none: true` allergies and reads it back, and checks the cross-host and unknown-host 404s; README "Dental pre-visit (dental 0.1.0)" holds the switch-on checklist.
+**Done:** `guest-web/nginx/` (`default.conf.template`, `site-common.conf.template`, `proxy-common.conf.template`, `05-check-env.sh`), `Dockerfile`, `scripts/smoke-guest-checkin.sh` (212 checks), README, CLAUDE.md. Go-live (flag, key, Dentist role, Cloudflare and NPM hostnames) is a separate step.
+
+**Not in this slice:** desktop screens for dental, sending the link by SMS or email, the real consent text and retention decision (legal sign-off), key rotation for `DENTAL_FIELD_KEY`.
 
 ---
 

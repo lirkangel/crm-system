@@ -1,13 +1,17 @@
 #!/usr/bin/env bash
-# End-to-end smoke test of the guest check-in stack on the homelab docker-host (this Mac has no Docker).
+# End-to-end smoke test of the guest stack (hotel check-in + dental pre-visit) on the homelab docker-host (this Mac
+# has no Docker).
 #
 # Ships server/ and guest-web/ to a unique temp dir over ssh, builds both images with unique tags, runs
 # postgres + crm-server + guest-web (nginx) on a unique docker network and checks, through the nginx port:
-#   - the public check-in API works end to end (summary, passport submission, staff read-back),
+#   - the public check-in API works end to end on the hotel host (summary, passport submission, staff read-back),
+#   - the dental pre-visit API works end to end on the dental host (appointment, link, summary, form, staff read),
+#   - each host proxies only its own public API; the other host's API and any unknown Host are 404,
 #   - nothing from the staff side is reachable (every other /api path is 404),
 #   - security headers are on every response, caching rules hold,
 #   - a forged CF-Connecting-IP / X-Client-IP cannot pick the rate-limit bucket (real_ip_only_from_tunnel).
-# Everything (containers, network, images, temp dir) is removed on exit. Nothing is pushed to any registry.
+# Hosts are reached through docker network aliases: checkin.<name> (hotel), nhakhoa.<name> (dental), and the bare
+# <name> (an unknown Host). Everything (containers, network, images, temp dir) is removed on exit. Nothing is pushed to any registry.
 # Secrets are random per run and never printed.
 #
 # Usage:  scripts/smoke-guest-checkin.sh
@@ -73,6 +77,7 @@ rand() { head -c 256 /dev/urandom | tr -dc 'A-Za-z0-9' | head -c "$1"; }
 set +o pipefail
 export PG_PASSWORD="$(rand 24)" JWT_SECRET="$(rand 48)" ADMIN_PASSWORD="$(rand 24)"   # secret below: 40 chars of [A-Za-z0-9]
 export CRM_PUBLIC_PROXY_SECRET="$(rand 40)" FIELD_ENC_KEY="$(head -c 32 /dev/urandom | base64)"
+export DENTAL_FIELD_KEY="$(head -c 32 /dev/urandom | base64)"   # never printed
 set -o pipefail
 
 # ---- the checks that run inside the docker network (own image: curl + jq) --------------------------------------
@@ -84,7 +89,9 @@ COPY checks.sh /checks.sh
 EOF
 cat > tools/checks.sh <<'EOF'
 #!/bin/sh
-# usage: checks.sh functional | burst | other-client      (env: SERVER WEB WEBB ADMIN_PASSWORD)
+# usage: checks.sh functional | dental | burst | other-client     (env: SERVER WEB DENTAL UNKNOWN WEBB ADMIN_PASSWORD)
+# WEB is the hotel host (checkin.*), DENTAL the dental host (nhakhoa.*), UNKNOWN the same nginx under a Host it
+# does not serve.
 PASS=0; FAIL=0
 ok()   { PASS=$((PASS+1)); echo "PASS  $1"; }
 bad()  { FAIL=$((FAIL+1)); echo "FAIL  $1  ($2)"; }
@@ -99,9 +106,20 @@ has_header() { # name url-args...  : prints header value (lowercased compare of 
 }
 PUB=/api/v1/plugins/hotel/public
 HOTEL=/api/v1/plugins/hotel
+DPUB=/api/v1/plugins/dental/public
+DENT=/api/v1/plugins/dental
 CSP="default-src 'self'; img-src 'self' blob: data:; style-src 'self'; connect-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'"
 
 summary() { echo; echo "checks ($1): $PASS passed, $FAIL failed"; [ "$FAIL" -eq 0 ]; }
+
+login_admin() { # sets TOKEN (empty on failure) and login
+  for try in 1 2 3 4 5 6 7 8 9 10; do   # the bootstrap admin is created by a startup runner
+    login=$(curl -s -X POST $SERVER/api/v1/auth/login -H 'Content-Type: application/json' \
+      -d "{\"username\":\"smokeadmin\",\"password\":\"$ADMIN_PASSWORD\"}")
+    TOKEN=$(echo "$login" | jq -r '.data.accessToken // empty')
+    [ -n "$TOKEN" ] && break; sleep 3
+  done
+}
 
 case "$1" in
 functional)
@@ -204,6 +222,101 @@ functional)
   done
   summary functional
   ;;
+dental)
+  login_admin
+  [ -n "$TOKEN" ] && ok "admin login" || { bad "admin login" "no token"; summary dental; exit 1; }
+  auth="Authorization: Bearer $TOKEN"
+  js='Content-Type: application/json'
+  now=$(date +%s)
+  starts=$(date -u -d "@$((now + 86400))" +%Y-%m-%dT%H:%M:%SZ)
+  bk=$(curl -s -w '\n%{http_code}' -X POST $SERVER$DENT/appointments -H "$auth" -H "$js" \
+    -d "{\"newPatient\":{\"fullName\":\"Smoke Patient\",\"phone\":\"0912345678\",\"dateOfBirth\":\"1990-05-17\"},\"startsAt\":\"$starts\",\"durationMinutes\":30,\"dentist\":\"Dr Smoke\",\"reason\":\"checkup\"}")
+  expect "staff: appointment booked 201" 201 "$(echo "$bk" | tail -1)"
+  APPT=$(echo "$bk" | head -n -1 | jq -r '.data.id // empty')
+  [ -n "$APPT" ] || { bad "appointment id" "none"; summary dental; exit 1; }
+  lk=$(curl -s -w '\n%{http_code}' -X POST $SERVER$DENT/appointments/$APPT/visit-link -H "$auth")
+  expect "staff: visit link created 201" 201 "$(echo "$lk" | tail -1)"
+  URL=$(echo "$lk" | head -n -1 | jq -r '.data.url // empty'); VTOKEN="${URL#*#d/}"
+  [ -n "$URL" ] && [ "$VTOKEN" != "$URL" ] && [ -n "$VTOKEN" ] && ok "visit link has a #d/ token" || { bad "visit link has a #d/ token" "no url"; summary dental; exit 1; }
+  case "$URL" in https://nhakhoa.smoke.invalid/#d/*) ok "link uses dental.guest-base-url";; *) bad "link uses dental.guest-base-url" "unexpected prefix";; esac
+  vt="X-Visit-Token: $VTOKEN"
+
+  # ---- patient side through nginx on the dental host ----
+  sum=$(curl -s -w '\n%{http_code}' $DENTAL$DPUB/visit -H "$vt")
+  expect "dental host: GET summary 200" 200 "$(echo "$sum" | tail -1)"
+  expect "summary: open" true "$(echo "$sum" | head -n -1 | jq -r '.data.open')"
+  expect "summary: adult" false "$(echo "$sum" | head -n -1 | jq -r '.data.child')"
+  expect "summary: not yet submitted" false "$(echo "$sum" | head -n -1 | jq -r '.data.submitted')"
+  expect "summary: no-store passes" "no-store" "$(has_header cache-control $DENTAL$DPUB/visit -H "$vt")"
+  expect "dental host: made-up token -> 404" 404 "$(code $DENTAL$DPUB/visit -H 'X-Visit-Token: nope-nope')"
+  expect "dental host: no token -> 404" 404 "$(code $DENTAL$DPUB/visit)"
+  body='{"identity":{"idType":"PASSPORT","idNumber":"C7654321","fullName":"Jane Smith","dateOfBirth":"1990-05-17","nationality":"GB","address":null},"phone":"0912345678","allergies":{"none":true,"items":[],"otherText":null},"medicines":{"none":true,"text":null},"reason":{"code":"CHECKUP","text":null},"consent":true,"idScanId":null}'
+  sub=$(curl -s -w '\n%{http_code}' -X POST $DENTAL$DPUB/visit/form -H "$vt" -H "$js" -d "$body")
+  expect "dental host: passport form 201" 201 "$(echo "$sub" | tail -1)"
+  echo "$sub" | head -n -1 | grep -q 'C7654321' && bad "public response hides the document number" "echoed" || ok "public response hides the document number"
+  expect "summary: submitted after the form" true "$(curl -s $DENTAL$DPUB/visit -H "$vt" | jq -r '.data.submitted')"
+  blank='{"identity":{"idType":"PASSPORT","idNumber":"C7654321","fullName":"Jane Smith","dateOfBirth":"1990-05-17","nationality":"GB","address":null},"phone":"0912345678","medicines":{"none":true,"text":null},"reason":{"code":"CHECKUP","text":null},"consent":true,"idScanId":null}'
+  expect "dental host: untouched allergy question -> 400" 400 "$(code -X POST $DENTAL$DPUB/visit/form -H "$vt" -H "$js" -d "$blank")"
+
+  # staff read-back over the server port
+  pv=$(curl -s -w '\n%{http_code}' $SERVER$DENT/appointments/$APPT/previsit -H "$auth")
+  expect "staff: previsit read 200" 200 "$(echo "$pv" | tail -1)"
+  pj=$(echo "$pv" | head -n -1)
+  expect "staff read-back: document number" C7654321 "$(echo "$pj" | jq -r '.data.identity.idNumber')"
+  expect "staff read-back: allergies none" true "$(echo "$pj" | jq -r '.data.allergies.none')"
+  expect "staff read-back: medicines none" true "$(echo "$pj" | jq -r '.data.medicines.none')"
+  expect "staff read-back: reason" CHECKUP "$(echo "$pj" | jq -r '.data.reason.code')"
+  expect "staff read-back: consent recorded" true "$(echo "$pj" | jq -r '.data.consentAt != null')"
+
+  # ---- the hosts stay apart ----
+  expect "dental host: hotel public path -> 404" 404 "$(code $DENTAL$PUB/checkin -H 'X-Checkin-Token: nope')"
+  expect "hotel host: dental public path -> 404" 404 "$(code $WEB$DPUB/visit -H "$vt")"
+  expect "hotel host: dental public path without token -> 404" 404 "$(code $WEB$DPUB/visit)"
+  expect "unknown host: / -> 404" 404 "$(code $UNKNOWN/)"
+  expect "unknown host: /index.html -> 404" 404 "$(code $UNKNOWN/index.html)"
+  expect "unknown host: hotel public path -> 404" 404 "$(code $UNKNOWN$PUB/checkin -H 'X-Checkin-Token: nope')"
+  expect "unknown host: dental public path -> 404" 404 "$(code $UNKNOWN$DPUB/visit -H "$vt")"
+  expect "forged Host on the hotel port: / -> 404" 404 "$(code $WEB/ -H 'Host: evil.example')"
+  expect "forged Host on the hotel port: dental path -> 404" 404 "$(code $WEB$DPUB/visit -H 'Host: evil.example' -H "$vt")"
+  expect "forged dental Host reaches the dental API" 200 "$(code $WEB$DPUB/visit -H 'Host: nhakhoa.forged.example' -H "$vt")"
+  expect "dental host: staff path -> 404" 404 "$(code $DENTAL$DENT/appointments -H "$auth")"
+  expect "dental host: staff visit-link -> 404" 404 "$(code -X POST $DENTAL$DENT/appointments/$APPT/visit-link -H "$auth")"
+  expect "dental host: staff previsit -> 404" 404 "$(code $DENTAL$DENT/appointments/$APPT/previsit -H "$auth")"
+  expect "dental host: /api/v1/auth/login -> 404" 404 "$(code -X POST $DENTAL/api/v1/auth/login -H "$js" -d '{}')"
+  expect "dental host: /api -> 404" 404 "$(code $DENTAL/api)"
+  expect "dental host: /api/ -> 404" 404 "$(code $DENTAL/api/)"
+  expect "dental host: public without trailing slash -> 404" 404 "$(code $DENTAL$DENT/public)"
+  expect "dental host: PUT on public -> 403" 403 "$(code -X PUT $DENTAL$DPUB/visit -H "$vt")"
+  expect "dental host: DELETE on public -> 403" 403 "$(code -X DELETE $DENTAL$DPUB/visit -H "$vt")"
+  expect "hotel host: GET / is the SPA" 200 "$(code $WEB/)"
+  expect "dental host: GET / is the SPA" 200 "$(code $DENTAL/)"
+  expect "dental host: SPA fallback for a client route" 200 "$(code $DENTAL/some/route)"
+  expect "dental host: missing asset is 404" 404 "$(code $DENTAL/assets/missing.js)"
+  expect "dental host: index.html no-store" "no-store" "$(has_header cache-control $DENTAL/)"
+  expect "dental host: no Set-Cookie from the public API" "" "$(has_header set-cookie $DENTAL$DPUB/visit -H "$vt")"
+
+  # security headers on every kind of response on every host (the unknown host included)
+  for base in $DENTAL $UNKNOWN; do
+    for path in / /nope /assets/missing.js $DPUB/visit /api/v1/x; do
+      h=$(hdr $base$path -H "$vt")
+      echo "$h" | grep -qi '^x-robots-tag: noindex' && ok "X-Robots-Tag on $base$path" || bad "X-Robots-Tag on $base$path" "missing"
+      echo "$h" | grep -qi '^referrer-policy: no-referrer' && ok "Referrer-Policy on $base$path" || bad "Referrer-Policy on $base$path" "missing"
+      echo "$h" | grep -qi '^x-content-type-options: nosniff' && ok "nosniff on $base$path" || bad "nosniff on $base$path" "missing"
+      echo "$h" | grep -qi '^permissions-policy: camera=(self), geolocation=(), microphone=()' && ok "Permissions-Policy on $base$path" || bad "Permissions-Policy on $base$path" "missing"
+      got=$(echo "$h" | grep -i '^content-security-policy:' | sed 's/^[^:]*: *//')
+      expect "CSP on $base$path (exactly one, as specified)" "$CSP" "$got"
+    done
+  done
+
+  # traversal table on the dental host
+  for p in "$DPUB/..;/auth/login" "$DPUB/%2e%2e%2f.." "$DPUB/..%2fappointments" "$DPUB/%2E%2E/" \
+           "$DPUB//../appointments" "$DPUB/..\\appointments" "$DPUB/..%5cappointments" \
+           "$DPUB/%2e%2e/%2e%2e/auth/login" "$DPUB/x%3b/../../appointments" "$DPUB/../../hotel/public/checkin"; do
+    c=$(curl -s -g -o /dev/null -w '%{http_code}' --path-as-is "$DENTAL$p" -H "$auth")
+    case "$c" in 404|400) ok "traversal refused ($c): $p";; *) bad "traversal refused: $p" "got $c";; esac
+  done
+  summary dental
+  ;;
 burst|rotate|fixed)
   # burst URL : every request has a different forged CF-Connecting-IP (+ forged X-Client-IP and secret)
   # fixed URL : every request has the same CF-Connecting-IP
@@ -234,6 +347,13 @@ echo)
   want="$(hostname -i | tr -d ' ')|$CRM_PUBLIC_PROXY_SECRET||||||||/api/v1/plugins/hotel/public/checkin"
   if [ "$got" = "$want" ]; then ok "header echo: exactly the nginx-set values, forwarding headers, Authorization and Cookie empty, normalised path"
   else bad "header echo" "upstream saw: $(echo "$got" | sed "s|$CRM_PUBLIC_PROXY_SECRET|<secret>|")"; fi
+  gotd=$(curl -s $WEBDE$DPUB/visit -H 'X-Client-IP: 1.1.1.1' -H 'X-Guest-Proxy-Secret: forged1' -H 'Forwarded: for=9.9.9.9' \
+    -H 'X-Forwarded-For: 8.8.8.8' -H 'X-Forwarded-Host: evil.example' -H 'X-Forwarded-Proto: http' \
+    -H 'X-Forwarded-Port: 1' -H 'X-Real-IP: 7.7.7.7' -H 'CF-Connecting-IP: 6.6.6.6' \
+    -H 'Authorization: Bearer forged' -H 'Cookie: sid=forged')
+  wantd="$(hostname -i | tr -d ' ')|$CRM_PUBLIC_PROXY_SECRET||||||||/api/v1/plugins/dental/public/visit"
+  if [ "$gotd" = "$wantd" ]; then ok "dental header echo: exactly the nginx-set values, normalised path"
+  else bad "dental header echo" "upstream saw: $(echo "$gotd" | sed "s|$CRM_PUBLIC_PROXY_SECRET|<secret>|")"; fi
   summary echo
   ;;
 other-client)
@@ -262,21 +382,24 @@ for i in $(seq 1 30); do docker exec "$(c db)" pg_isready -U foundation >/dev/nu
 LIMIT=30
 docker run -d --name "$(c server)" --network "$NET" --network-alias server \
   -e DB_URL=jdbc:postgresql://db:5432/foundation -e DB_USER=foundation -e DB_PASS="$PG_PASSWORD" \
-  -e JWT_SECRET -e FIELD_ENC_KEY -e CRM_PUBLIC_PROXY_SECRET \
+  -e JWT_SECRET -e FIELD_ENC_KEY -e CRM_PUBLIC_PROXY_SECRET -e DENTAL_FIELD_KEY \
   -e BOOTSTRAP_ADMIN_USERNAME=smokeadmin -e BOOTSTRAP_ADMIN_EMAIL=smokeadmin@example.invalid -e BOOTSTRAP_ADMIN_PASSWORD="$ADMIN_PASSWORD" \
   -e CRM_PUBLIC_RATE_LIMIT_PER_MINUTE=$LIMIT \
   -e HOTEL_GUEST_BASE_URL=https://checkin.smoke.invalid -e HOTEL_DISPLAY_NAME=SmokeHotel \
+  -e DENTAL_PUBLIC_ENABLED=true -e DENTAL_GUEST_BASE_URL=https://nhakhoa.smoke.invalid -e DENTAL_DISPLAY_NAME=SmokeClinic \
   "$SERVER_IMG" >/dev/null || exit 1
+# Hosts: checkin.<name> is the hotel host, nhakhoa.<name> the dental host (both match the image's default
+# HOTEL_HOST/DENTAL_HOST through the checkin.* / nhakhoa.* wildcards), the bare <name> is a Host nobody serves.
 # web : image default (REAL_IP_FROM unset -> 127.0.0.1/32, trusts no proxy)
 # webb: REAL_IP_FROM=127.0.0.1/32 set explicitly
 # webc: REAL_IP_FROM = this network's subnet (positive control: CF-Connecting-IP IS trusted from here)
 # webe: like web but its upstream is a header-echo server instead of the CRM
 SUBNET=$(docker network inspect "$NET" -f '{{(index .IPAM.Config 0).Subnet}}')
-docker run -d --name "$(c web)" --network "$NET" --network-alias web \
+docker run -d --name "$(c web)" --network "$NET" --network-alias web --network-alias checkin.web --network-alias nhakhoa.web \
   -e CRM_SERVER_URL=http://server:8080 -e CRM_PUBLIC_PROXY_SECRET "$WEB_IMG" >/dev/null || exit 1
-docker run -d --name "$(c webb)" --network "$NET" --network-alias webb \
+docker run -d --name "$(c webb)" --network "$NET" --network-alias webb --network-alias checkin.webb \
   -e CRM_SERVER_URL=http://server:8080 -e CRM_PUBLIC_PROXY_SECRET -e REAL_IP_FROM=127.0.0.1/32 "$WEB_IMG" >/dev/null || exit 1
-docker run -d --name "$(c webc)" --network "$NET" --network-alias webc \
+docker run -d --name "$(c webc)" --network "$NET" --network-alias webc --network-alias checkin.webc \
   -e CRM_SERVER_URL=http://server:8080 -e CRM_PUBLIC_PROXY_SECRET -e REAL_IP_FROM="$SUBNET" "$WEB_IMG" >/dev/null || exit 1
 cat > echo.conf <<'ECHOEOF'
 server {
@@ -289,16 +412,19 @@ server {
 ECHOEOF
 docker run -d --name "$(c echo)" --network "$NET" --network-alias echo \
   -v "$PWD/echo.conf":/etc/nginx/conf.d/default.conf:ro nginxinc/nginx-unprivileged:1.27-alpine >/dev/null || exit 1
-docker run -d --name "$(c webe)" --network "$NET" --network-alias webe \
+docker run -d --name "$(c webe)" --network "$NET" --network-alias webe --network-alias checkin.webe --network-alias nhakhoa.webe \
   -e CRM_SERVER_URL=http://echo:8080 -e CRM_PUBLIC_PROXY_SECRET "$WEB_IMG" >/dev/null || exit 1
 for n in tools1 tools2 tools3 tools4 tools5; do
   docker run -d --name "$(c $n)" --network "$NET" -e ADMIN_PASSWORD -e LIMIT -e CRM_PUBLIC_PROXY_SECRET \
-    -e SERVER=http://server:8080 -e WEB=http://web:8080 -e WEBB=http://webb:8080 -e WEBE=http://webe:8080 \
+    -e SERVER=http://server:8080 -e WEB=http://checkin.web:8080 -e DENTAL=http://nhakhoa.web:8080 -e UNKNOWN=http://web:8080 \
+    -e WEBB=http://checkin.webb:8080 -e WEBE=http://checkin.webe:8080 -e WEBDE=http://nhakhoa.webe:8080 \
+    -e DENTAL_FIELD_KEY \
     --entrypoint sleep "$TOOLS_IMG" 3600 >/dev/null || exit 1
 done
 
-# Admin permissions of the hotel plugin are granted when it starts; wait for that before anyone logs in.
-for i in $(seq 1 120); do docker logs "$(c server)" 2>&1 | grep -q 'Plugin com.crm.hotel .* active under' && break; sleep 2; done
+# Admin permissions of the hotel and dental plugins are granted when it starts; wait for that before anyone logs in.
+for i in $(seq 1 120); do docker logs "$(c server)" 2>&1 | grep -q 'Plugin com.crm.hotel .* active under' && \
+    docker logs "$(c server)" 2>&1 | grep -q 'Plugin com.crm.dental .* active under' && break; sleep 2; done
 
 run_checks() { local who=$1; shift; docker exec -e LIMIT=$LIMIT "$(c "$who")" sh /checks.sh "$@"; }
 record() { tee "out-$1.txt"; return "${PIPESTATUS[0]}"; }   # keep the check's exit status through tee
@@ -324,19 +450,29 @@ step "startup guards (driver side)"
   guard "CRM_SERVER_URL with a trailing newline" -e "CRM_SERVER_URL=http://server:8080"$'\n' -e CRM_PUBLIC_PROXY_SECRET
   guard "secret with an embedded newline" -e CRM_SERVER_URL=http://server:8080 -e "CRM_PUBLIC_PROXY_SECRET=${CRM_PUBLIC_PROXY_SECRET}"$'\nx'
   guard "REAL_IP_FROM with a trailing newline" -e CRM_SERVER_URL=http://server:8080 -e CRM_PUBLIC_PROXY_SECRET -e "REAL_IP_FROM=127.0.0.1/32"$'\n'
+  guard "HOTEL_HOST with a path" -e CRM_SERVER_URL=http://server:8080 -e CRM_PUBLIC_PROXY_SECRET -e HOTEL_HOST=checkin.example/x
+  guard "HOTEL_HOST with a space" -e CRM_SERVER_URL=http://server:8080 -e CRM_PUBLIC_PROXY_SECRET -e "HOTEL_HOST=checkin.example x"
+  guard "HOTEL_HOST with a trailing newline" -e CRM_SERVER_URL=http://server:8080 -e CRM_PUBLIC_PROXY_SECRET -e "HOTEL_HOST=checkin.example"$'\n'
+  guard "HOTEL_HOST empty" -e CRM_SERVER_URL=http://server:8080 -e CRM_PUBLIC_PROXY_SECRET -e HOTEL_HOST=
+  guard "DENTAL_HOST with a semicolon" -e CRM_SERVER_URL=http://server:8080 -e CRM_PUBLIC_PROXY_SECRET -e 'DENTAL_HOST=nhakhoa.example; x'
+  guard "DENTAL_HOST with a leading hyphen label" -e CRM_SERVER_URL=http://server:8080 -e CRM_PUBLIC_PROXY_SECRET -e DENTAL_HOST=-nhakhoa.example
+  guard "DENTAL_HOST with an empty label" -e CRM_SERVER_URL=http://server:8080 -e CRM_PUBLIC_PROXY_SECRET -e DENTAL_HOST=nhakhoa..example
+  guard "both hosts the same" -e CRM_SERVER_URL=http://server:8080 -e CRM_PUBLIC_PROXY_SECRET -e HOTEL_HOST=same.example -e DENTAL_HOST=same.example
   guard "REAL_IP_FROM not an address" -e CRM_SERVER_URL=http://server:8080 -e CRM_PUBLIC_PROXY_SECRET -e 'REAL_IP_FROM=0.0.0.0/0; x'
 } | tee out-guards.txt
 
 step "functional checks (client: tools1)"
 run_checks tools1 functional | record functional || fail=1
+step "dental pre-visit path and host separation (client: tools1)"
+run_checks tools1 dental | record dental || fail=1
 step "forged CF-Connecting-IP, image default (no REAL_IP_FROM) (client: tools2, limit $LIMIT/min)"
-run_checks tools2 burst http://web:8080 "default image" | record burst-default || fail=1
+run_checks tools2 burst http://checkin.web:8080 "default image" | record burst-default || fail=1
 step "forged CF-Connecting-IP, REAL_IP_FROM=127.0.0.1/32 (client: tools3)"
-run_checks tools3 burst http://webb:8080 "REAL_IP_FROM=127.0.0.1/32" | record burst-explicit || fail=1
+run_checks tools3 burst http://checkin.webb:8080 "REAL_IP_FROM=127.0.0.1/32" | record burst-explicit || fail=1
 step "positive control: proxy trusting this network, rotating CF-Connecting-IP (client: tools4)"
-run_checks tools4 rotate http://webc:8080 | record rotate || fail=1
+run_checks tools4 rotate http://checkin.webc:8080 | record rotate || fail=1
 step "positive control: proxy trusting this network, one CF-Connecting-IP (client: tools5)"
-run_checks tools5 fixed http://webc:8080 "trusted proxy, fixed CF-Connecting-IP" | record fixed || fail=1
+run_checks tools5 fixed http://checkin.webc:8080 "trusted proxy, fixed CF-Connecting-IP" | record fixed || fail=1
 step "header echo through a throwaway upstream (client: tools1)"
 run_checks tools1 echo | record echo || fail=1
 step "other client keeps its own bucket (client: tools1)"

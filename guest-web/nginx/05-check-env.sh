@@ -43,4 +43,22 @@ esac
 addr=${real_ip_from%%/*}
 case "$addr" in ''|*[!0-9A-Fa-f:.]*) fail "$msg" ;; esac
 
+# HOTEL_HOST / DENTAL_HOST: DNS names (labels of [A-Za-z0-9-], not starting or ending with "-"), and different
+dns_name() { # name value
+  local name=$1 v=$2 label rest
+  local msg="$name must be a DNS name (letters, digits, hyphens, dots)"
+  case "$v" in ''|*[!A-Za-z0-9.-]*|.*|*.|*..*) fail "$msg" ;; esac
+  [ "${#v}" -le 253 ] || fail "$msg"
+  rest=$v
+  while :; do
+    label=${rest%%.*}
+    case "$label" in ''|-*|*-) fail "$msg" ;; esac
+    [ "${#label}" -le 63 ] || fail "$msg"
+    case "$rest" in *.*) rest=${rest#*.} ;; *) break ;; esac
+  done
+}
+dns_name HOTEL_HOST "${HOTEL_HOST:-}"
+dns_name DENTAL_HOST "${DENTAL_HOST:-}"
+[ "${HOTEL_HOST}" != "${DENTAL_HOST}" ] || fail "HOTEL_HOST and DENTAL_HOST must differ"
+
 echo "guest-web: trusting CF-Connecting-IP only from ${REAL_IP_FROM}"

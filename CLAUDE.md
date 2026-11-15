@@ -23,6 +23,10 @@ Two artifacts from one repo: a **Spring Boot server** (deployed to home-lab k8s)
 - **`guest-web/`** (React page + nginx-unprivileged, port 8080) is built by the `build_guest_web` CI job → `10.0.0.7:30500/crm-guest-web:latest`, NodePort 30084. Env: `CRM_SERVER_URL`, `CRM_PUBLIC_PROXY_SECRET` (also set on the server), `REAL_IP_FROM` (tunnel connector's exact /32; default trusts no proxy).
 - **Public URL:** `checkin.mathisterben.org` via the Cloudflare Tunnel → `http://<node>:30084`; nginx exposes only `/api/v1/plugins/hotel/public/`.
 
+## Dental pre-visit (dental 0.1.0, switched off)
+
+- Plugin `server/plugins/dental`, shipped in the server image with `dental.public.enabled=false` (public routes 404). The same `guest-web` container serves `nhakhoa.mathisterben.org` (env `DENTAL_HOST`; `HOTEL_HOST` for the hotel); nginx proxies only the dental public API on that host. Switch-on checklist: README "Dental pre-visit".
+
 ## Desktop deployment (NOT k8s)
 
 - `.github/workflows/release.yml` builds Tauri binaries on `v*.*.*` tags → **GitHub Releases**.

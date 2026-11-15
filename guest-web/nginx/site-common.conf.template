@@ -1,0 +1,37 @@
+# Server-level parts shared by the hotel and dental hosts (included by default.conf.template; rendered by envsubst).
+server_tokens off;
+
+# Only the tunnel connector may name the client (CF-Connecting-IP); anyone else's header is ignored.
+set_real_ip_from ${REAL_IP_FROM};
+real_ip_header CF-Connecting-IP;
+real_ip_recursive off;
+
+root /usr/share/nginx/html;
+index index.html;
+
+include /etc/nginx/snippets/security-headers.conf;
+
+# Path-parameter and backslash tricks (";", "%3b", "%5c", "\\") never belong in this site's URLs.
+if ($request_uri ~* "(;|%3b|%5c|\\\\)") {
+    return 404;
+}
+
+# Everything else under /api (staff API, auth, actuator under /api, the other host's public API, ...) does not
+# exist here.
+location ^~ /api {
+    return 404;
+}
+
+# Hashed build output: cache for a year. A missing asset is a 404, never the SPA page.
+location ^~ /assets/ {
+    try_files $uri =404;
+    add_header Cache-Control "public, max-age=31536000, immutable" always;
+    include /etc/nginx/snippets/security-headers.conf;
+}
+
+# The SPA shell and every client route: never cached, so a new build is picked up at once.
+location / {
+    try_files $uri /index.html;
+    add_header Cache-Control "no-store" always;
+    include /etc/nginx/snippets/security-headers.conf;
+}
