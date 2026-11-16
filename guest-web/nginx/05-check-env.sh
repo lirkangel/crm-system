@@ -59,6 +59,7 @@ dns_name() { # name value
 }
 dns_name HOTEL_HOST "${HOTEL_HOST:-}"
 dns_name DENTAL_HOST "${DENTAL_HOST:-}"
-[ "${HOTEL_HOST}" != "${DENTAL_HOST}" ] || fail "HOTEL_HOST and DENTAL_HOST must differ"
+h1=$(printf %s "$HOTEL_HOST" | tr A-Z a-z); h2=$(printf %s "$DENTAL_HOST" | tr A-Z a-z)
+[ "$h1" != "$h2" ] || fail "HOTEL_HOST and DENTAL_HOST must differ"
 
 echo "guest-web: trusting CF-Connecting-IP only from ${REAL_IP_FROM}"

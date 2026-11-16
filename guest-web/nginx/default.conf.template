@@ -3,9 +3,9 @@
 # (05-check-env.sh enforces it, and that both hosts are DNS names).
 # This is the only internet-facing piece: it serves the pages and proxies ONE public API per host, nothing else.
 #
-#   HOTEL_HOST   (checkin.*)  -> /api/v1/plugins/hotel/public/   only
-#   DENTAL_HOST  (nhakhoa.*)  -> /api/v1/plugins/dental/public/  only
-#   any other Host            -> 404 for everything, "/" included
+#   HOTEL_HOST   (exact name)  -> /api/v1/plugins/hotel/public/   only
+#   DENTAL_HOST  (exact name)  -> /api/v1/plugins/dental/public/  only
+#   any other Host             -> 404 for everything, "/" included, except /healthz (the k8s probe: pod IP as Host)
 #
 # What the two hosts share (hardening, static pages, the catch-all /api 404) lives in two snippets so the blocks
 # cannot drift: site-common.conf (server level) and proxy-common.conf (inside the proxied location).
@@ -15,6 +15,13 @@ server {
     server_name _;
     server_tokens off;
     include /etc/nginx/snippets/security-headers.conf;
+    # Liveness/readiness probe: answers with any Host.
+    location = /healthz {
+        access_log off;
+        default_type text/plain;
+        return 200 "ok";
+        include /etc/nginx/snippets/security-headers.conf;
+    }
     # An unknown Host is not served at all: no page, no API.
     location / {
         return 404;
@@ -23,7 +30,7 @@ server {
 
 server {
     listen 8080;
-    server_name ${HOTEL_HOST} checkin.*;
+    server_name ${HOTEL_HOST};
     include /etc/nginx/conf.d/snippets/site-common.conf;
 
     # ^~ beats every regex location, and the URI is normalised before matching, so /public/../reservations
@@ -43,7 +50,7 @@ server {
 
 server {
     listen 8080;
-    server_name ${DENTAL_HOST} nhakhoa.*;
+    server_name ${DENTAL_HOST};
     include /etc/nginx/conf.d/snippets/site-common.conf;
 
     location ^~ /api/v1/plugins/dental/public/ {

@@ -21,7 +21,7 @@ Two artifacts from one repo: a **Spring Boot server** (deployed to home-lab k8s)
 ## Guest check-in web (hotel 0.4.0)
 
 - **`guest-web/`** (React page + nginx-unprivileged, port 8080) is built by the `build_guest_web` CI job → `10.0.0.7:30500/crm-guest-web:latest`, NodePort 30084. Env: `CRM_SERVER_URL`, `CRM_PUBLIC_PROXY_SECRET` (also set on the server), `REAL_IP_FROM` (tunnel connector's exact /32; default trusts no proxy).
-- **Public URL:** `checkin.mathisterben.org` via the Cloudflare Tunnel → `http://<node>:30084`; nginx exposes only `/api/v1/plugins/hotel/public/`.
+- **Public URL:** `checkin.mathisterben.org` via the Cloudflare Tunnel → `http://10.0.0.11:80` (Nginx Proxy Manager, forwards the original Host) → `10.0.0.7:30084`. nginx selects the site by exact Host (`HOTEL_HOST`, `DENTAL_HOST`) and exposes only that host's public API; any other Host is 404 except `/healthz`. The k8s probe must hit `/healthz` (not `/`, which a pod-IP Host would 404). `REAL_IP_FROM` is NPM's `10.0.0.11/32` with `externalTrafficPolicy: Local` on the Service (Tailscale clients also appear as 10.0.0.11: known, accepted).
 
 ## Dental pre-visit (dental 0.1.0, switched off)
 

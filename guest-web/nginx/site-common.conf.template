@@ -16,6 +16,14 @@ if ($request_uri ~* "(;|%3b|%5c|\\\\)") {
     return 404;
 }
 
+# Health probe, same answer as on the default server.
+location = /healthz {
+    access_log off;
+    default_type text/plain;
+    return 200 "ok";
+    include /etc/nginx/snippets/security-headers.conf;
+}
+
 # Everything else under /api (staff API, auth, actuator under /api, the other host's public API, ...) does not
 # exist here.
 location ^~ /api {

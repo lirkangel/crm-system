@@ -39,7 +39,7 @@ F-EPIC-1 (scaffold) ─► F-EPIC-2 (auth UI) ─► F-EPIC-3 (data) ─► F-EP
 
 > **State (2026-11-14):** guest online check-in (H-EPIC-4, plugin 0.4.0 and `guest-web/`) is done and passes the gate; going live (manifests, secret, Cloudflare hostname) is a separate step. Full gate: 610 tests (525 foundation + 85 hotel unit), 0 failures, 0 skipped; guest-web 36 tests; docker-host smoke 93 checks.
 
-> **State (2026-11-15):** the dental pre-visit slice (D-EPIC-7, plugin `dental` 0.1.0 and the dental flow in `guest-web/`) is done and passes the gate; it ships switched off (`dental.public.enabled=false`) and going live is a separate step. Full gate: 732 tests (601 foundation + 45 dental, 46 hotel and 40 cccd-scan unit), 0 failures, 0 skipped; guest-web 104 tests; docker-host smoke 212 checks.
+> **State (2026-11-15):** the dental pre-visit slice (D-EPIC-7, plugin `dental` 0.1.0 and the dental flow in `guest-web/`) is done and passes the gate; it ships switched off (`dental.public.enabled=false`) and going live is a separate step. Full gate: 732 tests (601 foundation + 45 dental, 46 hotel and 40 cccd-scan unit), 0 failures, 0 skipped; guest-web 104 tests; docker-host smoke 236 checks.
 
 ## B-EPIC-1 — Identity & Auth
 *Goal: a usable, rotation-safe token contract.*
@@ -424,7 +424,7 @@ F-EPIC-1 (scaffold) ─► F-EPIC-2 (auth UI) ─► F-EPIC-3 (data) ─► F-EP
 ### DN107 — Host-routed guest pages, smoke and docs · `DONE` · P0 · (needs DN105, DN106)
 **Expected:** one container serves both hosts without letting either reach the other's API, and the whole path is proven on the docker-host.
 **Acceptance:** nginx has one `server` per host (`HOTEL_HOST`, default `checkin.mathisterben.org`, proxies only the hotel public API; `DENTAL_HOST`, default `nhakhoa.mathisterben.org`, only the dental one; any other Host is 404 for everything); both keep the hardening (normalised-path proxy, `;`/`%3b`/`%5c` guard, explicit secret and client address with forwarding headers, `Authorization` and `Cookie` blanked, realip from `REAL_IP_FROM` only, 11 MB body limit, no access log on the API, security headers and CSP on every response); `05-check-env.sh` validates both hosts as DNS names and that they differ; the smoke books an appointment, makes a link, reads the summary, submits a passport form with `none: true` allergies and reads it back, and checks the cross-host and unknown-host 404s; README "Dental pre-visit (dental 0.1.0)" holds the switch-on checklist.
-**Done:** `guest-web/nginx/` (`default.conf.template`, `site-common.conf.template`, `proxy-common.conf.template`, `05-check-env.sh`), `Dockerfile`, `scripts/smoke-guest-checkin.sh` (212 checks), README, CLAUDE.md. Go-live (flag, key, Dentist role, Cloudflare and NPM hostnames) is a separate step.
+**Done:** `guest-web/nginx/` (`default.conf.template`, `site-common.conf.template`, `proxy-common.conf.template`, `05-check-env.sh`), `Dockerfile`, `scripts/smoke-guest-checkin.sh` (236 checks), README, CLAUDE.md. Go-live (flag, key, Dentist role, Cloudflare and NPM hostnames) is a separate step.
 
 **Not in this slice:** desktop screens for dental, sending the link by SMS or email, the real consent text and retention decision (legal sign-off), key rotation for `DENTAL_FIELD_KEY`.
 

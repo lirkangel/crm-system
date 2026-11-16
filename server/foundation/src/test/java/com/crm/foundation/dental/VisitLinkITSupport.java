@@ -51,8 +51,11 @@ abstract class VisitLinkITSupport extends DentalITSupport {
         return UUID.fromString(view.path("id").asText());
     }
 
+    /** One counter per JVM: every call gets its own day, so appointments of different tests never share a day. */
+    private static final java.util.concurrent.atomic.AtomicLong NEXT_DAY = new java.util.concurrent.atomic.AtomicLong(3);
+
     protected static LocalDate futureDay() {
-        return LocalDate.now().plusDays(3 + ThreadLocalRandom.current().nextLong(300));
+        return LocalDate.now().plusDays(NEXT_DAY.getAndIncrement());
     }
 
     protected static String tag() {

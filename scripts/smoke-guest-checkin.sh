@@ -10,8 +10,8 @@
 #   - nothing from the staff side is reachable (every other /api path is 404),
 #   - security headers are on every response, caching rules hold,
 #   - a forged CF-Connecting-IP / X-Client-IP cannot pick the rate-limit bucket (real_ip_only_from_tunnel).
-# Hosts are reached through docker network aliases: checkin.<name> (hotel), nhakhoa.<name> (dental), and the bare
-# <name> (an unknown Host). Everything (containers, network, images, temp dir) is removed on exit. Nothing is pushed to any registry.
+# Hosts are reached through docker network aliases: checkin.smoke.test (hotel), nhakhoa.smoke.test (dental, both exact HOTEL_HOST/DENTAL_HOST), and the bare
+# web alias (an unknown Host). Everything (containers, network, images, temp dir) is removed on exit. Nothing is pushed to any registry.
 # Secrets are random per run and never printed.
 #
 # Usage:  scripts/smoke-guest-checkin.sh
@@ -25,7 +25,14 @@ ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 RUN_ID="smoke$(date +%s)$$"
 REMOTE_DIR="/root/crm-$RUN_ID"
 
-SSH_OPTS=(-o StrictHostKeyChecking=no -o ConnectTimeout=10)
+SSH_OPTS=(-o StrictHostKeyChecking=no -o ConnectTimeout=10 -o ServerAliveInterval=15 -o ServerAliveCountMax=4)
+# A hung upload or driver must not hang the smoke: both are bounded (timeout/gtimeout when present; the ssh keepalive
+# above covers the rest) and a timeout cleans the host up and fails.
+TMO=$(command -v timeout || command -v gtimeout || true)
+tmo() { local secs=$1; shift; if [[ -n "$TMO" ]]; then "$TMO" "$secs" "$@"; else "$@"; fi; }
+cleanup_remote() {
+  "${ssh_cmd[@]}" "$HOST" "for n in \$(docker ps -aq --filter name='$RUN_ID-'); do docker rm -fv \$n; done; docker network rm 'net-$RUN_ID'; docker rmi -f 'crm-server-$RUN_ID' 'crm-guest-web-$RUN_ID' 'crm-smoke-tools-$RUN_ID'; rm -rf '$REMOTE_DIR'" >/dev/null 2>&1
+}
 if [[ -n "${HOMELAB_SSH_PASSPHRASE:-}" ]]; then
   export SSHPASS="$HOMELAB_SSH_PASSPHRASE"
   ssh_cmd=(sshpass -P passphrase -e ssh "${SSH_OPTS[@]}")
@@ -41,14 +48,14 @@ fi
 # Ship the sources (no build output, no node_modules, no extended attributes).
 export COPYFILE_DISABLE=1
 if ! tar --no-xattrs --exclude='target' --exclude='node_modules' --exclude='dist' -C "$ROOT_DIR" -cf - server guest-web \
-  | "${ssh_cmd[@]}" "$HOST" "rm -rf '$REMOTE_DIR' && mkdir -p '$REMOTE_DIR' && tar -xf - -C '$REMOTE_DIR'"; then
-  echo "smoke: failed to upload sources to $HOST" >&2
-  "${ssh_cmd[@]}" "$HOST" "rm -rf '$REMOTE_DIR'" >/dev/null 2>&1
+  | tmo 300 "${ssh_cmd[@]}" "$HOST" "rm -rf '$REMOTE_DIR' && mkdir -p '$REMOTE_DIR' && tar -xf - -C '$REMOTE_DIR'"; then
+  echo "smoke: failed to upload sources to $HOST (or the upload timed out)" >&2
+  cleanup_remote
   exit 255
 fi
 
 # The remote driver runs with RUN_ID/REMOTE_DIR in its environment; it tears everything down itself (trap).
-"${ssh_cmd[@]}" "$HOST" "RUN_ID='$RUN_ID' REMOTE_DIR='$REMOTE_DIR' bash -s" <<'REMOTE_DRIVER'
+tmo 2400 "${ssh_cmd[@]}" "$HOST" "RUN_ID='$RUN_ID' REMOTE_DIR='$REMOTE_DIR' bash -s" <<'REMOTE_DRIVER'
 set -uo pipefail
 cd "$REMOTE_DIR" || exit 255
 
@@ -56,7 +63,7 @@ NET="net-$RUN_ID"
 SERVER_IMG="crm-server-$RUN_ID"
 WEB_IMG="crm-guest-web-$RUN_ID"
 TOOLS_IMG="crm-smoke-tools-$RUN_ID"
-CONTAINERS=(db server web webb webc webe echo tools1 tools2 tools3 tools4 tools5)
+CONTAINERS=(db server web webb webc webe echo tools1 tools2 tools3 tools4 tools5 tools6)
 VOL_BEFORE=$(docker volume ls -q | wc -l)
 c() { echo "$RUN_ID-$1"; }
 
@@ -90,7 +97,7 @@ EOF
 cat > tools/checks.sh <<'EOF'
 #!/bin/sh
 # usage: checks.sh functional | dental | burst | other-client     (env: SERVER WEB DENTAL UNKNOWN WEBB ADMIN_PASSWORD)
-# WEB is the hotel host (checkin.*), DENTAL the dental host (nhakhoa.*), UNKNOWN the same nginx under a Host it
+# WEB is the hotel host (checkin.smoke.test), DENTAL the dental host (nhakhoa.smoke.test), UNKNOWN the same nginx under a Host it
 # does not serve.
 PASS=0; FAIL=0
 ok()   { PASS=$((PASS+1)); echo "PASS  $1"; }
@@ -278,7 +285,40 @@ dental)
   expect "unknown host: dental public path -> 404" 404 "$(code $UNKNOWN$DPUB/visit -H "$vt")"
   expect "forged Host on the hotel port: / -> 404" 404 "$(code $WEB/ -H 'Host: evil.example')"
   expect "forged Host on the hotel port: dental path -> 404" 404 "$(code $WEB$DPUB/visit -H 'Host: evil.example' -H "$vt")"
-  expect "forged dental Host reaches the dental API" 200 "$(code $WEB$DPUB/visit -H 'Host: nhakhoa.forged.example' -H "$vt")"
+  expect "wildcard-style dental Host on the hotel port -> 404" 404 "$(code $WEB$DPUB/visit -H 'Host: nhakhoa.evil.example' -H "$vt")"
+  expect "evil.example:8080 on /" 404 "$(code $WEB/ -H 'Host: evil.example:8080')"
+  expect "evil.example:8080 on the dental API" 404 "$(code $WEB$DPUB/visit -H 'Host: evil.example:8080' -H "$vt")"
+  expect "upper-case dental Host reaches the dental site" 200 "$(code $WEB/ -H 'Host: NHAKHOA.SMOKE.TEST:8080')"
+  expect "upper-case dental Host reaches the dental API" 200 "$(code $WEB$DPUB/visit -H 'Host: NHAKHOA.SMOKE.TEST:8080' -H "$vt")"
+  expect "trailing-dot dental Host reaches the dental site" 200 "$(code $WEB/ -H 'Host: nhakhoa.smoke.test.:8080')"
+  expect "trailing-dot dental Host reaches the dental API" 200 "$(code $WEB$DPUB/visit -H 'Host: nhakhoa.smoke.test.:8080' -H "$vt")"
+  expect "HTTP/1.0 without Host: / -> 404" 404 "$(code -0 -H 'Host:' $WEB/)"
+  expect "HTTP/1.0 without Host: dental API -> 404" 404 "$(code -0 -H 'Host:' $WEB$DPUB/visit -H "$vt")"
+  expect "HTTP/1.0 without Host: /healthz -> 200" 200 "$(code -0 -H 'Host:' $WEB/healthz)"
+  expect "/healthz on an unknown Host" 200 "$(code $UNKNOWN/healthz)"
+  expect "/healthz body" ok "$(curl -s $UNKNOWN/healthz)"
+  expect "/healthz on the hotel host" 200 "$(code $WEB/healthz)"
+  expect "/healthz on the dental host" 200 "$(code $DENTAL/healthz)"
+  expect "unknown host: /healthz/x -> 404" 404 "$(code $UNKNOWN/healthz/x)"
+  hz=$(hdr $UNKNOWN/healthz)
+  echo "$hz" | grep -qi '^content-security-policy:' && ok "security headers on /healthz" || bad "security headers on /healthz" "missing"
+
+  # a photo through the dental host: just under the proxy's 11 MB limit passes (the server may refuse the file
+  # itself, with JSON, never with nginx's HTML 413); 11 MB + 1 KB is stopped by nginx
+  head -c $((11 * 1024 * 1024 - 4096)) /dev/zero > /tmp/under.bin
+  head -c $((11 * 1024 * 1024 + 1024)) /dev/zero > /tmp/over.bin
+  ub=$(curl -s -w '\n%{http_code}' -F image=@/tmp/under.bin -H "$vt" $DENTAL$DPUB/visit/id-scans)
+  echo "$ub" | head -n -1 | grep -qi '<html' && bad "under-limit photo passes the proxy" "nginx answered $(echo "$ub" | tail -1)" || ok "under-limit photo passes the proxy (server answered $(echo "$ub" | tail -1))"
+  ob=$(curl -s -w '\n%{http_code}' -F image=@/tmp/over.bin -H "$vt" $DENTAL$DPUB/visit/id-scans)
+  expect "over-limit photo stopped by nginx: 413" 413 "$(echo "$ob" | tail -1)"
+  echo "$ob" | head -n -1 | grep -qi '<html' && ok "the 413 is nginx's" || bad "the 413 is nginx's" "not nginx's page"
+  rm -f /tmp/under.bin /tmp/over.bin
+
+  # security headers on a limit_except 403 and on the bare-prefix 404
+  for u in "-X PUT $DENTAL$DPUB/visit" "$DENTAL$DENT/public" "-X PUT $WEB$PUB/checkin" "$WEB$HOTEL/public"; do
+    got=$(hdr $u -H "$vt" | grep -i '^content-security-policy:' | sed 's/^[^:]*: *//')
+    expect "CSP on: $u" "$CSP" "$got"
+  done
   expect "dental host: staff path -> 404" 404 "$(code $DENTAL$DENT/appointments -H "$auth")"
   expect "dental host: staff visit-link -> 404" 404 "$(code -X POST $DENTAL$DENT/appointments/$APPT/visit-link -H "$auth")"
   expect "dental host: staff previsit -> 404" 404 "$(code $DENTAL$DENT/appointments/$APPT/previsit -H "$auth")"
@@ -322,10 +362,11 @@ burst|rotate|fixed)
   # fixed URL : every request has the same CF-Connecting-IP
   # rotate URL: like burst, against a proxy that DOES trust this client's CF-Connecting-IP (positive control)
   url="$2"; n=0; first=0
+  case "${4:-}" in dental) bpath=$DPUB/visit; btok='X-Visit-Token: nope';; *) bpath=$PUB/checkin; btok='X-Checkin-Token: nope';; esac
   while [ $n -lt $((LIMIT + 1)) ]; do
     n=$((n+1))
     case "$1" in fixed) cf=198.51.100.77;; *) cf="203.0.113.$n";; esac
-    c=$(code $url$PUB/checkin -H 'X-Checkin-Token: nope' -H "CF-Connecting-IP: $cf" \
+    c=$(code $url$bpath -H "$btok" -H "CF-Connecting-IP: $cf" \
         -H "X-Client-IP: 198.51.100.$n" -H 'X-Guest-Proxy-Secret: forged')
     [ "$c" = 429 ] && [ $first -eq 0 ] && first=$n
   done
@@ -388,19 +429,19 @@ docker run -d --name "$(c server)" --network "$NET" --network-alias server \
   -e HOTEL_GUEST_BASE_URL=https://checkin.smoke.invalid -e HOTEL_DISPLAY_NAME=SmokeHotel \
   -e DENTAL_PUBLIC_ENABLED=true -e DENTAL_GUEST_BASE_URL=https://nhakhoa.smoke.invalid -e DENTAL_DISPLAY_NAME=SmokeClinic \
   "$SERVER_IMG" >/dev/null || exit 1
-# Hosts: checkin.<name> is the hotel host, nhakhoa.<name> the dental host (both match the image's default
-# HOTEL_HOST/DENTAL_HOST through the checkin.* / nhakhoa.* wildcards), the bare <name> is a Host nobody serves.
+# Hosts are exact: web serves checkin.smoke.test (hotel) and nhakhoa.smoke.test (dental); the bare alias "web" is a Host
+# nobody serves. webb/webc/webe get their own exact hotel (and for webe dental) names.
 # web : image default (REAL_IP_FROM unset -> 127.0.0.1/32, trusts no proxy)
 # webb: REAL_IP_FROM=127.0.0.1/32 set explicitly
 # webc: REAL_IP_FROM = this network's subnet (positive control: CF-Connecting-IP IS trusted from here)
 # webe: like web but its upstream is a header-echo server instead of the CRM
 SUBNET=$(docker network inspect "$NET" -f '{{(index .IPAM.Config 0).Subnet}}')
-docker run -d --name "$(c web)" --network "$NET" --network-alias web --network-alias checkin.web --network-alias nhakhoa.web \
-  -e CRM_SERVER_URL=http://server:8080 -e CRM_PUBLIC_PROXY_SECRET "$WEB_IMG" >/dev/null || exit 1
+docker run -d --name "$(c web)" --network "$NET" --network-alias web --network-alias checkin.smoke.test --network-alias nhakhoa.smoke.test \
+  -e HOTEL_HOST=checkin.smoke.test -e DENTAL_HOST=nhakhoa.smoke.test -e CRM_SERVER_URL=http://server:8080 -e CRM_PUBLIC_PROXY_SECRET "$WEB_IMG" >/dev/null || exit 1
 docker run -d --name "$(c webb)" --network "$NET" --network-alias webb --network-alias checkin.webb \
-  -e CRM_SERVER_URL=http://server:8080 -e CRM_PUBLIC_PROXY_SECRET -e REAL_IP_FROM=127.0.0.1/32 "$WEB_IMG" >/dev/null || exit 1
+  -e HOTEL_HOST=checkin.webb -e CRM_SERVER_URL=http://server:8080 -e CRM_PUBLIC_PROXY_SECRET -e REAL_IP_FROM=127.0.0.1/32 "$WEB_IMG" >/dev/null || exit 1
 docker run -d --name "$(c webc)" --network "$NET" --network-alias webc --network-alias checkin.webc \
-  -e CRM_SERVER_URL=http://server:8080 -e CRM_PUBLIC_PROXY_SECRET -e REAL_IP_FROM="$SUBNET" "$WEB_IMG" >/dev/null || exit 1
+  -e HOTEL_HOST=checkin.webc -e CRM_SERVER_URL=http://server:8080 -e CRM_PUBLIC_PROXY_SECRET -e REAL_IP_FROM="$SUBNET" "$WEB_IMG" >/dev/null || exit 1
 cat > echo.conf <<'ECHOEOF'
 server {
     listen 8080;
@@ -413,12 +454,11 @@ ECHOEOF
 docker run -d --name "$(c echo)" --network "$NET" --network-alias echo \
   -v "$PWD/echo.conf":/etc/nginx/conf.d/default.conf:ro nginxinc/nginx-unprivileged:1.27-alpine >/dev/null || exit 1
 docker run -d --name "$(c webe)" --network "$NET" --network-alias webe --network-alias checkin.webe --network-alias nhakhoa.webe \
-  -e CRM_SERVER_URL=http://echo:8080 -e CRM_PUBLIC_PROXY_SECRET "$WEB_IMG" >/dev/null || exit 1
-for n in tools1 tools2 tools3 tools4 tools5; do
+  -e HOTEL_HOST=checkin.webe -e DENTAL_HOST=nhakhoa.webe -e CRM_SERVER_URL=http://echo:8080 -e CRM_PUBLIC_PROXY_SECRET "$WEB_IMG" >/dev/null || exit 1
+for n in tools1 tools2 tools3 tools4 tools5 tools6; do
   docker run -d --name "$(c $n)" --network "$NET" -e ADMIN_PASSWORD -e LIMIT -e CRM_PUBLIC_PROXY_SECRET \
-    -e SERVER=http://server:8080 -e WEB=http://checkin.web:8080 -e DENTAL=http://nhakhoa.web:8080 -e UNKNOWN=http://web:8080 \
+    -e SERVER=http://server:8080 -e WEB=http://checkin.smoke.test:8080 -e DENTAL=http://nhakhoa.smoke.test:8080 -e UNKNOWN=http://web:8080 \
     -e WEBB=http://checkin.webb:8080 -e WEBE=http://checkin.webe:8080 -e WEBDE=http://nhakhoa.webe:8080 \
-    -e DENTAL_FIELD_KEY \
     --entrypoint sleep "$TOOLS_IMG" 3600 >/dev/null || exit 1
 done
 
@@ -458,6 +498,7 @@ step "startup guards (driver side)"
   guard "DENTAL_HOST with a leading hyphen label" -e CRM_SERVER_URL=http://server:8080 -e CRM_PUBLIC_PROXY_SECRET -e DENTAL_HOST=-nhakhoa.example
   guard "DENTAL_HOST with an empty label" -e CRM_SERVER_URL=http://server:8080 -e CRM_PUBLIC_PROXY_SECRET -e DENTAL_HOST=nhakhoa..example
   guard "both hosts the same" -e CRM_SERVER_URL=http://server:8080 -e CRM_PUBLIC_PROXY_SECRET -e HOTEL_HOST=same.example -e DENTAL_HOST=same.example
+  guard "both hosts the same up to case" -e CRM_SERVER_URL=http://server:8080 -e CRM_PUBLIC_PROXY_SECRET -e HOTEL_HOST=Same.example -e DENTAL_HOST=sAME.example
   guard "REAL_IP_FROM not an address" -e CRM_SERVER_URL=http://server:8080 -e CRM_PUBLIC_PROXY_SECRET -e 'REAL_IP_FROM=0.0.0.0/0; x'
 } | tee out-guards.txt
 
@@ -466,9 +507,11 @@ run_checks tools1 functional | record functional || fail=1
 step "dental pre-visit path and host separation (client: tools1)"
 run_checks tools1 dental | record dental || fail=1
 step "forged CF-Connecting-IP, image default (no REAL_IP_FROM) (client: tools2, limit $LIMIT/min)"
-run_checks tools2 burst http://checkin.web:8080 "default image" | record burst-default || fail=1
+run_checks tools2 burst http://checkin.smoke.test:8080 "default image" | record burst-default || fail=1
 step "forged CF-Connecting-IP, REAL_IP_FROM=127.0.0.1/32 (client: tools3)"
 run_checks tools3 burst http://checkin.webb:8080 "REAL_IP_FROM=127.0.0.1/32" | record burst-explicit || fail=1
+step "forged CF-Connecting-IP against the dental host, image default (client: tools6, limit $LIMIT/min)"
+run_checks tools6 burst http://nhakhoa.smoke.test:8080 "dental host, default image" dental | record burst-dental || fail=1
 step "positive control: proxy trusting this network, rotating CF-Connecting-IP (client: tools4)"
 run_checks tools4 rotate http://checkin.webc:8080 | record rotate || fail=1
 step "positive control: proxy trusting this network, one CF-Connecting-IP (client: tools5)"
@@ -490,3 +533,10 @@ if [ "$fail" -ne 0 ] || [ "$total_fail" -ne 0 ]; then
 fi
 echo "RESULT: PASS"
 REMOTE_DRIVER
+rc=$?
+if [[ $rc -eq 124 || $rc -eq 255 ]]; then
+  echo "smoke: the remote driver timed out or lost its connection (rc=$rc); cleaning the docker-host up" >&2
+  cleanup_remote
+  [[ $rc -eq 124 ]] && rc=1
+fi
+exit $rc
