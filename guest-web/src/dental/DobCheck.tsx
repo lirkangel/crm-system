@@ -10,8 +10,8 @@ const today = () => {
 };
 
 /**
- * "Is this your date of birth?" for a returning patient. A match brings back the earlier allergies, medicines and
- * reason (never identity). The server counts wrong tries and locks after five; the form then starts empty.
+ * "Is this your date of birth?" for a returning patient. A match brings back the earlier allergies and medicines
+ * (and the reason only from this appointment's own form; never identity). The server counts wrong tries and locks after five; the form then starts empty.
  */
 export function DobCheck({
   onResult,
@@ -29,7 +29,7 @@ export function DobCheck({
   const [dob, setDob] = useState("");
   const [busy, setBusy] = useState(false);
   const inFlight = useRef(false);
-  const [error, setError] = useState<{ key: string; count?: number } | null>(null);
+  const [error, setError] = useState<{ key: string } | null>(null);
 
   async function check(e: React.FormEvent) {
     e.preventDefault();
@@ -43,10 +43,7 @@ export function DobCheck({
       const failure = err instanceof VisitError ? err.failure : "error";
       if (failure === "locked") onLocked();
       else if (failure === "closed" || failure === "invalid") onFatal(failure);
-      else if (failure === "mismatch") {
-        const left = err instanceof VisitError ? err.attemptsLeft : undefined;
-        setError(left === undefined ? { key: "dental.err.mismatch" } : { key: "dental.err.mismatchLeft", count: left });
-      } else setError({ key: failureKey(failure) });
+      else setError({ key: failure === "mismatch" ? "dental.err.mismatch" : failureKey(failure) });
     } finally {
       inFlight.current = false;
       setBusy(false);
@@ -62,7 +59,7 @@ export function DobCheck({
       </Field>
       {error && (
         <p role="alert" className="rounded-lg bg-red-50 p-3 text-sm text-red-800">
-          {t(error.key, { count: error.count })}
+          {t(error.key)}
         </p>
       )}
       <button

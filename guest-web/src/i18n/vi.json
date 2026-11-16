@@ -111,7 +111,7 @@
     },
     "dob": {
       "title": "Đây có phải ngày sinh của bạn?",
-      "hint": "Bạn từng khai báo tại phòng khám. Nhập ngày sinh để điền sẵn dị ứng, thuốc đang dùng và lý do khám lần trước.",
+      "hint": "Bạn từng khai báo tại phòng khám. Nhập ngày sinh để điền sẵn dị ứng và thuốc đang dùng từ lần trước.",
       "label": "Ngày sinh để kiểm tra",
       "check": "Kiểm tra",
       "skip": "Khai báo mới",
@@ -163,7 +163,6 @@
     },
     "err": {
       "mismatch": "Ngày này không khớp. Vui lòng thử lại hoặc khai báo mới.",
-      "mismatchLeft": "Ngày này không khớp. Bạn còn {{count}} lần thử.",
       "locked": "Đã hết lượt kiểm tra. Vui lòng khai báo từ đầu.",
       "badForm": "Vui lòng kiểm tra lại số điện thoại và thông tin giấy tờ",
       "scanUnreadable": "Không đọc được ảnh. Vui lòng chụp lại rõ nét hoặc nhập thông tin.",

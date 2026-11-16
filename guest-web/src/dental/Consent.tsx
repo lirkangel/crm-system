@@ -8,6 +8,8 @@ import { ErrorNote } from "./ui";
 // (allergies, medicines, reason for the visit), the identity details and CCCD photo, and says the photo is deleted
 // within 30 days. The server stores consent_at and notice_version "2026-11-14" with the form. How long the form
 // itself is kept is also for the legal review.
+// NOTICE VERSION: change the text => bump NOTICE_VERSION (PrevisitStore.java, server/plugins/dental). The i18n keys
+// are dental.consent.title / .text / .label in vi.json and en.json (JSON has no comments, so the rule lives here).
 export function Consent({
   form,
   update,

@@ -111,7 +111,7 @@
     },
     "dob": {
       "title": "Is this your date of birth?",
-      "hint": "You have filled this in at the clinic before. Enter your date of birth to pre-fill your allergies, medicines and reason from last time.",
+      "hint": "You have filled this in at the clinic before. Enter your date of birth to pre-fill your allergies and medicines from last time.",
       "label": "Date of birth to check",
       "check": "Check",
       "skip": "Start fresh",
@@ -163,7 +163,6 @@
     },
     "err": {
       "mismatch": "That date doesn't match. Please try again or start fresh.",
-      "mismatchLeft": "That date doesn't match. You have {{count}} attempts left.",
       "locked": "No more attempts left. Please answer from scratch.",
       "badForm": "Please check the phone number and identity details",
       "scanUnreadable": "The photo could not be read. Please retake it clearly or type the details.",

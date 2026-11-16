@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildPayload, emptyForm, identityComplete, identityStepValid, localDate, phoneValid } from "./model";
+import { applyPrevious, buildPayload, emptyForm, identityComplete, identityStepValid, localDate, phoneValid } from "./model";
 
 describe("phoneValid", () => {
   it.each(["0912345678", "+84912345678", "0912-345.678", "0912 345 678", "0351234567"])("accepts %s", (p) =>
@@ -33,5 +33,24 @@ describe("buildPayload", () => {
     f.allergies = { choice: "some", items: [], otherText: "" };
     f.medicines = { choice: "some", text: "  " };
     expect(() => buildPayload(f, false)).toThrow();
+  });
+});
+
+describe("applyPrevious", () => {
+  const earlier = {
+    allergies: { none: true, items: [], otherText: null },
+    medicines: { none: true, text: null },
+    reason: { code: "PAIN", text: "Toothache" },
+  };
+  it("never prefills the reason of an earlier visit", () => {
+    const f = { ...emptyForm(), reason: { code: "CLEANING", text: "typed" } };
+    const out = applyPrevious(f, { ...earlier, fromCurrentAppointment: false });
+    expect(out.reason).toEqual({ code: "CLEANING", text: "typed" });
+    expect(out.allergies.choice).toBe("none");
+    expect(applyPrevious(emptyForm(), { ...earlier, reason: null }).reason).toEqual(emptyForm().reason);
+  });
+  it("prefills the reason of this appointment's own form", () => {
+    const out = applyPrevious(emptyForm(), { ...earlier, fromCurrentAppointment: true });
+    expect(out.reason).toEqual({ code: "PAIN", text: "Toothache" });
   });
 });

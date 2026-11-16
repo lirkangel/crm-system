@@ -61,7 +61,8 @@ export interface VisitForm {
 export interface PreviousAnswers {
   allergies: AllergyAnswer;
   medicines: MedicineAnswer;
-  reason: ReasonAnswer;
+  /** Only from this appointment's own form; null for an earlier visit. */
+  reason?: ReasonAnswer | null;
   fromCurrentAppointment?: boolean;
 }
 
@@ -80,12 +81,10 @@ export type Failure =
 export class VisitError extends Error {
   readonly status: number;
   readonly code?: string;
-  readonly attemptsLeft?: number;
-  constructor(status: number, code?: string, attemptsLeft?: number) {
+  constructor(status: number, code?: string) {
     super(code ?? `HTTP ${status}`);
     this.status = status;
     this.code = code;
-    this.attemptsLeft = attemptsLeft;
   }
   get failure(): Failure {
     return failureOf(this);
@@ -148,15 +147,13 @@ async function call<T>(path: string, init: RequestInit = {}): Promise<{ status: 
   }
   if (!res.ok) {
     let code: string | undefined;
-    let left: number | undefined;
     try {
       const body = await res.json();
       code = typeof body.code === "string" ? body.code : undefined;
-      if (typeof body.attemptsLeft === "number") left = body.attemptsLeft;
     } catch {
       /* not JSON */
     }
-    throw new VisitError(res.status, code, left);
+    throw new VisitError(res.status, code);
   }
   let data: T = undefined as T;
   try {
@@ -179,12 +176,19 @@ export async function submitForm(form: VisitForm): Promise<void> {
   await call<void>("/form", { method: "POST", body: JSON.stringify(form) });
 }
 
-/** The earlier answers behind the date-of-birth check; null when the server has none to give (404). */
+/**
+ * The earlier answers behind the date-of-birth check; null when the server has none to give. A 404 is ambiguous
+ * (no answers, or the link died mid-check), so it re-fetches the summary: if that is a 404 too the link is dead
+ * and the error is thrown (the caller shows the Invalid page); otherwise there are simply no answers.
+ */
 export async function checkPrevious(dateOfBirth: string): Promise<PreviousAnswers | null> {
   try {
     return (await call<PreviousAnswers>("/previous", { method: "POST", body: JSON.stringify({ dateOfBirth }) })).data;
   } catch (err) {
-    if (err instanceof VisitError && err.status === 404) return null;
+    if (err instanceof VisitError && err.status === 404) {
+      await getSummary();
+      return null;
+    }
     throw err;
   }
 }

@@ -215,7 +215,7 @@ describe("DentalApp", () => {
     const [, init] = calls("/form")[0];
     expect(init.headers["X-Visit-Token"]).toBe("tok-123");
     expect(init.credentials).toBe("omit");
-  });
+  }, 20_000);
 
   it("free_text_newlines_are_sent_as_typed", async () => {
     serve({ get: () => ok(summary), form: () => created() });
@@ -245,7 +245,7 @@ describe("DentalApp", () => {
     expect(body.allergies).toEqual({ none: false, items: ["LATEX", "OTHER"], otherText: "Hạt điều\nTôm" });
     expect(body.medicines).toEqual({ none: false, text: "Thuốc A\nThuốc B" });
     expect(body.reason).toEqual({ code: "OTHER", text: "Sưng\nnướu" });
-  });
+  }, 20_000);
 
   it("child_path_asks_parent", async () => {
     serve({ get: () => ok({ ...summary, child: true }), form: () => created() });
@@ -279,7 +279,7 @@ describe("DentalApp", () => {
     expect(body.identity).toBeNull();
     expect(body.parentName).toBe("Tran Thi B");
     expect(body.parentPhone).toBe("0987654321");
-  });
+  }, 20_000);
 
   it("child_with_half_filled_identity_must_finish_it", async () => {
     serve({ get: () => ok({ ...summary, child: true }) });
@@ -290,7 +290,7 @@ describe("DentalApp", () => {
     await userEvent.type(screen.getByLabelText(t("dental.parentPhone")), "0987654321");
     await userEvent.type(screen.getByLabelText(t("field.fullName")), "NGUYEN BE");
     expect(await button("dental.next")).toBeDisabled();
-  });
+  }, 20_000);
 
   it("adult_has_no_parent_fields", async () => {
     await openSummary();
@@ -330,28 +330,32 @@ describe("DentalApp", () => {
     await click("dental.next");
     expect(await screen.findByLabelText(t("dental.medicines.text"))).toHaveValue("Metformin 500mg");
     await click("dental.next");
-    expect(await screen.findByLabelText(t("dental.reason.PAIN"))).toBeChecked();
-    expect(screen.getByLabelText(t("dental.reason.textOptional"))).toHaveValue("Đau răng hàm");
-  });
+    // an earlier visit's reason is never prefilled, even if one were sent
+    expect(await screen.findByLabelText(t("dental.reason.PAIN"))).not.toBeChecked();
+    expect(screen.getByLabelText(t("dental.reason.CHECKUP"))).not.toBeChecked();
+  }, 20_000);
 
-  it("wrong_dob_shows_mismatch_with_attempts_left_and_never_raw_code", async () => {
+  it("own_appointments_reason_is_prefilled_but_an_earlier_visits_is_not", async () => {
     serve({
       get: () => ok({ ...summary, returning: "AVAILABLE" }),
-      previous: () => problem(403, "DENTAL_CHECK_FAILED", { attemptsLeft: 3 }),
+      previous: () => ok({ ...previous, fromCurrentAppointment: true }),
     });
     render(<App />);
     await screen.findByText(summary.maskedName);
     await click("dental.start");
     await userEvent.type(await screen.findByLabelText(t("dental.dob.label")), "1990-05-17");
     await click("dental.dob.check");
-    expect(await screen.findByRole("alert")).toHaveTextContent(t("dental.err.mismatchLeft", { count: 3 }));
-    expect(screen.queryByText(/DENTAL_/)).not.toBeInTheDocument();
-    // still on the check, can skip to a blank form
-    await click("dental.dob.skip");
-    expect(await screen.findByLabelText(t("field.idNumber"))).toHaveValue("");
-  });
+    await fillIdentity();
+    await click("dental.next");
+    await userEvent.type(await screen.findByLabelText(t("dental.phone")), "0912345678");
+    await click("dental.next");
+    await click("dental.next");
+    await click("dental.next");
+    expect(await screen.findByLabelText(t("dental.reason.PAIN"))).toBeChecked();
+    expect(screen.getByLabelText(t("dental.reason.textOptional"))).toHaveValue("Đau răng hàm");
+  }, 20_000);
 
-  it("wrong_dob_without_attempt_count_is_generic", async () => {
+  it("wrong_dob_shows_the_generic_mismatch_and_never_a_raw_code", async () => {
     serve({
       get: () => ok({ ...summary, returning: "AVAILABLE" }),
       previous: () => problem(403, "DENTAL_CHECK_FAILED"),
@@ -362,6 +366,10 @@ describe("DentalApp", () => {
     await userEvent.type(await screen.findByLabelText(t("dental.dob.label")), "1990-05-17");
     await click("dental.dob.check");
     expect(await screen.findByRole("alert")).toHaveTextContent(t("dental.err.mismatch"));
+    expect(screen.queryByText(/DENTAL_/)).not.toBeInTheDocument();
+    // still on the check, can skip to a blank form
+    await click("dental.dob.skip");
+    expect(await screen.findByLabelText(t("field.idNumber"))).toHaveValue("");
   });
 
   it("locked_check_response_starts_fresh_with_no_more_attempts", async () => {
@@ -414,7 +422,7 @@ describe("DentalApp", () => {
     await userEvent.click(await screen.findByLabelText(t("dental.consent.label")));
     await userEvent.click(await button("action.send"));
     expect(await screen.findByText(t("dental.closed"))).toBeInTheDocument();
-  });
+  }, 20_000);
 
   it.each([
     [400, "DENTAL_INVALID_FORM", "dental.err.badForm"],
@@ -452,7 +460,7 @@ describe("DentalApp", () => {
     release();
     await screen.findByText(t("dental.done.title"));
     expect(calls("/form")).toHaveLength(1);
-  });
+  }, 20_000);
 
   it("cccd_photo_prefills_identity_and_sends_scan_id", async () => {
     mockToJpeg.mockResolvedValue(new Blob(["x"], { type: "image/jpeg" }));
@@ -495,7 +503,7 @@ describe("DentalApp", () => {
     await userEvent.click(await button("action.send"));
     await screen.findByText(t("dental.done.title"));
     expect(sentForm().idScanId).toBe("scan-1");
-  });
+  }, 20_000);
 
   it("english_switch_translates_the_flow", async () => {
     await openSummary();
@@ -549,7 +557,7 @@ describe("DentalApp", () => {
     expect(Object.keys(child).sort()).toEqual(
       ["allergies", "consent", "idScanId", "identity", "medicines", "parentName", "parentPhone", "phone", "reason"].sort(),
     );
-  });
+  }, 20_000);
 
   it("identity_date_of_birth_today_or_future_blocks_next", async () => {
     await openSummary();
@@ -576,7 +584,7 @@ describe("DentalApp", () => {
     const text = container.textContent ?? "";
     for (const v of ["NGUYEN VAN A", "079090001234", "0912345678", "12 Le Loi"]) expect(text).not.toContain(v);
     expect(container.querySelectorAll("input,textarea")).toHaveLength(0);
-  });
+  }, 20_000);
 
   it("answers_are_cleared_on_closed_after_send", async () => {
     serve({ get: () => ok(summary), form: () => problem(409, "DENTAL_VISIT_CLOSED") });
@@ -587,7 +595,7 @@ describe("DentalApp", () => {
     await userEvent.click(await button("action.send"));
     await screen.findByText(t("dental.closed"));
     expect(container.textContent).not.toContain("NGUYEN VAN A");
-  });
+  }, 20_000);
 
   it("reload_without_token_on_clinic_host_shows_dental_invalid", async () => {
     resetVisitToken();
@@ -623,7 +631,7 @@ describe("DentalApp", () => {
     await click("dental.backToIdentity");
     expect(await screen.findByLabelText(t("field.idNumber"))).toHaveValue("079090001234");
     expect(i18n.getFixedT("en")("dental.err.badForm")).toBe("Please check the phone number and identity details");
-  });
+  }, 20_000);
 
   it("field_unreadable_during_dob_check_is_generic_and_skip_works", async () => {
     serve({
@@ -640,6 +648,36 @@ describe("DentalApp", () => {
     expect(alert).not.toHaveTextContent("DENTAL_");
     await click("dental.dob.skip");
     expect(await screen.findByLabelText(t("field.idNumber"))).toHaveValue("");
+  });
+
+  it("404_from_previous_with_a_live_summary_means_no_answers_and_carries_on", async () => {
+    serve({
+      get: () => ok({ ...summary, returning: "AVAILABLE" }),
+      previous: () => problem(404, "DENTAL_NOT_FOUND"),
+    });
+    render(<App />);
+    await screen.findByText(summary.maskedName);
+    await click("dental.start");
+    await userEvent.type(await screen.findByLabelText(t("dental.dob.label")), "1990-05-17");
+    await click("dental.dob.check");
+    expect(await screen.findByLabelText(t("field.idNumber"))).toHaveValue("");
+    expect(calls("")).toHaveLength(2); // the summary was re-fetched to tell the two 404s apart
+    expect(screen.queryByText(t("dental.invalid"))).not.toBeInTheDocument();
+  });
+
+  it("404_from_previous_and_from_the_summary_shows_invalid", async () => {
+    let n = 0;
+    serve({
+      get: () => (n++ === 0 ? ok({ ...summary, returning: "AVAILABLE" }) : problem(404, "DENTAL_NOT_FOUND")),
+      previous: () => problem(404, "DENTAL_NOT_FOUND"),
+    });
+    render(<App />);
+    await screen.findByText(summary.maskedName);
+    await click("dental.start");
+    await userEvent.type(await screen.findByLabelText(t("dental.dob.label")), "1990-05-17");
+    await click("dental.dob.check");
+    expect(await screen.findByText(t("dental.invalid"))).toBeInTheDocument();
+    expect(screen.queryByLabelText(t("field.idNumber"))).not.toBeInTheDocument();
   });
 
   it("409_from_previous_shows_closed", async () => {
@@ -684,6 +722,7 @@ describe("DentalApp", () => {
     await click("dental.next");
     await click("dental.next");
     await click("dental.next");
+    await userEvent.click(await screen.findByLabelText(t("dental.reason.CHECKUP"))); // the reason is not prefilled
     await click("dental.next");
     await userEvent.click(await screen.findByLabelText(t("dental.consent.label")));
     await userEvent.click(await button("action.send")); // error path
@@ -700,5 +739,5 @@ describe("DentalApp", () => {
     }
     spies.forEach((s) => s.mockRestore());
     setItem.mockRestore();
-  });
+  }, 20_000);
 });

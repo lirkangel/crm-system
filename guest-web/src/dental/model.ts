@@ -125,7 +125,10 @@ export function buildPayload(f: FormState, child: boolean): VisitForm {
   };
 }
 
-/** Earlier answers fill allergies, medicines and reason only; identity never comes back. */
+/**
+ * Earlier answers fill allergies and medicines; the reason only when it is this appointment's own form (an earlier
+ * visit's reason is never prefilled, and the server does not send it). Identity never comes back.
+ */
 export function applyPrevious(f: FormState, p: PreviousAnswers): FormState {
   const a = p.allergies;
   const m = p.medicines;
@@ -135,6 +138,9 @@ export function applyPrevious(f: FormState, p: PreviousAnswers): FormState {
       ? { choice: "none", items: [], otherText: "" }
       : { choice: "some", items: a.items ?? [], otherText: a.otherText ?? "" },
     medicines: m.none ? { choice: "none", text: "" } : { choice: "some", text: m.text ?? "" },
-    reason: { code: p.reason.code, text: p.reason.text ?? "" },
+    reason:
+      p.fromCurrentAppointment === true && p.reason
+        ? { code: p.reason.code, text: p.reason.text ?? "" }
+        : f.reason,
   };
 }
