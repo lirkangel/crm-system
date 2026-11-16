@@ -41,7 +41,12 @@ class PrevisitStore {
 
     static final String APPOINTMENT = "Appointment";
     static final String AUDIT_SUBMIT = "PREVISIT_SUBMIT";
-    /** The privacy notice the patient consents to. */
+    static final String AUDIT_PREVIOUS_VIEW = "PREVISIT_PREVIOUS_VIEW";
+    static final String AUDIT_CHECK_LOCKED = "PREVISIT_CHECK_LOCKED";
+    /**
+     * The privacy notice the patient consents to. Change the consent text (the {@code dental.consent.*} i18n keys in
+     * guest-web) =&gt; bump NOTICE_VERSION.
+     */
     static final String NOTICE_VERSION = "2026-11-14";
     /** Wrong dates of birth after which a link's previous-answers check is locked. */
     static final int MAX_DOB_ATTEMPTS = 5;
@@ -153,7 +158,12 @@ class PrevisitStore {
         if (!patient.getDateOfBirth().equals(dateOfBirth)) {
             link.setDobAttempts(link.getDobAttempts() + 1);
             links.saveAndFlush(link);
-            return new Outcome(link.getDobAttempts() >= MAX_DOB_ATTEMPTS ? Outcome.Result.LOCKED : Outcome.Result.WRONG, null);
+            if (link.getDobAttempts() >= MAX_DOB_ATTEMPTS) {
+                // The patient-side event, no user and no values: the appointment id only
+                audit.record(APPOINTMENT, appointmentId, AUDIT_CHECK_LOCKED, null, null);
+                return new Outcome(Outcome.Result.LOCKED, null);
+            }
+            return new Outcome(Outcome.Result.WRONG, null);
         }
         PrevisitForm own = forms.findByAppointment(appointmentId).filter(f -> f.getAllergiesEnc() != null).orElse(null);
         PrevisitForm source = own != null ? own : forms.findEarlierOfPatient(
@@ -161,11 +171,16 @@ class PrevisitStore {
         if (source == null) {
             throw DentalErrors.notFound("No earlier answers");
         }
-        return new Outcome(Outcome.Result.MATCH, new PreviousAnswers(
+        // An earlier visit's reason is never returned (and not decrypted): only this appointment's own form has it
+        PreviousAnswers answers = new PreviousAnswers(
             open(source.getAllergiesEnc(), source.getAppointmentId(), COL_ALLERGIES, AllergyAnswer.class),
             open(source.getMedicinesEnc(), source.getAppointmentId(), COL_MEDICINES, MedicineAnswer.class),
-            open(source.getReasonEnc(), source.getAppointmentId(), COL_REASON, ReasonAnswer.class),
-            own != null));
+            own == null ? null : open(source.getReasonEnc(), source.getAppointmentId(), COL_REASON, ReasonAnswer.class),
+            own != null);
+        // The patient-side disclosure is audited (no user, no values): which form the answers came from
+        audit.record(APPOINTMENT, appointmentId, AUDIT_PREVIOUS_VIEW, null,
+            "{\"sourceAppointmentId\": \"" + source.getAppointmentId() + "\"}");
+        return new Outcome(Outcome.Result.MATCH, answers);
     }
 
     private record Locked(Appointment appointment, VisitLink link) {

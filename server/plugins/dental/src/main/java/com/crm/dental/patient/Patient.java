@@ -28,7 +28,7 @@ public class Patient {
     private String fullName;
 
     /** Accent-folded, lower-cased name ({@code Names.fold}), matched by name search. */
-    @Column(name = "name_search", nullable = false, length = 200)
+    @Column(name = "name_search", nullable = false)
     private String nameSearch;
 
     /** Normalised {@code +84...}; not unique, since a parent may book a child under the parent's phone. */

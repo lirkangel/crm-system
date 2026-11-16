@@ -6,7 +6,7 @@
 CREATE TABLE patient (
     id            UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     full_name     VARCHAR(200) NOT NULL,
-    name_search   VARCHAR(200) NOT NULL,                -- accent-folded, lower-cased full_name for search
+    name_search   TEXT         NOT NULL,                -- accent-folded, lower-cased full_name for search
     phone         VARCHAR(20)  NOT NULL,                -- +84...
     date_of_birth DATE         NOT NULL,
     id_type       VARCHAR(16),

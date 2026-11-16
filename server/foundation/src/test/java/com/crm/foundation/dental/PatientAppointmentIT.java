@@ -29,6 +29,22 @@ class PatientAppointmentIT extends DentalITSupport {
         registry.add("foundation.plugins.directory", () -> dentalPluginDirectory().toString());
     }
 
+    /** NFD turns each Hangul syllable into up to three jamo, so a 100-syllable name folds to 300 characters. */
+    @Test
+    void long_hangul_name_folds_past_200_characters_and_saves() {
+        String token = adminToken();
+        String name = "\ud55c".repeat(100);
+        UUID id = createPatient(token, name, phone(), "1990-05-17");
+
+        String folded = jdbc.queryForObject("SELECT name_search FROM dental.patient WHERE id = ?", String.class, id);
+        assertThat(folded).hasSize(300);
+        assertThat(jdbc.queryForObject("SELECT data_type FROM information_schema.columns WHERE table_schema = 'dental'"
+            + " AND table_name = 'patient' AND column_name = 'name_search'", String.class)).isEqualTo("text");
+        // Search still finds it by the folded form
+        ResponseEntity<String> found = get(PATIENTS + "?q=" + "\ud55c".repeat(3), token);
+        assertThat(found.getStatusCode().value()).as(found.getBody()).isEqualTo(200);
+    }
+
     @Test
     void book_new_patient_and_list_day() {
         String token = adminToken();
@@ -501,5 +517,54 @@ class PatientAppointmentIT extends DentalITSupport {
 
     private static String tag() {
         return UUID.randomUUID().toString().substring(0, 8);
+    }
+
+    // ── scheduler registration (hotel equivalent: IdScanPurgeScheduleIT) ─────────────────────────
+
+    @org.springframework.beans.factory.annotation.Autowired
+    private com.crm.foundation.Plugin.PluginHost host;
+
+    @Test
+    void purge_job_is_registered_at_minute_5_in_ho_chi_minh_time() {
+        // Same context as the other tests here (no extra Spring context): the child context via PluginContexts
+        org.springframework.context.ConfigurableApplicationContext dental = com.crm.foundation.Plugin.PluginContexts.running(host, DENTAL_PLUGIN_ID);
+
+        List<org.springframework.scheduling.config.CronTask> cronTasks = dental.getBean(org.springframework.scheduling.annotation.ScheduledAnnotationBeanPostProcessor.class).getScheduledTasks()
+            .stream()
+            .map(scheduled -> scheduled.getTask())
+            .filter(org.springframework.scheduling.config.CronTask.class::isInstance)
+            .map(org.springframework.scheduling.config.CronTask.class::cast)
+            .toList();
+
+        assertThat(cronTasks).hasSize(1);
+        org.springframework.scheduling.config.CronTask purge = cronTasks.get(0);
+        assertThat(purge.getExpression()).isEqualTo("0 5 * * * *");
+        // dental classes are not on this classpath: compare by name
+        org.springframework.scheduling.support.ScheduledMethodRunnable runnable = methodRunnable(purge.getRunnable());
+        assertThat(org.springframework.util.ClassUtils.getUserClass(runnable.getTarget()).getName())
+            .isEqualTo("com.crm.dental.scan.DentalIdScanPurgeJob");
+        assertThat(runnable.getMethod().getName()).isEqualTo("run");
+        assertThat(runnable.getMethod().getAnnotation(org.springframework.scheduling.annotation.Scheduled.class).zone()).isEqualTo("Asia/Ho_Chi_Minh");
+    }
+
+    /** Spring wraps the method runnable in an outcome-tracking decorator: peel Runnable fields until it shows. */
+    private static org.springframework.scheduling.support.ScheduledMethodRunnable methodRunnable(Runnable runnable) {
+        Runnable current = runnable;
+        while (!(current instanceof org.springframework.scheduling.support.ScheduledMethodRunnable)) {
+            Runnable inner = null;
+            for (java.lang.reflect.Field field : current.getClass().getDeclaredFields()) {
+                if (Runnable.class.isAssignableFrom(field.getType())) {
+                    field.setAccessible(true);
+                    try {
+                        inner = (Runnable) field.get(current);
+                    } catch (IllegalAccessException e) {
+                        throw new IllegalStateException(e);
+                    }
+                }
+            }
+            assertThat(inner).as("a scheduled method runnable inside " + current.getClass()).isNotNull();
+            current = inner;
+        }
+        return (org.springframework.scheduling.support.ScheduledMethodRunnable) current;
     }
 }

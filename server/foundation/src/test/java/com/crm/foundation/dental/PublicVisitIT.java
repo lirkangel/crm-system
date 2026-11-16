@@ -264,10 +264,12 @@ class PublicVisitIT extends VisitLinkITSupport {
         assertThat(data.path("allergies").path("items").toString()).contains("PENICILLIN");
         assertThat(data.path("allergies").path("otherText").asText()).isEqualTo("Kiwi fruit XYZ");
         assertThat(data.path("medicines").path("text").asText()).contains("Metformin");
-        assertThat(data.path("reason").path("code").asText()).isEqualTo("PAIN");
-        assertThat(earlier.getBody()).doesNotContain("079090123456").doesNotContain("TRAN THI BINH");
-        assertThat(data.fieldNames()).toIterable().containsExactlyInAnyOrder(
-            "allergies", "medicines", "reason", "fromCurrentAppointment");
+        // D22: an earlier visit's reason is never returned
+        assertThat(data.path("reason").isMissingNode() || data.path("reason").isNull()).as("reason of an earlier visit").isTrue();
+        assertThat(earlier.getBody()).doesNotContain("PAIN").doesNotContain("SECRETWHY")
+            .doesNotContain("079090123456").doesNotContain("TRAN THI BINH");
+        assertThat(data.fieldNames()).toIterable().contains("allergies", "medicines", "fromCurrentAppointment")
+            .doesNotContain("identity", "idNumber", "fullName");
 
         // Own answers come first once submitted
         Map<String, Object> mine = with(form(), "medicines", Map.of("none", true));
@@ -275,6 +277,98 @@ class PublicVisitIT extends VisitLinkITSupport {
         JsonNode own = data(previous(second.token(), "1990-05-17"));
         assertThat(own.path("fromCurrentAppointment").asBoolean()).isTrue();
         assertThat(own.path("medicines").path("none").asBoolean()).isTrue();
+        // ... and the current appointment's own form returns its own reason
+        assertThat(own.path("reason").path("code").asText()).isEqualTo("PAIN");
+        assertThat(own.path("reason").path("text").asText()).contains("SECRETWHY");
+    }
+
+    @Test
+    void previous_with_several_earlier_forms_returns_the_latest_by_submitted_at() {
+        Visit oldest = adult();
+        assertThat(submit(oldest.token(), with(form(), "medicines", Map.of("none", false, "text", "OLDEST-MED"))).getStatusCode().value()).isEqualTo(201);
+        UUID patient = jdbc.queryForObject("SELECT patient_id FROM dental.appointment WHERE id = ?", UUID.class, oldest.id());
+        Visit newest = adult();
+        jdbc.update("UPDATE dental.appointment SET patient_id = ? WHERE id = ?", patient, newest.id());
+        assertThat(submit(newest.token(), with(form(), "medicines", Map.of("none", false, "text", "NEWEST-MED"))).getStatusCode().value()).isEqualTo(201);
+        // Inserted last but not newest: the order must come from submitted_at, not from insertion
+        jdbc.update("UPDATE dental.previsit_form SET submitted_at = now() - interval '5 days' WHERE appointment_id = ?", oldest.id());
+        jdbc.update("UPDATE dental.previsit_form SET submitted_at = now() - interval '2 days' WHERE appointment_id = ?", newest.id());
+        Visit middle = adult();
+        jdbc.update("UPDATE dental.appointment SET patient_id = ? WHERE id = ?", patient, middle.id());
+        assertThat(submit(middle.token(), with(form(), "medicines", Map.of("none", false, "text", "MIDDLE-MED"))).getStatusCode().value()).isEqualTo(201);
+        jdbc.update("UPDATE dental.previsit_form SET submitted_at = now() - interval '3 days' WHERE appointment_id = ?", middle.id());
+        jdbc.update("UPDATE dental.appointment SET status = 'ARRIVED' WHERE id IN (?, ?, ?)", oldest.id(), newest.id(), middle.id());
+        Visit today = adult();
+        jdbc.update("UPDATE dental.appointment SET patient_id = ? WHERE id = ?", patient, today.id());
+        jdbc.update("UPDATE dental.patient SET date_of_birth = '1990-05-17' WHERE id = ?", patient);
+
+        ResponseEntity<String> response = previous(today.token(), "1990-05-17");
+
+        assertThat(response.getStatusCode().value()).as(response.getBody()).isEqualTo(200);
+        assertThat(data(response).path("fromCurrentAppointment").asBoolean()).isFalse();
+        assertThat(data(response).path("medicines").path("text").asText()).isEqualTo("NEWEST-MED");
+    }
+
+    @Test
+    void previous_audits_the_match_and_the_lockout_without_values() {
+        Visit first = adult();
+        assertThat(submit(first.token(), form()).getStatusCode().value()).isEqualTo(201);
+        UUID patient = jdbc.queryForObject("SELECT patient_id FROM dental.appointment WHERE id = ?", UUID.class, first.id());
+        jdbc.update("UPDATE dental.appointment SET status = 'ARRIVED' WHERE id = ?", first.id());
+        Visit second = adult();
+        jdbc.update("UPDATE dental.appointment SET patient_id = ? WHERE id = ?", patient, second.id());
+        jdbc.update("UPDATE dental.patient SET date_of_birth = '1990-05-17' WHERE id = ?", patient);
+
+        // Wrong dates 1-4 leave no audit row; the 5th locks and leaves exactly one
+        for (int i = 1; i <= 4; i++) {
+            assertThat(previous(second.token(), "1991-01-0" + i).getStatusCode().value()).isEqualTo(403);
+        }
+        assertThat(patientAudits(second.id())).isEmpty();
+        assertThat(previous(second.token(), "1991-01-05").getStatusCode().value()).isEqualTo(423);
+        List<Map<String, Object>> locked = patientAudits(second.id());
+        assertThat(locked).hasSize(1);
+        assertThat(locked.get(0)).containsEntry("op", "PREVISIT_CHECK_LOCKED").containsEntry("entity_type", "Appointment");
+        assertThat(locked.get(0).get("user_id")).isNull();
+        assertThat(locked.get(0).get("before").toString() + locked.get(0).get("after")).isEmpty();
+        // A locked link refuses even the right date and does not audit again
+        assertThat(previous(second.token(), "1990-05-17").getStatusCode().value()).isEqualTo(423);
+        assertThat(patientAudits(second.id())).hasSize(1);
+
+        // A match on another link: one PREVIOUS_VIEW naming the form the answers came from, nothing else
+        Visit third = adult();
+        jdbc.update("UPDATE dental.appointment SET patient_id = ? WHERE id = ?", patient, third.id());
+        assertThat(previous(third.token(), "1990-05-17").getStatusCode().value()).isEqualTo(200);
+        List<Map<String, Object>> views = patientAudits(third.id());
+        assertThat(views).hasSize(1);
+        Map<String, Object> view = views.get(0);
+        assertThat(view).containsEntry("op", "PREVISIT_PREVIOUS_VIEW").containsEntry("entity_type", "Appointment");
+        assertThat(view.get("user_id")).isNull();
+        assertThat(view.get("before")).isEqualTo("");
+        assertThat(jdbc.queryForObject("SELECT after_json->>'sourceAppointmentId' FROM audit_event WHERE id = ?",
+            String.class, view.get("id"))).isEqualTo(first.id().toString());
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM jsonb_object_keys((SELECT after_json FROM audit_event WHERE id = ?))",
+            Integer.class, view.get("id"))).isEqualTo(1);
+
+        // No answer or token reaches any of these rows, and no date of birth (the locked row is empty, the view row
+        // holds exactly the one key above)
+        assertThat(locked.get(0).get("after")).isEqualTo("");
+        List<Map<String, Object>> all = new java.util.ArrayList<>(locked);
+        all.addAll(views);
+        for (Map<String, Object> row : all) {
+            String text = row.get("before").toString() + row.get("after");
+            assertThat(text).doesNotContain("PENICILLIN").doesNotContain("SECRETMED").doesNotContain("SECRETWHY")
+                .doesNotContain("Kiwi").doesNotContain(second.token()).doesNotContain(third.token());
+        }
+    }
+
+    private List<Map<String, Object>> patientAudits(UUID appointmentId) {
+        return jdbc.queryForList("""
+            SELECT id, op, entity_type, user_id, coalesce(before_json::text, '') AS before,
+                   coalesce(after_json::text, '') AS after
+            FROM audit_event
+            WHERE plugin_id = 'com.crm.dental' AND entity_id = ? AND op IN ('PREVISIT_PREVIOUS_VIEW', 'PREVISIT_CHECK_LOCKED')
+            ORDER BY occurred_at
+            """, appointmentId);
     }
 
     @Test

@@ -207,7 +207,7 @@ A clinic books appointments for patients (name, phone and date of birth are requ
 3. `DENTAL_FIELD_KEY` set on the server: `openssl rand -base64 32` (base64 of 32 bytes). The plugin refuses to start with the flag on and no key. Back the key up with the database: without it stored answers cannot be read, and rotating it needs a re-encryption step that does not exist yet.
 4. A Dentist role carrying `dental.previsit.read` (and the appointment permissions) assigned to the staff who see health answers; admins get all five keys on first load and must log in again.
 5. `DENTAL_PUBLIC_ENABLED=true` on the server (property `dental.public.enabled`). **Do not set `DENTAL_PUBLIC_ENABLED=true` until step 2 (legal sign-off) is done.**
-6. The guest-web container needs `HOTEL_HOST` (default `checkin.mathisterben.org`) and `DENTAL_HOST` (default `nhakhoa.mathisterben.org`); any other Host gets 404 for everything.
+6. The guest-web container needs `HOTEL_HOST` (default `checkin.mathisterben.org`) and `DENTAL_HOST` (default `nhakhoa.mathisterben.org`); any other Host gets 404 for everything. Renaming `DENTAL_HOST` also needs the hard-coded `window.location.hostname.startsWith("nhakhoa.")` check in `guest-web/src/App.tsx` changed (it picks the dental flow when the link has no `#d/` yet).
 7. The network path is Cloudflare Tunnel public hostname `nhakhoa.mathisterben.org` to `http://10.0.0.11:80` (Nginx Proxy Manager), whose proxy host for it forwards to `10.0.0.7:30084` (the guest-web NodePort). NPM must forward the original Host header (it does by default): Host now selects the site, so a rewritten Host gets 404. Set guest-web `REAL_IP_FROM=10.0.0.11/32` (NPM's address) and `externalTrafficPolicy: Local` on the guest-web Service (Tailscale clients also appear as 10.0.0.11: known, accepted).
 8. Cloudflare: a cache bypass rule for `/api/*` on that hostname, and Rocket Loader, Email Obfuscation and Web Analytics turned off (they rewrite or inject scripts and break the page's CSP).
 
@@ -222,7 +222,8 @@ Check afterwards that `https://nhakhoa.mathisterben.org/api/v1/plugins/hotel/pub
 | `GET /appointments?date=YYYY-MM-DD`, `GET /appointments/{id}` | `dental.appointments.read` |
 | `POST|DELETE /appointments/{id}/visit-link` (the URL is shown once) | `dental.appointments.write` |
 | `GET /appointments/{id}/visit-link` (status) | `dental.appointments.read` |
-| `GET /appointments/{id}/previsit`, `GET .../previsit/id-scan`, apply the form to the patient | `dental.previsit.read` |
+| `GET /appointments/{id}/previsit`, `GET .../previsit/id-scan` | `dental.previsit.read` |
+| apply the form to the patient record | `dental.patients.write` AND `dental.previsit.read` |
 
 The `+` in a phone query must be sent as `%2B` (`?phone=%2B84912345678`): a raw `+` is decoded as a space. Only a `BOOKED` appointment can be rescheduled, cancelled, marked arrived, given a link or receive a form. A link expires at 23:59 clinic time (`Asia/Ho_Chi_Minh`) on the appointment date, the token travels in the `X-Visit-Token` header and in the `#d/<token>` fragment, and every bad token gets the same 404.
 
@@ -230,8 +231,8 @@ The `+` in a phone query must be sent as `%2B` (`?phone=%2B84912345678`): a raw 
 
 - Encrypted columns (AES-GCM, `IV || ciphertext`, key `DENTAL_FIELD_KEY`): `dental.previsit_form.allergies_enc`, `medicines_enc` and `reason_enc`. Identity details and the CCCD photo are stored as in the hotel plugin (photo downscaled, purged 30 days after upload, hourly).
 - Retention: submitted forms are kept; cancelling an appointment deletes its form and photo.
-- Audit events: `PATIENT_CREATE`, `PATIENT_UPDATE`, `APPOINTMENT_BOOK`, `APPOINTMENT_RESCHEDULE`, `APPOINTMENT_CANCEL`, `APPOINTMENT_ARRIVE`, `APPOINTMENT_NO_SHOW`, `VISIT_LINK_CREATE`, `VISIT_LINK_REVOKE`, `PREVISIT_SUBMIT`, `PREVISIT_VIEW` (every read of a form), `PREVISIT_PHOTO_VIEW`, `ID_SCAN_UPLOAD`, `ID_SCAN_PURGE`. No identity or health value reaches the audit log, the logs, the change feed or an error message.
-- Previous answers: a returning patient can reuse earlier answers after confirming their date of birth against the patient record; 5 wrong attempts per link lock that check.
+- Audit events: `PATIENT_CREATE`, `PATIENT_UPDATE`, `APPOINTMENT_BOOK`, `APPOINTMENT_RESCHEDULE`, `APPOINTMENT_CANCEL`, `APPOINTMENT_ARRIVE`, `APPOINTMENT_NO_SHOW`, `VISIT_LINK_CREATE`, `VISIT_LINK_REVOKE` (these exact names; not `DENTAL_LINK_*`), `PREVISIT_SUBMIT`, `PREVISIT_VIEW` (every read of a form), `PREVISIT_PHOTO_VIEW`, `PREVISIT_PREVIOUS_VIEW` (patient-side, no user: a date-of-birth match; after-JSON only `{"sourceAppointmentId": ...}`), `PREVISIT_CHECK_LOCKED` (patient-side, no user: the 5th wrong date), `ID_SCAN_UPLOAD`, `ID_SCAN_PURGE`. No identity or health value reaches the audit log, the logs, the change feed or an error message.
+- Previous answers: a returning patient can reuse earlier allergy and medicine answers after confirming their date of birth against the patient record; the visit reason is returned only from this appointment's own form, never from an earlier visit; 5 wrong attempts per link lock that check.
 
 **Host routing in guest-web:** one nginx `server` per host. `HOTEL_HOST` (exact name, no wildcard) proxies only `/api/v1/plugins/hotel/public/`; `DENTAL_HOST` (exact name) proxies only `/api/v1/plugins/dental/public/`; any other Host is a 404 even for `/`, except `/healthz` (answers 200 with any Host; point the k8s readiness/liveness probe at it, not at `/`: the pod IP is an unknown Host). The two names must differ (compared lowercased). Both share the same hardening (normalised-path proxy, `;`/`%3b`/`%5c` guard, explicit `X-Guest-Proxy-Secret` and `X-Client-IP`, 11 MB body limit, security headers on every response). `scripts/smoke-guest-checkin.sh` covers both paths and the cross-host 404s.
 

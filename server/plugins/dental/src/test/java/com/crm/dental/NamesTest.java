@@ -20,6 +20,14 @@ class NamesTest {
     }
 
     @Test
+    void a_hundred_syllable_hangul_name_folds_to_more_than_200_characters() {
+        // name_search is TEXT: NFD expands each syllable into up to three jamo
+        String folded = Names.fold("\ud55c".repeat(100));
+        assertThat(folded).hasSize(300);
+        assertThat(folded.length()).isGreaterThan(200);
+    }
+
+    @Test
     void null_is_rejected() {
         assertThatThrownBy(() -> Names.fold(null)).isInstanceOf(NullPointerException.class);
     }
